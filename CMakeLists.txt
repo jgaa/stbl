@@ -18,7 +18,7 @@ find_package(Boost REQUIRED COMPONENTS
 if (WIN32)
     link_directories(${Boost_LIBRARY_DIRS})
 else()
-    add_definitions(-DBOOST_ALL_DYN_LINK=1)
+    add_definitions(-DBOOST_ALL_DYN_LINK=1 -std=c++14)
 endif()
 
 set(DEFAULT_LIBRARIES

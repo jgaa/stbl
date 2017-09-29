@@ -1,13 +1,23 @@
 project(libstbl)
 
 set(ACTUAL_SOURCES
-    BlogPost.cpp
+    ContentManagerImpl.cpp
+    DirectoryScannerImpl.cpp
+    SeriesImpl.cpp
+    ArticleImpl.cpp
+    HeaderParserImpl.cpp
     )
 
 set(HEADERS
-    ${STBL_ROOT_DIR}/include/stbl/BlogPost.h
+    ${STBL_ROOT_DIR}/include/stbl/Node.h
+    ${STBL_ROOT_DIR}/include/stbl/Article.h
+    ${STBL_ROOT_DIR}/include/stbl/Series.h
+    ${STBL_ROOT_DIR}/include/stbl/Content.h
+    ${STBL_ROOT_DIR}/include/stbl/Page.h
+    ${STBL_ROOT_DIR}/include/stbl/stbl.h
+    ${STBL_ROOT_DIR}/include/stbl/Options.h
+    ${STBL_ROOT_DIR}/include/stbl/ContentManager.h
     )
-
 
 if (WIN32)
     set(SOURCES ${ACTUAL_SOURCES} ${HEADERS} ${RESFILES})

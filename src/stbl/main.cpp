@@ -9,7 +9,7 @@
 
 #include "stbl/Options.h"
 #include "stbl/logging.h"
-
+#include "stbl/ContentManager.h"
 
 using namespace std;
 namespace po = boost::program_options;
@@ -41,7 +41,7 @@ void setup_logging(po::variables_map vm)
 
     logging::core::get()->set_filter
     (
-        logging::trivial::severity >= logging::trivial::trace
+        logging::trivial::severity >= level
     );
 };
 
@@ -105,6 +105,14 @@ int main(int argc, char * argv[])
 
     LOG_INFO << "Ready to process '" << options.source_path
         << "' --> '" << options.destination_path << "'";
+
+    try {
+        auto manager = ContentManager::Create(options);
+        manager->ProcessSite();
+    } catch (std::exception& ex) {
+        LOG_ERROR << "*** Failed to process site: " << ex.what();
+        return -1;
+    }
 
     return 0;
 }
