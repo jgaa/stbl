@@ -84,7 +84,17 @@ private:
         hdr.subject = GetWide("subject", headers);
         hdr.tags = GetWideList("tags", headers);
         hdr.updated = GetTime("updated", headers);
-        hdr.published = GetTime("published", headers);
+
+        auto published = Get("published", headers);
+
+        if (!published.empty()) {
+            if ((published == "false") || (published == "no")) {
+                hdr.is_published = false;
+            } else {
+                hdr.published = GetTime("published", headers);
+            }
+        }
+
         hdr.expires = GetTime("expires", headers);
         hdr.authors = GetList("authors", headers);
         auto author = Get("author", headers);
@@ -181,8 +191,8 @@ private:
             throw runtime_error("Parse error");
         }
 
-
-        return mktime(&t);
+        auto result = mktime(&t);
+        return result;
     }
 
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;

@@ -2,6 +2,8 @@
 #include <map>
 #include <locale>
 #include <codecvt>
+#include <iomanip>
+#include <ctime>
 
 
 #include "stbl/Node.h"
@@ -25,5 +27,6 @@ namespace stbl {
 
     return out << '\"' << name << "\" (" << node.GetType() << ')';
 }
+
 
 }

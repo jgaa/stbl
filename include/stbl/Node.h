@@ -25,6 +25,7 @@ public:
         time_t updated = 0;
         time_t published = 0;
         time_t expires = 0;
+        bool is_published = true;
     };
 
 

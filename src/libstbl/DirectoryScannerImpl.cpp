@@ -200,6 +200,14 @@ private:
                     hdr->title = GetTitleFromPath(a);
                 }
 
+                if (!hdr->published && hdr->is_published) {
+                    hdr->published = GetTimeFromPath(a);
+                }
+
+                if (!hdr->updated && hdr->is_published) {
+                    hdr->updated = GetTimeFromPath(a);
+                }
+
                 article->SetMetadata(hdr);
                 article->SetAuthors(hdr->authors);
 
@@ -227,6 +235,15 @@ private:
         }
 
         return converter.from_bytes(name);
+    }
+
+    time_t GetTimeFromPath(const path& path) {
+        auto when = last_write_time(path);
+
+        // Round off to half hours
+        when /= 1800;
+        when *= 1800;
+        return when;
     }
 
     /* Do it simple. Read only until we have the header.
