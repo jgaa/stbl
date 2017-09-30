@@ -5,6 +5,9 @@ set(ACTUAL_SOURCES
     DirectoryScannerImpl.cpp
     SeriesImpl.cpp
     ArticleImpl.cpp
+    ContentImpl.cpp
+    PageImpl.cpp
+    logging.cpp
     HeaderParserImpl.cpp
     )
 

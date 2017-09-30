@@ -20,7 +20,7 @@ public:
     virtual ~Article() = default;
 
     virtual std::shared_ptr<Content> GetContent() = 0;
-    virtual void SetContent(std::shared_ptr<Content>& content) = 0;
+    virtual void SetContent(content_t content) = 0;
     virtual authors_t GetAuthors() const = 0;
     virtual void SetAuthors(const authors_t& authors) = 0;
 

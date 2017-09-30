@@ -10,7 +10,10 @@ public:
     Content() = default;
     virtual ~Content() = default;
 
-    virtual pages_t GetPages();
+    virtual void AddPage(page_t page) = 0;
+    virtual pages_t GetPages() = 0;
+
+    static content_t Create();
 };
 
 }

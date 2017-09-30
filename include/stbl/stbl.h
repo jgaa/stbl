@@ -2,16 +2,24 @@
 
 #include <memory>
 #include <vector>
-
+#include <iostream>
 
 namespace stbl {
 
 class Node;
 class Article;
 class Page;
+class Content;
 
-using nodes_t = std::vector<std::shared_ptr<Node>>;
-using articles_t = std::vector<std::shared_ptr<Article>>;
-using pages_t = std::vector<std::shared_ptr<Page>>;
+using node_t = std::shared_ptr<Node>;
+using nodes_t = std::vector<node_t>;
+
+using article_t = std::shared_ptr<Article>;
+using articles_t = std::vector<article_t>;
+
+using page_t = std::shared_ptr<Page>;
+using pages_t = std::vector<page_t>;
+
+using content_t = std::shared_ptr<Content>;
 
 }

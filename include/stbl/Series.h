@@ -11,7 +11,7 @@ public:
     Series() = default;
     virtual ~Series() = default;
 
-    virtual articles_t GetArticles() = 0;
+    virtual articles_t GetArticles() const = 0;
     virtual void AddArticle(std::shared_ptr<Article>& article) = 0;
     virtual void AddArticles(articles_t articles) = 0;
 

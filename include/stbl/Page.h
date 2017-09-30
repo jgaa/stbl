@@ -2,19 +2,27 @@
 
 #include <ostream>
 
+#include <boost/filesystem.hpp>
+
 #include "stbl/stbl.h"
 
 namespace stbl {
 
 class Page
 {
-public:
+protected:
     Page() = default;
+    Page(const Page&) = delete;
+    Page(Page&&) = delete;
+    Page& operator = (const Page&) = delete;
+    Page& operator = (Page&&) = delete;
+
+public:
     virtual ~Page() = default;
 
-    void Render2Html(std::ostream& out);
+    virtual void Render2Html(std::ostream& out) = 0;
 
-    std::wstring content;
+    static page_t Create(const boost::filesystem::path& path);
 };
 
 }

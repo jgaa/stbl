@@ -5,13 +5,19 @@
 #include <iostream>
 #include <sstream>
 #include <map>
+#include <locale>
+#include <codecvt>
+#include <sstream>
 
 #include <boost/filesystem.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "stbl/stbl.h"
 #include "stbl/Series.h"
 #include "stbl/Article.h"
+#include "stbl/Content.h"
 #include "stbl/logging.h"
+#include "stbl/Page.h"
 #include "stbl/Scanner.h"
 #include "stbl/HeaderParser.h"
 
@@ -46,6 +52,7 @@ class DirectoryScannerImpl : public Scanner
 
         Mode mode = Mode::GENERAL;
         vector<path> recursed;
+        path current_path;
         std::shared_ptr<std::vector<path>> configuration;
         std::shared_ptr<std::vector<path>> articles;
     };
@@ -61,7 +68,9 @@ public:
         articles /= "articles";
         Context ctx;
         ScanDir(articles, ctx);
-        return Process(ctx);
+        Process(ctx);
+
+        return move(nodes_);
     }
 
 private:
@@ -142,20 +151,17 @@ private:
             throw std::runtime_error("Recursive loop in directory structure.");
         }
 
+        newCtx.current_path = subdir;
         return newCtx;
     }
 
-    nodes_t Process(const Context& ctx) {
-        nodes_t nodes;
-
+    void Process(const Context& ctx) {
         if (ctx.mode == Context::Mode::SERIES) {
-            nodes.push_back(ProcessSeries(ctx));
+            nodes_.push_back(ProcessSeries(ctx));
         } else {
             auto articles = ProcessArticles(ctx);
-            nodes.insert(nodes.end(), articles.begin(), articles.end());
+            nodes_.insert(nodes_.end(), articles.begin(), articles.end());
         }
-
-        return nodes;
     }
 
     std::shared_ptr<Series> ProcessSeries(const Context& ctx) {
@@ -167,10 +173,16 @@ private:
         // Set the properties for the series
         //    - Name
         //    - Last updated time (based on the newest article)
+        auto md = make_shared<Node::Metadata>();
+
+        // If no name, use the file-name
+        md->title = GetTitleFromPath(ctx.current_path);
+        series->SetMetadata(md);
 
         // Add articles
         auto articles = ProcessArticles(ctx);
-
+        series->AddArticles(move(articles));
+        return move(series);
     }
 
     articles_t ProcessArticles(const Context& ctx) {
@@ -184,8 +196,17 @@ private:
                 auto hdr = make_shared<Article::Header>();
                 ParseHeader(*hdr, FetchHeader(a));
 
+                if (hdr->title.empty()) {
+                    hdr->title = GetTitleFromPath(a);
+                }
+
                 article->SetMetadata(hdr);
                 article->SetAuthors(hdr->authors);
+
+                auto content = Content::Create();
+                content->AddPage(Page::Create(a));
+                article->SetContent(move(content));
+
                 articles.push_back(article);
 
             } catch(exception& ex) {
@@ -194,7 +215,18 @@ private:
             }
         }
 
-        return articles;
+        return move(articles);
+    }
+
+    std::wstring GetTitleFromPath(const path& path) {
+        auto name = path.stem().string();
+        boost::replace_all(name, "_", " ");
+        if(!name.empty()) {
+            locale loc;
+            name[0] = toupper(name[0], loc);
+        }
+
+        return converter.from_bytes(name);
     }
 
     /* Do it simple. Read only until we have the header.
@@ -245,6 +277,7 @@ private:
 
     const Options& options_;
     nodes_t nodes_;
+    std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 };
 
 

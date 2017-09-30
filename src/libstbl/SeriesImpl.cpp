@@ -22,15 +22,15 @@ public:
         articles_.insert(articles_.end(), articles.begin(), articles.end());
     }
 
-    stbl::Node::Type GetType() override {
+    stbl::Node::Type GetType() const override {
         return Type::SERIES;
     }
 
-    articles_t GetArticles() override {
+    articles_t GetArticles() const override {
         return articles_;
     }
 
-    std::shared_ptr<Metadata> GetMetadata() override {
+    std::shared_ptr<Metadata> GetMetadata() const override {
         return metadata_;
     }
 

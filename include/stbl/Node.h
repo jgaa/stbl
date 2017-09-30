@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 #include <time.h>
+#include <functional>
+#include <iostream>
+#include <memory>
 
 namespace stbl {
 
@@ -27,9 +30,9 @@ public:
 
     Node() = default;
     virtual ~Node() = default;
-    virtual Type GetType() = 0;
+    virtual Type GetType() const = 0;
 
-    virtual std::shared_ptr<Metadata> GetMetadata() = 0;
+    virtual std::shared_ptr<Metadata> GetMetadata() const = 0;
     virtual void SetMetadata(const std::shared_ptr<Metadata>& metadata) = 0;
 };
 

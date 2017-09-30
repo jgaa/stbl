@@ -17,11 +17,11 @@ public:
     ~ArticleImpl()  {
     }
 
-    stbl::Node::Type GetType() override {
-        return Type::SERIES;
+    stbl::Node::Type GetType() const override {
+        return Type::ARTICLE;
     }
 
-    std::shared_ptr<Metadata> GetMetadata() override {
+    std::shared_ptr<Metadata> GetMetadata() const override {
         return metadata_;
     }
 
@@ -42,8 +42,8 @@ public:
         return content_;
     }
 
-    void SetContent(std::shared_ptr<Content> & content) override {
-        content_ = content;
+    void SetContent(content_t content) override {
+        content_ = move(content);
     }
 
 private:
