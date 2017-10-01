@@ -54,12 +54,12 @@ protected:
 
         LOG_DEBUG << "Listing nodes after scan: ";
         for(const auto& n: nodes_) {
-            LOG_DEBUG << "   " << *n;
+            LOG_DEBUG << "  " << *n;
 
             if (n->GetType() == Node::Type::SERIES) {
                 const auto& series = dynamic_cast<const Series&>(*n);
                 for(const auto& a : series.GetArticles()) {
-                    LOG_DEBUG << "      ---> " << *a;
+                    LOG_DEBUG << "    ---> " << *a;
                 }
             }
         }
@@ -67,6 +67,11 @@ protected:
 
     void Prepare()
     {
+        tmp_path_ = temp_directory_path();
+        tmp_path_ /= unique_path();
+
+        create_directories(unique_path());
+
         // Go over tags.
         //    - Create a list of all tags
         //    - Add reference to article
@@ -118,6 +123,11 @@ protected:
     void CleanUp()
     {
         // Remove the temp site
+        if (!tmp_path_.empty() && is_directory(tmp_path_)) {
+            LOG_DEBUG << "Removing temporary directory " << tmp_path_;
+            remove_all(tmp_path_);
+        }
+
         // Remove any other temporary files
     }
 
@@ -156,8 +166,9 @@ protected:
 
         articles_t publishable;
 
+        auto series = dynamic_pointer_cast<Series>(node);
 
-        for(const auto& a : dynamic_cast<Series&>(*node).GetArticles()) {
+        for(const auto& a : series->GetArticles()) {
             if (!Validate(a)) {
                 continue;
             }
@@ -172,7 +183,7 @@ protected:
         }
 
         for(const auto& a : publishable) {
-            DoAddArticle(a);
+            DoAddArticle(a, series);
         }
 
         articles_for_frontpages_.push_back(node);
@@ -191,12 +202,37 @@ protected:
         return true;
     }
 
-    void DoAddArticle(const article_t& article) {
-
+    void DoAddArticle(const article_t& article, serie_t series = {}) {
+        static const string file_extension{".html"};
         auto ai = make_shared<ArticleInfo>();
+        auto meta = article->GetMetadata();
 
         ai->article = article;
-        // TODO: Decide paths and url
+
+        ai->dst_path = options_.destination_path;
+        ai->tmp_path = tmp_path_;
+
+        string base_path;
+        if (series) {
+            string article_path;
+
+            if (options_.path_layout == Options::PathLayout::SIMPLE) {
+                article_path = series->GetMetadata()->article_path_part;
+                base_path = article_path + "/";
+            }
+            ai->dst_path /= article_path;
+            ai->tmp_path /= article_path;
+        }
+
+        const auto file_name =  meta->article_path_part + file_extension;
+        ai->relative_url = base_path + file_name;
+        ai->dst_path /= file_name;
+        ai->tmp_path /= file_name;
+
+        LOG_TRACE << *article << " has destinations:";
+        LOG_TRACE    << "  relative_url: " << ai->relative_url;
+        LOG_TRACE    << "  dst_path    : " << ai->dst_path;
+        LOG_TRACE    << "  tmp_path    : " << ai->tmp_path;
 
         all_articles_.push_back(ai);
     }
@@ -211,6 +247,8 @@ protected:
 
     // All articles and series that are to be listed on the frontpage(s)
     deque<node_t> articles_for_frontpages_;
+
+    path tmp_path_;
 };
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)

@@ -62,6 +62,8 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             "Directory for the sites content. Defaults to the current directory")
         ("destination-dir,d",  po::value<string>(),
             "Where to put the generated site (locally). Defaults to $HOME/.stbl-site")
+        ("content-layout,L", po::value<string>()->default_value("simple"),
+            "How to organize the site. 'simple' or 'recursive'.")
         ;
 
     po::options_description cmdline_options;
@@ -90,6 +92,19 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         options.destination_path = vm["destination-dir"].as<string>();
     } else {
         options.destination_path = "~/.stbl-site";
+    }
+
+    if (vm.count("content-layout")) {
+        const auto val = vm["content-layout"].as<string>();
+        if (val == "simple") {
+            options.path_layout = Options::PathLayout::SIMPLE;
+        } else if (val == "recursive") {
+            options.path_layout = Options::PathLayout::RECURSIVE;
+        } else {
+            cerr << "Unknown content-layout" << val << endl;
+            return false;
+        }
+
     }
 
     return true;

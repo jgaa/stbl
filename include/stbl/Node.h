@@ -26,6 +26,7 @@ public:
         time_t published = 0;
         time_t expires = 0;
         bool is_published = true;
+        std::string article_path_part;
     };
 
 

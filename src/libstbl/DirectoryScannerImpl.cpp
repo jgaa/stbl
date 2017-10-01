@@ -35,9 +35,17 @@ class DirectoryScannerImpl : public Scanner
             SERIES
         };
 
+        struct Location {
+            Location(const vector<path>& argRecused, const path& argPath)
+            : recursed{argRecused}, full_path{argPath} {}
+
+            const vector<path> recursed;
+            const path full_path;
+        };
+
         Context()
         : configuration{make_shared<std::vector<path>>()}
-        , articles{make_shared<std::vector<path>>()}
+        , articles{make_shared<std::vector<Location>>()}
         {
         }
 
@@ -47,14 +55,14 @@ class DirectoryScannerImpl : public Scanner
         void PrepareForSeries() {
             mode = Mode::SERIES;
             configuration = make_shared<std::vector<path>>();
-            articles = make_shared<std::vector<path>>();
+            articles = make_shared<std::vector<Location>>();
         }
 
         Mode mode = Mode::GENERAL;
         vector<path> recursed;
         path current_path;
         std::shared_ptr<std::vector<path>> configuration;
-        std::shared_ptr<std::vector<path>> articles;
+        std::shared_ptr<std::vector<Location>> articles;
     };
 
 public:
@@ -114,7 +122,7 @@ private:
                 const auto ext = entry.path().extension();
                 if (ext == ".md") {
                     LOG_DEBUG << "Adding article: " << name;
-                    ctx.articles->push_back(entry.path());
+                    ctx.articles->push_back(Context::Location(ctx.recursed, entry.path()));
 
                 } else if (ext == ".conf") {
                     if (ctx.mode == Context::Mode::SERIES) {
@@ -175,8 +183,14 @@ private:
         //    - Last updated time (based on the newest article)
         auto md = make_shared<Node::Metadata>();
 
-        // If no name, use the file-name
-        md->title = GetTitleFromPath(ctx.current_path);
+        if (md->title.empty()) {
+            md->title = GetTitleFromPath(ctx.current_path);
+        }
+
+        if (md->article_path_part.empty()) {
+            md->article_path_part = ctx.current_path.stem().string();
+        }
+
         series->SetMetadata(md);
 
         // Add articles
@@ -194,36 +208,63 @@ private:
 
             try {
                 auto hdr = make_shared<Article::Header>();
-                ParseHeader(*hdr, FetchHeader(a));
+                ParseHeader(*hdr, FetchHeader(a.full_path));
 
                 if (hdr->title.empty()) {
-                    hdr->title = GetTitleFromPath(a);
+                    hdr->title = GetTitleFromPath(a.full_path);
                 }
 
                 if (!hdr->published && hdr->is_published) {
-                    hdr->published = GetTimeFromPath(a);
+                    hdr->published = GetTimeFromPath(a.full_path);
                 }
 
                 if (!hdr->updated && hdr->is_published) {
-                    hdr->updated = GetTimeFromPath(a);
+                    hdr->updated = GetTimeFromPath(a.full_path);
+                }
+
+                if (hdr->article_path_part.empty()) {
+                    hdr->article_path_part = GetPath(ctx, a);
                 }
 
                 article->SetMetadata(hdr);
                 article->SetAuthors(hdr->authors);
 
                 auto content = Content::Create();
-                content->AddPage(Page::Create(a));
+                content->AddPage(Page::Create(a.full_path));
                 article->SetContent(move(content));
 
                 articles.push_back(article);
 
             } catch(exception& ex) {
-                LOG_ERROR << "Generation failed processing article: " << a;
+                LOG_ERROR << "Generation failed processing article: " << a.full_path;
                 throw;
             }
         }
 
         return move(articles);
+    }
+
+
+    std::string GetPath(const Context& ctx, const Context::Location& location) {
+        switch(options_.path_layout) {
+            case Options::PathLayout::SIMPLE:
+                return location.full_path.stem().string();
+            case Options::PathLayout::RECURSIVE:
+            {
+                path where;
+                for(const auto p: location.recursed) {
+                    auto filename = p.filename().string();
+                    if (!filename.empty() && (filename[0] == '_')) {
+                        filename = filename.substr(1);
+                    }
+                    where /= filename;
+                }
+                where /= location.full_path.stem().string();
+                return where.string();
+            }
+            default:
+                assert(false && "Unknown layout");
+        }
     }
 
     std::wstring GetTitleFromPath(const path& path) {
