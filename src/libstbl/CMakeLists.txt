@@ -1,5 +1,7 @@
 project(libstbl)
 
+include_directories(${STBL_ROOT_DIR}/externals/cpp-markdown/src/)
+
 set(ACTUAL_SOURCES
     ContentManagerImpl.cpp
     DirectoryScannerImpl.cpp
@@ -9,6 +11,9 @@ set(ACTUAL_SOURCES
     PageImpl.cpp
     logging.cpp
     HeaderParserImpl.cpp
+    utility.cpp
+    ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown-tokens.cpp
+    ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown.cpp
     )
 
 set(HEADERS

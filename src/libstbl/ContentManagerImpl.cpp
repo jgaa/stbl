@@ -3,6 +3,8 @@
 #include <deque>
 #include <iomanip>
 #include <ctime>
+#include <fstream>
+#include <iostream>
 
 #include <boost/lexical_cast.hpp>
 
@@ -70,7 +72,7 @@ protected:
         tmp_path_ = temp_directory_path();
         tmp_path_ /= unique_path();
 
-        create_directories(unique_path());
+        create_directories(tmp_path_);
 
         // Go over tags.
         //    - Create a list of all tags
@@ -109,6 +111,31 @@ protected:
         //    - One for each subject
 
         // Render the series and articles
+        for(auto& ai : all_articles_) {
+            // TODO: Handle multiple pages
+            for(auto& p : ai->article->GetContent()->GetPages()) {
+
+                LOG_DEBUG << "Generating " << * ai->article
+                    << " at : " << ai->tmp_path;
+
+                const auto directory = ai->tmp_path.parent_path();
+                if (!is_directory(directory)) {
+                    create_directories(directory);
+                }
+
+                std::ofstream out(ai->tmp_path.string());
+
+                if (!out) {
+                    auto err = strerror(errno);
+                    LOG_ERROR << "IO error. Failed to open "
+                        << ai->tmp_path << " for write: " << err;
+
+                    throw runtime_error("IO error");
+                }
+
+                p->Render2Html(out);
+            }
+        }
 
         // Copy artifacts, images and other files
     }
@@ -123,7 +150,7 @@ protected:
     void CleanUp()
     {
         // Remove the temp site
-        if (!tmp_path_.empty() && is_directory(tmp_path_)) {
+        if (!options_.keep_tmp_dir && !tmp_path_.empty() && is_directory(tmp_path_)) {
             LOG_DEBUG << "Removing temporary directory " << tmp_path_;
             remove_all(tmp_path_);
         }

@@ -54,6 +54,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("help,h", "Print help and exit")
         ("console-log,C", po::value<string>(),
             "Log-level for the console-log")
+        ("keep-tmp-dir,T", "Keep the temporary directory.")
         ;
 
     po::options_description locations("Locations");
@@ -92,6 +93,10 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         options.destination_path = vm["destination-dir"].as<string>();
     } else {
         options.destination_path = "~/.stbl-site";
+    }
+
+    if (vm.count("keep-tmp-dir")) {
+        options.keep_tmp_dir = true;
     }
 
     if (vm.count("content-layout")) {

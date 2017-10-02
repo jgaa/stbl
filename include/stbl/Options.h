@@ -14,6 +14,7 @@ struct Options
     std::string source_path;
     std::string destination_path;
     PathLayout path_layout = PathLayout::SIMPLE;
+    bool keep_tmp_dir = false;
 };
 
 }
