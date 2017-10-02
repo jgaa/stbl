@@ -84,6 +84,7 @@ private:
         hdr.subject = GetWide("subject", headers);
         hdr.tags = GetWideList("tags", headers);
         hdr.updated = GetTime("updated", headers);
+        hdr.abstract = Get("abstract", headers);
 
         auto published = Get("published", headers);
 

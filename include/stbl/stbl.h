@@ -2,9 +2,6 @@
 
 #include <memory>
 #include <vector>
-#include <iostream>
-
-#include <boost/utility/string_ref.hpp>
 
 namespace stbl {
 
@@ -26,10 +23,5 @@ using page_t = std::shared_ptr<Page>;
 using pages_t = std::vector<page_t>;
 
 using content_t = std::shared_ptr<Content>;
-
-// // Utility functions
-// boost::string_ref Sf(boost::string_ref::const_iterator start,
-//                      boost::string_ref::const_iterator end,
-//                      bool trim = false) ;
 
 }

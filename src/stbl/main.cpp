@@ -1,4 +1,5 @@
 #include <iostream>
+#include <cstdlib>
 
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
@@ -10,10 +11,12 @@
 #include "stbl/Options.h"
 #include "stbl/logging.h"
 #include "stbl/ContentManager.h"
+#include "stbl/utility.h"
 
 using namespace std;
 namespace po = boost::program_options;
 using namespace stbl;
+using namespace std::string_literals;
 
 
 void setup_logging(po::variables_map vm)
@@ -55,6 +58,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("console-log,C", po::value<string>(),
             "Log-level for the console-log")
         ("keep-tmp-dir,T", "Keep the temporary directory.")
+        ("open-in-firefox,f", "Open the generated site in firefox.")
         ;
 
     po::options_description locations("Locations");
@@ -75,7 +79,8 @@ bool parse_command_line(int argc, char * argv[], Options &options)
     po::notify(vm);
 
     if (vm.count("help")) {
-        cout << cmdline_options << endl
+        cout << "stbl [options]" << endl
+            << cmdline_options << endl
             << "Log-levels are:" << endl
             << "   error warning info debug trace " << endl;
         return false;
@@ -92,12 +97,24 @@ bool parse_command_line(int argc, char * argv[], Options &options)
     if (vm.count("destination-dir")) {
         options.destination_path = vm["destination-dir"].as<string>();
     } else {
-        options.destination_path = "~/.stbl-site";
+        const char *home = getenv("HOME");
+        if (home == NULL) {
+            cerr << "No destination specified, and no HOME environment variable set.";
+            return false;
+        }
+        boost::filesystem::path dst_path = home;
+        dst_path /= ".stbl-site";
+        options.destination_path = dst_path.string();
     }
 
     if (vm.count("keep-tmp-dir")) {
         options.keep_tmp_dir = true;
     }
+
+    if (vm.count("open-in-firefox")) {
+        options.open_in_browser = "firefox";
+    }
+
 
     if (vm.count("content-layout")) {
         const auto val = vm["content-layout"].as<string>();
@@ -111,6 +128,10 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         }
 
     }
+
+    boost::filesystem::path opts = options.source_path;
+    opts /= "stbl.conf";
+    options.options = LoadProperties(opts);
 
     return true;
 }
@@ -132,6 +153,13 @@ int main(int argc, char * argv[])
     } catch (std::exception& ex) {
         LOG_ERROR << "*** Failed to process site: " << ex.what();
         return -1;
+    }
+
+    if (!options.open_in_browser.empty()) {
+        boost::filesystem::path dst_path = options.destination_path;
+        dst_path /= "index.html";
+        string cmd = options.open_in_browser + " \""s + dst_path.string() + "\""s;
+        system(cmd.c_str());
     }
 
     return 0;

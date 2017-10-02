@@ -191,6 +191,14 @@ private:
             md->article_path_part = ctx.current_path.stem().string();
         }
 
+        if (!md->published && md->is_published) {
+                    md->published = GetTimeFromPath(ctx.current_path);
+        }
+
+        if (!md->updated && md->is_published) {
+            md->updated = GetTimeFromPath(ctx.current_path);
+        }
+
         series->SetMetadata(md);
 
         // Add articles

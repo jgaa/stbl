@@ -21,12 +21,14 @@ public:
         std::wstring unique_id;
         std::wstring title;
         std::wstring subject;
+        std::string abstract;
         std::vector<std::wstring> tags;
         time_t updated = 0;
         time_t published = 0;
         time_t expires = 0;
         bool is_published = true;
         std::string article_path_part;
+        std::string relative_url;
     };
 
 
