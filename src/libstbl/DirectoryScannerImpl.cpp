@@ -287,11 +287,12 @@ private:
     }
 
     time_t GetTimeFromPath(const path& path) {
+        static const time_t roundup = options_.options.get<time_t>("system.date.roundup", 1800);
         auto when = last_write_time(path);
 
-        // Round off to half hours
-        when /= 1800;
-        when *= 1800;
+        // Round off to preserve privacy a bit
+        when /= roundup;
+        when *= roundup;
         return when;
     }
 

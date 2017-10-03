@@ -56,8 +56,6 @@ public:
                     // spos = end of start-line
                     // epos is start of end ```
 
-                    //boost::replace_all(code_block, "&", "&amp;");
-
                     string code = content.substr(spos, epos - spos);
                     boost::replace_all(code, "<", "&lt;");
                     boost::replace_all(code, ">", "&gt;");

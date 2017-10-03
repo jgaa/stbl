@@ -103,16 +103,6 @@ protected:
 
         create_directories(tmp_path_);
 
-        // Go over tags.
-        //    - Create a list of all tags
-        //    - Add reference to article
-        //    - Sort the list
-
-        // Go over subjects
-        //    - Create a list of all subjects
-        //    - Add reference to article
-        //    - Sort the list
-
         for(const auto& n: nodes_) {
             switch(n->GetType()) {
                 case Node::Type::SERIES: {
@@ -223,6 +213,8 @@ protected:
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
             vars["content"] = content.str();
+            vars["author"] = RenderAuthors(ai.article->GetAuthors(), ctx);
+            vars["authors"] = vars["author"];
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
         }
@@ -538,14 +530,42 @@ protected:
         return out.str();
     }
 
+    string RenderAuthors(const Article::authors_t& authors, const RenderCtx& ctx) {
+
+        std::stringstream out;
+
+        for(const auto& key : authors) {
+            string full_key = "people."s + key;
+            string name = options_.options.get<string>(full_key + ".name", key);
+            string email = options_.options.get<string>(full_key + ".email", "");
+
+            map<string, string> vars;
+            AssignDefauls(vars, ctx);
+            vars["name"] = name;
+            if (!email.empty()) {
+                vars["email"] = R"(<a class="author" href="mailto:)"s + email + R"(">)"s
+                    + email + "</a>";
+            }
+
+            // TODO: Render list of social handles and other links from config
+
+            string tmplte = LoadTemplate("author.html");
+            ProcessTemplate(tmplte, vars);
+            out << tmplte << endl;
+        }
+
+        return out.str();
+    }
+
     string ToStringAnsi(const time_t& when) {
         std::tm tm = *std::localtime(&when);
         return boost::lexical_cast<string>(put_time(&tm, "%F %R"));
     }
 
     string ToStringLocal(const time_t& when) {
+        static const string format = options_.options.get<string>("system.date.format", "%c");
         std::tm tm = *std::localtime(&when);
-        return boost::lexical_cast<string>(put_time(&tm, "%c"));
+        return boost::lexical_cast<string>(put_time(&tm, format.c_str()));
     }
 
     void ProcessTemplate(string& tmplte,
