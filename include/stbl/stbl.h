@@ -24,4 +24,12 @@ using pages_t = std::vector<page_t>;
 
 using content_t = std::shared_ptr<Content>;
 
+#ifndef PROGRAM_NAME
+#   define PROGRAM_NAME "stbl"
+#endif
+
+#ifndef PROGRAM_VERSION
+#   define PROGRAM_VERSION "0.01-devel"
+#endif
+
 }

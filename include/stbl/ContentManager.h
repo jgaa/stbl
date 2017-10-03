@@ -17,10 +17,6 @@ class ContentManager
 {
 protected:
     ContentManager() = default;
-    ContentManager(const ContentManager&) = delete;
-    ContentManager(const ContentManager&&) = delete;
-    ContentManager& operator = (const ContentManager&) = delete;
-    ContentManager& operator = (const ContentManager&&) = delete;
 
 public:
     virtual ~ContentManager() = default;

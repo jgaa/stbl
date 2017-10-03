@@ -196,6 +196,8 @@ protected:
         vars["site-abstract"] = options_.options.get<string>("abstract");
         vars["site-url"] = options_.options.get<string>(
             "url", options_.destination_path + "index.html");
+        vars["program-name"] = PROGRAM_NAME;
+        vars["program-version"] = PROGRAM_VERSION;
     }
 
     void Assign(const Node::Metadata& md, map<string, string>& vars) {
@@ -281,6 +283,13 @@ protected:
             return false;
         }
 
+        // Sort, oldest first
+        sort(publishable.begin(), publishable.end(),
+             [](const auto& left, const auto& right) {
+                 return left->GetMetadata()->updated < right->GetMetadata()->updated;
+             });
+
+
         for(const auto& a : publishable) {
             DoAddArticle(a, series);
         }
@@ -356,7 +365,13 @@ protected:
 
         AssignHeaderAndFooter(vars);
 
-        vars["list-articles"] = RenderNodeList(articles_for_frontpages_);
+        auto articles = articles_for_frontpages_;
+        sort(articles.begin(), articles.end(),
+             [](const auto& left, const auto& right) {
+                 return left->GetMetadata()->updated > right->GetMetadata()->updated;
+             });
+
+        vars["list-articles"] = RenderNodeList(articles);
 
         ProcessTemplate(frontpage, vars);
 
