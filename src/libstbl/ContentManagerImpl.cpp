@@ -7,6 +7,8 @@
 #include <iostream>
 #include <map>
 #include <regex>
+#include <algorithm>
+#include <set>
 
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
@@ -34,6 +36,27 @@ public:
         string relative_url; // Relative to the websites root
         path tmp_path;
         path dst_path;
+    };
+
+    struct TagInfo {
+        nodes_t nodes;
+        string name; //utf8 with caps as in first seen version
+        string url;
+    };
+
+    struct RenderCtx {
+        // The node we are about to render
+        node_t current;
+        size_t url_recuse_level = 0; // Relative to the sites root
+
+        string GetRelativeUrl(const string url) const {
+            stringstream out;
+            for(size_t level = 0; level < url_recuse_level; ++level) {
+                out << "../";
+            }
+            out << url;
+            return out.str();
+        }
     };
 
     ContentManagerImpl(const Options& options)
@@ -104,6 +127,11 @@ protected:
                 } break;
             }
         }
+
+        // Prepare tags
+        for(auto& tag : tags_) {
+            tag.second.url = "_tags/"s + stbl::ToString(tag.first) + ".html";
+        }
     }
 
     void MakeTempSite()
@@ -121,13 +149,19 @@ protected:
         //    - One global
         //    - One for each subject
 
-        // Render the series and articles
+        // Render the articles
         for(auto& ai : all_articles_) {
             RenderArticle(*ai);
         }
 
+        // Render the series
         for(auto& n : all_series_) {
-            RenderSerie(*n);
+            RenderSerie(n);
+        }
+
+        // Render tags
+        for(auto& t: tags_) {
+            RenderTag(t.second);
         }
 
         // Copy artifacts, images and other files
@@ -139,7 +173,35 @@ protected:
         }
     }
 
+    void RenderTag(const TagInfo& ti) {
+        RenderCtx ctx;
+        ctx.url_recuse_level = GetRecurseLevel(ti.url);
+
+        auto page = LoadTemplate("tags.html");
+
+        map<string, string> vars;
+        AssignDefauls(vars, ctx);
+        AssignHeaderAndFooter(vars, ctx);
+        vars["name"] = ti.name;
+        vars["list-articles"] = RenderNodeList(ti.nodes, ctx);
+        ProcessTemplate(page, vars);
+
+        path dest = tmp_path_;
+        dest /= ti.url;
+        Save(dest, page, true);
+    }
+
+    template <typename T>
+    size_t GetRecurseLevel(const T& p) {
+        return count(p.begin(), p.end(), '/');
+    }
+
     void RenderArticle(const ArticleInfo& ai) {
+        RenderCtx ctx;
+        ctx.current = ai.article;
+        ctx.url_recuse_level = GetRecurseLevel(
+            ai.article->GetMetadata()->relative_url);
+
         // TODO: Handle multiple pages
         for(auto& p : ai.article->GetContent()->GetPages()) {
 
@@ -156,40 +218,45 @@ protected:
 
             string article = LoadTemplate("article.html");
             map<string, string> vars;
-            AssignDefauls(vars);
+            AssignDefauls(vars, ctx);
             auto meta = ai.article->GetMetadata();
-            Assign(*meta, vars);
-            AssignHeaderAndFooter(vars);
+            Assign(*meta, vars, ctx);
+            AssignHeaderAndFooter(vars, ctx);
             vars["content"] = content.str();
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
         }
     }
 
-    void RenderSerie(Series& serie) {
+    void RenderSerie(const serie_t& serie) {
+        RenderCtx ctx;
+        ctx.current = serie;
+        ctx.url_recuse_level = GetRecurseLevel(
+            serie->GetMetadata()->relative_url);
+
         string series = LoadTemplate("series.html");
 
-        const auto meta = serie.GetMetadata();
+        const auto meta = serie->GetMetadata();
         path dst = tmp_path_;
         dst /= meta->relative_url;
 
-        LOG_TRACE << "Generating " << serie << " --> " << dst;
+        LOG_TRACE << "Generating " << *serie << " --> " << dst;
 
 
         std::map<std::string, std::string> vars;
-        vars["article-type"] = boost::lexical_cast<string>(serie.GetType());
-        AssignDefauls(vars);
-        AssignHeaderAndFooter(vars);
-        Assign(*meta, vars);
+        vars["article-type"] = boost::lexical_cast<string>(serie->GetType());
+        AssignDefauls(vars, ctx);
+        AssignHeaderAndFooter(vars, ctx);
+        Assign(*meta, vars, ctx);
 
-        auto articles = serie.GetArticles();
-        vars["list-articles"] = RenderNodeList(articles, true);
+        auto articles = serie->GetArticles();
+        vars["list-articles"] = RenderNodeList(articles, ctx);
 
         ProcessTemplate(series, vars);
         Save(dst, series, true);
     }
 
-    void AssignDefauls(map<string, string>& vars) {
+    void AssignDefauls(map<string, string>& vars, const RenderCtx& ctx) {
         vars["now"] = ToStringLocal(now_);
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["site-title"] = options_.options.get<string>("name", "Anonymous Nest");
@@ -198,9 +265,10 @@ protected:
             "url", options_.destination_path + "index.html");
         vars["program-name"] = PROGRAM_NAME;
         vars["program-version"] = PROGRAM_VERSION;
+        vars["rel"] = ctx.GetRelativeUrl(""s);
     }
 
-    void Assign(const Node::Metadata& md, map<string, string>& vars) {
+    void Assign(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
         vars["updated"] = ToStringLocal(md.updated);
         vars["published"] = ToStringLocal(md.published);
         vars["expires"] = ToStringLocal(md.expires);
@@ -209,7 +277,8 @@ protected:
         vars["expires-ansi"] = ToStringAnsi(md.expires);
         vars["title"] = stbl::ToString(md.title);
         vars["abstract"] = md.abstract;
-        vars["url"] = md.relative_url;
+        vars["url"] = ctx.GetRelativeUrl(md.relative_url);
+        vars["tags"] = RenderTagList(md.tags, ctx);
     }
 
     void CommitToDestination()
@@ -265,6 +334,8 @@ protected:
             return false;
         }
 
+        set<wstring> tags;
+
         articles_t publishable;
 
         auto series = dynamic_pointer_cast<Series>(node);
@@ -292,6 +363,11 @@ protected:
 
         for(const auto& a : publishable) {
             DoAddArticle(a, series);
+
+            // Collect tags from the article
+            for(const auto& tag: a->GetMetadata()->tags) {
+                tags.insert(ToKey(tag));
+            }
         }
 
         auto meta = node->GetMetadata();
@@ -299,6 +375,12 @@ protected:
 
         articles_for_frontpages_.push_back(node);
         all_series_.push_back(node);
+
+        // Add all tags from all our published articles to the series
+        for(const auto tag : tags) {
+            meta->tags.push_back(tag);
+        }
+        AddTags(meta->tags, node);
 
         return true;
     }
@@ -349,21 +431,42 @@ protected:
         LOG_TRACE    << "  tmp_path    : " << ai->tmp_path;
 
         all_articles_.push_back(ai);
+
+        AddTags(meta->tags, article);
+    }
+
+    void AddTags(const vector<wstring>& tags, const node_t& node) {
+        for(const auto& tag : tags) {
+            auto key = ToKey(tag);
+
+            // Preserve caps from the first time we encounter a tag
+            if (tags_.find(key) == tags_.end()) {
+                tags_[key].name = stbl::ToString(tag);
+            }
+
+            tags_[key].nodes.push_back(node);
+        }
+    }
+
+    wstring ToKey(wstring name) {
+        transform(name.begin(), name.end(), name.begin(), ::tolower);
+        return name;
     }
 
     void RenderFrontpage() {
+        RenderCtx ctx;
         string frontpage = LoadTemplate("frontpage.html");
 
         std::map<std::string, std::string> vars;
 
-        AssignDefauls(vars);
+        AssignDefauls(vars, ctx);
 
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["title"] = vars["site-title"];
         vars["abstract"] = vars["site-abstract"];
         vars["url"] = vars["site-url"];
 
-        AssignHeaderAndFooter(vars);
+        AssignHeaderAndFooter(vars, ctx);
 
         auto articles = articles_for_frontpages_;
         sort(articles.begin(), articles.end(),
@@ -371,7 +474,7 @@ protected:
                  return left->GetMetadata()->updated > right->GetMetadata()->updated;
              });
 
-        vars["list-articles"] = RenderNodeList(articles);
+        vars["list-articles"] = RenderNodeList(articles, ctx);
 
         ProcessTemplate(frontpage, vars);
 
@@ -380,7 +483,8 @@ protected:
         Save(frontpage_path, frontpage);
     }
 
-    void AssignHeaderAndFooter(std::map<std::string, std::string>& vars) {
+    void AssignHeaderAndFooter(std::map<std::string, std::string>& vars,
+                               const RenderCtx& ctx) {
         string page_header = LoadTemplate("page-header.html");
         string site_header = LoadTemplate("site-header.html");
         string footer = LoadTemplate("footer.html");
@@ -394,27 +498,41 @@ protected:
 
     template <typename NodeListT>
     string RenderNodeList(const NodeListT& nodes,
-                          bool stripSeriesDir = false) {
+                          const RenderCtx& ctx) {
         std::stringstream out;
 
         for(const auto& n : nodes) {
             map<string, string> vars;
-            AssignDefauls(vars);
+            AssignDefauls(vars, ctx);
             const auto meta = n->GetMetadata();
             vars["article-type"] = boost::lexical_cast<string>(n->GetType());
-            Assign(*meta, vars);
-
-            if (stripSeriesDir) {
-                const string url = meta->relative_url;
-                auto pos = url.find('/');
-                if (pos != url.npos) {
-                    vars["url"] = url.substr(pos + 1);
-                }
-            }
-
+            Assign(*meta, vars, ctx);
             string item = LoadTemplate("article-in-list.html");
             ProcessTemplate(item, vars);
             out << item << endl;
+        }
+
+        return out.str();
+    }
+
+    template <typename TagList>
+    string RenderTagList(const TagList& tags, const RenderCtx& ctx) {
+
+        std::stringstream out;
+
+        for(const auto& tag : tags) {
+            map<string, string> vars;
+            AssignDefauls(vars, ctx);
+
+            auto key = ToKey(tag);
+            auto tag_info = tags_[key];
+
+            vars["url"] = ctx.GetRelativeUrl(tag_info.url);
+            vars["name"] = stbl::ToString(tag);
+
+            string tmplte = LoadTemplate("tag.html");
+            ProcessTemplate(tmplte, vars);
+            out << tmplte << endl;
         }
 
         return out.str();
@@ -469,6 +587,9 @@ protected:
 
     // All articles and series that are to be listed on the front-page(s)
     deque<node_t> articles_for_frontpages_;
+
+    // All tags from all content
+    map<std::wstring, TagInfo> tags_;
 
     path tmp_path_;
 
