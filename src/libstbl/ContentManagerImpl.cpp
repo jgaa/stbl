@@ -258,6 +258,7 @@ protected:
         vars["program-name"] = PROGRAM_NAME;
         vars["program-version"] = PROGRAM_VERSION;
         vars["rel"] = ctx.GetRelativeUrl(""s);
+        vars["lang"] = options_.options.get<string>("language", "en");
     }
 
     void Assign(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
