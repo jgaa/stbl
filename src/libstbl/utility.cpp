@@ -104,6 +104,12 @@ std::string ToString(const std::wstring& str) {
     return converter.to_bytes(str);
 }
 
+std::wstring ToWstring(const std::string& str) {
+    wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+    return converter.from_bytes(str);
+}
+
+
 void CopyDirectory(const fs::path& src,
                    const fs::path& dst) {
 

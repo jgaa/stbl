@@ -85,6 +85,9 @@ private:
         hdr.tags = GetWideList("tags", headers);
         hdr.updated = GetTime("updated", headers);
         hdr.abstract = Get("abstract", headers);
+        hdr.tmplte = Get("template", headers);
+        hdr.type = Get("type", headers);
+        hdr.menu = GetWide("menu", headers);
 
         auto published = Get("published", headers);
 

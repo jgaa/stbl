@@ -24,6 +24,7 @@ boost::property_tree::ptree
 LoadProperties(const boost::filesystem::path& path);
 
 std::string ToString(const std::wstring& str);
+std::wstring ToWstring(const std::string& str);
 
 void CopyDirectory(const boost::filesystem::path& src,
                    const boost::filesystem::path& dst);

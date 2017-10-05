@@ -59,6 +59,12 @@ public:
         }
     };
 
+    struct Menu {
+        wstring name;
+        string url;
+        vector<shared_ptr<Menu>> children;
+    };
+
     ContentManagerImpl(const Options& options)
     : options_{options}, now_{time(nullptr)}
     {
@@ -98,9 +104,11 @@ protected:
 
     void Prepare()
     {
+        // Prepare menus from config
+        ScanMenus(menu_, options_.options.get_child("menu"));
+
         tmp_path_ = temp_directory_path();
         tmp_path_ /= unique_path();
-
         create_directories(tmp_path_);
 
         for(const auto& n: nodes_) {
@@ -121,6 +129,78 @@ protected:
         // Prepare tags
         for(auto& tag : tags_) {
             tag.second.url = "_tags/"s + stbl::ToString(tag.first) + ".html";
+        }
+    }
+
+    template <typename T>
+    void ScanMenus(Menu& parent, const T& mlist) {
+        for(const auto& n : mlist) {
+            auto menu = make_shared<Menu>();
+            menu->name= stbl::ToWstring(n.first);
+            menu->url = n.second.get("", "");
+            if (menu->url.empty()) {
+                ScanMenus(*menu, n.second);
+            }
+            parent.children.push_back(menu);
+            LOG_TRACE <<  "Adding menu << " << stbl::ToString(parent.name)
+                << "/" << stbl::ToString(menu->name)
+                << " --> " << menu->url;
+        }
+    }
+
+    // Add or merge a menu at any level into the menu-tree
+    void AddToMenu(const wstring& name, string url) {
+
+        LOG_TRACE << "Adding menu-item: \"" << stbl::ToString(name)
+            << "\" --> " << url;
+
+        vector<wstring> parts;
+        boost::split(parts, name, boost::is_any_of("/"));
+        Menu *current_menu = &menu_;
+
+        int depth = 0;
+        for(const auto& p: parts) {
+
+            // Recurse the existing menu structure
+            bool match = false;
+            for(auto& m : current_menu->children) {
+                if (m->name == p) {
+                    ++depth;
+                    current_menu = m.get();
+                    match = true;
+                    break;
+                }
+            }
+
+            if (match && depth < parts.size()) {
+                continue;
+            }
+
+            // Just update the existing node
+            if (match) {
+                if (!current_menu->url.empty()) {
+                    LOG_WARN << "Overriding existing menu \"" << name
+                        << "\": " << current_menu->url << " --> " << url;
+                }
+
+                current_menu->url = url;
+                return;
+            }
+
+            // When we get here, we must add new node(s) to the menu.
+            do {
+                auto new_menu = make_shared<Menu>();
+                new_menu->name = parts[depth];
+                if (++depth == parts.size()) {
+                    new_menu->url = url;
+                }
+
+                current_menu->children.push_back(move(new_menu));
+                current_menu = current_menu->children.back().get();
+
+            } while(depth < parts.size());
+
+            return; // never continue the outer loop at this point
         }
     }
 
@@ -206,10 +286,15 @@ protected:
             stringstream content;
             p->Render2Html(content);
 
-            string article = LoadTemplate("article.html");
+            auto meta = ai.article->GetMetadata();
+            auto template_name = meta->tmplte;
+            if (template_name.empty()) {
+                template_name= "article.html";
+            }
+
+            string article = LoadTemplate(template_name);
             map<string, string> vars;
             AssignDefauls(vars, ctx);
-            auto meta = ai.article->GetMetadata();
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
             vars["content"] = content.str();
@@ -248,7 +333,8 @@ protected:
         Save(dst, series, true);
     }
 
-    void AssignDefauls(map<string, string>& vars, const RenderCtx& ctx) {
+    void AssignDefauls(map<string, string>& vars, const RenderCtx& ctx,
+                       bool skipMenu = false) {
         vars["now"] = ToStringLocal(now_);
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["site-title"] = options_.options.get<string>("name", "Anonymous Nest");
@@ -259,6 +345,10 @@ protected:
         vars["program-version"] = PROGRAM_VERSION;
         vars["rel"] = ctx.GetRelativeUrl(""s);
         vars["lang"] = options_.options.get<string>("language", "en");
+
+        if (!skipMenu) {
+            vars["menu"] = RenderMenu(ctx);
+        }
     }
 
     void Assign(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
@@ -384,7 +474,11 @@ protected:
         }
 
         DoAddArticle(article);
-        articles_for_frontpages_.push_back(article);
+
+        auto meta = article->GetMetadata();
+        if (meta->type != "info") {
+            articles_for_frontpages_.push_back(article);
+        }
 
         return true;
     }
@@ -425,7 +519,18 @@ protected:
 
         all_articles_.push_back(ai);
 
-        AddTags(meta->tags, article);
+        if (meta->type != "info") {
+            AddTags(meta->tags, article);
+        } else {
+            if (!meta->tags.empty()) {
+                LOG_WARN << "The article " << ai->relative_url
+                    << " has tags, but it is of type INFO - so all tags will be ignored!";
+            }
+        }
+
+        if (!meta->menu.empty()) {
+            AddToMenu(meta->menu, meta->relative_url);
+        }
     }
 
     void AddTags(const vector<wstring>& tags, const node_t& node) {
@@ -531,24 +636,94 @@ protected:
         return out.str();
     }
 
+    string RenderMenu(const RenderCtx& ctx) {
+        map<string, string> vars;
+        AssignDefauls(vars, ctx, true);
+        string tmplte = LoadTemplate("menu.html");
+        vars["content"] = RenderMenu(menu_.children, ctx);
+        ProcessTemplate(tmplte, vars);
+        return tmplte;
+    }
+
+    string RenderMenu(const vector<shared_ptr<Menu>>& menus, const RenderCtx& ctx) {
+        std::stringstream out;
+        for(const auto& menu : menus) {
+            map<string, string> vars;
+            AssignDefauls(vars, ctx, true);
+            string tmplte;
+
+            if (!menu->url.empty()) {
+                tmplte = LoadTemplate("menuitem.html");
+                vars["url"] = ctx.GetRelativeUrl(menu->url);
+            } else if (!menu->children.empty()){
+                tmplte = LoadTemplate("submenu.html");
+                vars["content"] = RenderMenu(menu->children, ctx);
+            } else {
+                LOG_WARN << "Menu ... " << stbl::ToString(menu->name)
+                    << "Has neither a URL nor sub-menus!";
+                return {};
+            }
+
+            vars["name"] = stbl::ToString(menu->name);
+            ProcessTemplate(tmplte, vars);
+            out << tmplte << endl;
+        }
+
+        return out.str();
+    }
+
     string RenderAuthors(const Article::authors_t& authors, const RenderCtx& ctx) {
 
         std::stringstream out;
 
         for(const auto& key : authors) {
             string full_key = "people."s + key;
-            string name = options_.options.get<string>(full_key + ".name", key);
-            string email = options_.options.get<string>(full_key + ".email", "");
-
             map<string, string> vars;
             AssignDefauls(vars, ctx);
-            vars["name"] = name;
-            if (!email.empty()) {
-                vars["email"] = R"(<a class="author" href="mailto:)"s + email + R"(">)"s
-                    + email + "</a>";
-            }
 
-            // TODO: Render list of social handles and other links from config
+            if (options_.options.get_child_optional(full_key)) {
+
+                vars["name"] = options_.options.get<string>(full_key + ".name", key);
+                string email = options_.options.get<string>(full_key + ".email", "");
+                if (!email.empty()) {
+                    vars["email"] = R"(<a class="author" href="mailto:)"s + email + R"(">)"s
+                        + email + "</a>";
+                }
+
+
+                std::vector<string> handles;
+                for(const auto& it :  options_.options.get_child(full_key)) {
+                    if ((it.first == "name") || (it.first == "email")) {
+                        continue;
+                    }
+
+                    map<string, string> hvars;
+                    AssignDefauls(hvars, ctx);
+                    hvars["name"] = it.second.get("name", it.first);
+                    hvars["url"] = it.second.get("url", "");
+                    hvars["icon"] = it.second.get("icon", ctx.GetRelativeUrl("www.svg"));
+
+                    auto handle_template = LoadTemplate("social-handle.html");
+                    handles.push_back(ProcessTemplate(handle_template, hvars));
+                }
+
+                if (!handles.empty()) {
+                    std::stringstream hout;
+
+                    for(const auto& h : handles) {
+                        hout << h;
+                    }
+
+                    map<string, string> hvars;
+                    AssignDefauls(hvars, ctx);
+
+                    hvars["handles"] = hout.str();
+                    auto handles_template = LoadTemplate("social_handles.html");
+                    vars["social-handles"] = ProcessTemplate(handles_template, hvars);
+                }
+            } else {
+                vars["name"] = key;
+            }
 
             string tmplte = LoadTemplate("author.html");
             ProcessTemplate(tmplte, vars);
@@ -569,7 +744,7 @@ protected:
         return boost::lexical_cast<string>(put_time(&tm, format.c_str()));
     }
 
-    void ProcessTemplate(string& tmplte,
+    string&  ProcessTemplate(string& tmplte,
                          const std::map<std::string, std::string>& vars ) {
 
         // Expand all the macros we know about
@@ -587,6 +762,7 @@ protected:
                       macro_pattern, "");
 
         tmplte = result;
+        return tmplte;
     }
 
     string LoadTemplate(string name) const {
@@ -611,6 +787,9 @@ protected:
 
     // All tags from all content
     map<std::wstring, TagInfo> tags_;
+
+    // Root menu item
+    Menu menu_;
 
     path tmp_path_;
 
