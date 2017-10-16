@@ -17,6 +17,8 @@ struct Options
     PathLayout path_layout = PathLayout::SIMPLE;
     bool keep_tmp_dir = false;
     std::string open_in_browser;
+    bool publish = false; // Require 'publish.command' to be set in config
+    std::string publish_destination;
 
     // From stbl.conf
     boost::property_tree::ptree options;

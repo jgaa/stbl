@@ -80,6 +80,9 @@ public:
         Prepare();
         MakeTempSite();
         CommitToDestination();
+        if (options_.publish) {
+            Publish();
+        }
     }
 
 
@@ -128,7 +131,9 @@ protected:
 
         // Prepare tags
         for(auto& tag : tags_) {
-            tag.second.url = "_tags/"s + stbl::ToString(tag.first) + ".html";
+            auto path =  stbl::ToString(tag.first);
+            boost::replace_all(path, " ", "_");
+            tag.second.url = "_tags/"s + path + ".html";
         }
     }
 
@@ -373,6 +378,19 @@ protected:
         CopyDirectory(tmp_path_, options_.destination_path);
     }
 
+    void Publish() {
+        string cmd = options_.options.get<string>("publish.command");
+
+        map<string, string> vars;
+        vars["tmp-site"] = tmp_path_.string();
+        vars["local-site"] = options_.destination_path;
+        vars["destination"] = options_.publish_destination;
+
+        ProcessTemplate(cmd, vars);
+        LOG_INFO << "Executing shell command: \"" << cmd << "\"";
+        system(cmd.c_str());
+    }
+
     void CleanUp()
     {
         // Remove the temp site
@@ -574,6 +592,15 @@ protected:
 
         vars["list-articles"] = RenderNodeList(articles, ctx);
 
+        {
+            vector<wstring> tags;
+            for(const auto& t: tags_) {
+                tags.push_back(t.first);
+            }
+
+            vars["tags"] = RenderTagList(tags, ctx);
+        }
+
         ProcessTemplate(frontpage, vars);
 
         path frontpage_path = tmp_path_;
@@ -699,6 +726,7 @@ protected:
 
                     map<string, string> hvars;
                     AssignDefauls(hvars, ctx);
+                    hvars["handle"] = it.first;
                     hvars["name"] = it.second.get("name", it.first);
                     hvars["url"] = it.second.get("url", "");
                     hvars["icon"] = it.second.get("icon", ctx.GetRelativeUrl("www.svg"));
@@ -744,7 +772,7 @@ protected:
         return boost::lexical_cast<string>(put_time(&tm, format.c_str()));
     }
 
-    string&  ProcessTemplate(string& tmplte,
+    string& ProcessTemplate(string& tmplte,
                          const std::map<std::string, std::string>& vars ) {
 
         // Expand all the macros we know about

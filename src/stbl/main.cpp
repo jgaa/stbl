@@ -59,6 +59,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             "Log-level for the console-log")
         ("keep-tmp-dir,T", "Keep the temporary directory.")
         ("open-in-firefox,f", "Open the generated site in firefox.")
+        ("publish,p", "Publish the site (deploy on a web-site).")
         ;
 
     po::options_description locations("Locations");
@@ -69,6 +70,8 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             "Where to put the generated site (locally). Defaults to $HOME/.stbl-site")
         ("content-layout,L", po::value<string>()->default_value("simple"),
             "How to organize the site. 'simple' or 'recursive'.")
+        ("publish-to,P",  po::value<string>(),
+            "Publish the site to <location>. Implicitly enables --publish.")
         ;
 
     po::options_description cmdline_options;
@@ -115,6 +118,16 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         options.open_in_browser = "firefox";
     }
 
+    if (vm.count("publish")) {
+        options.publish = true;
+    }
+
+    if (vm.count("publish-to")) {
+        options.publish_destination = vm["publish-to"].as<string>();
+        options.publish = true;
+    }
+
+
 
     if (vm.count("content-layout")) {
         const auto val = vm["content-layout"].as<string>();
@@ -156,7 +169,9 @@ int main(int argc, char * argv[])
     }
 
     if (!options.open_in_browser.empty()) {
-        boost::filesystem::path dst_path = options.destination_path;
+        boost::filesystem::path dst_path = options.publish
+            ? options.options.get<string>("url")
+            : options.destination_path;
         dst_path /= "index.html";
         string cmd = options.open_in_browser + " \""s + dst_path.string() + "\""s;
         system(cmd.c_str());
