@@ -212,7 +212,7 @@ protected:
     void MakeTempSite()
     {
         std::vector<string> directories_to_copy{
-            "images", "artifacts"
+            "images", "artifacts", "files"
         };
 
         // Create the main page from template
@@ -244,7 +244,12 @@ protected:
             path src = options_.source_path, dst = tmp_path_;
             src /= d;
             dst /= d;
-            CopyDirectory(src, dst);
+            if (boost::filesystem::is_directory(src)) {
+                CopyDirectory(src, dst);
+            } else {
+                LOG_WARN << "Cannot copy directory " << src
+                    << ", it does not exist.";
+            }
         }
     }
 
@@ -256,8 +261,10 @@ protected:
 
         map<string, string> vars;
         AssignDefauls(vars, ctx);
-        AssignHeaderAndFooter(vars, ctx);
         vars["name"] = ti.name;
+        vars["title"] = ti.name;
+        vars["url"] = ctx.GetRelativeUrl(ti.url);
+        AssignHeaderAndFooter(vars, ctx);
         vars["list-articles"] = RenderNodeList(ti.nodes, ctx);
         ProcessTemplate(page, vars);
 
@@ -681,6 +688,8 @@ protected:
 
             if (!menu->url.empty()) {
                 tmplte = LoadTemplate("menuitem.html");
+                // TODO: expand macros (like {{rel} and {{site-url}})
+                // TODO: Check if it's an absolute url
                 vars["url"] = ctx.GetRelativeUrl(menu->url);
             } else if (!menu->children.empty()){
                 tmplte = LoadTemplate("submenu.html");
