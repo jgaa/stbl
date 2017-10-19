@@ -68,7 +68,7 @@ void Save(const fs::path& path,
     if (createDirectoryIsMissing) {
         const auto directory = path.parent_path();
         if (!is_directory(directory)) {
-            LOG_DEBUG << "Creating directory: " << path;
+            LOG_DEBUG << "Creating directory: " << directory;
             create_directories(directory);
         }
     }
@@ -132,7 +132,7 @@ void CopyDirectory(const fs::path& src,
 
         fs::path d = dst;
         d /= de.path().filename();
-        LOG_DEBUG << "Copying " << de.path() << " --> " << d;
+        LOG_TRACE << "Copying " << de.path() << " --> " << d;
         if (is_regular(de.path())) {
             fs::copy_file(de.path(), d, fs::copy_option::overwrite_if_exists);
         } else if (is_symlink(de.path())) {

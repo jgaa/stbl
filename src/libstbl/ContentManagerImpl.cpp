@@ -254,6 +254,12 @@ protected:
     }
 
     void RenderTag(const TagInfo& ti) {
+        if (ti.nodes.empty()) {
+            // Not used
+            LOG_TRACE << "Ignoring unused tag.";
+            return;
+        }
+
         RenderCtx ctx;
         ctx.url_recuse_level = GetRecurseLevel(ti.url);
 
