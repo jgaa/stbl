@@ -1,6 +1,7 @@
 
 #include <string.h>
 #include <fstream>
+#include <regex>
 
 #include <boost/algorithm/string/replace.hpp>
 
@@ -25,7 +26,7 @@ public:
     ~PageImpl()  {
     }
 
-    void Render2Html(std::ostream & out) override {
+    size_t Render2Html(std::ostream & out) override {
         ifstream in(path_.string());
         if (!in) {
             auto err = strerror(errno);
@@ -38,6 +39,15 @@ public:
         EatHeader(in);
         string content((std::istreambuf_iterator<char>(in)),
                        istreambuf_iterator<char>());
+
+        size_t words = 0;
+        static regex word_pattern("\\w+");
+        sregex_iterator next(content.begin(), content.end(), word_pattern);
+        sregex_iterator end;
+        while (next != end) {
+            ++words;
+            ++next;
+        }
 
         // Quick hack to extract code blocks and convert them to a <pre> block
         size_t pos = 0;
@@ -88,6 +98,8 @@ public:
         boost::replace_all(content, "&amp;gt;", "&gt;");
 
         out << content;
+
+        return words;
     }
 
 private:

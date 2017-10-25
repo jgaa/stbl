@@ -302,7 +302,10 @@ protected:
             }
 
             stringstream content;
-            p->Render2Html(content);
+            const auto words = p->Render2Html(content);
+
+            LOG_INFO << "Article " << ai.article->GetMetadata()->title
+                << " contains " << words << " words.";
 
             auto meta = ai.article->GetMetadata();
             auto template_name = meta->tmplte;
