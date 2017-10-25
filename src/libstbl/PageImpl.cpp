@@ -44,9 +44,8 @@ public:
         static regex word_pattern("\\w+");
         sregex_iterator next(content.begin(), content.end(), word_pattern);
         sregex_iterator end;
-        while (next != end) {
+        for (; next != end; ++next) {
             ++words;
-            ++next;
         }
 
         // Quick hack to extract code blocks and convert them to a <pre> block
