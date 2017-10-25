@@ -266,6 +266,6 @@ Examples:
 
 To generate the example site and open it in firefox, showing debug-messages on the console:
 ```sh
-stbl --open-in-firefox --console-log debug  --source-dir ~/src/stbl/examples/default
+$ stbl --open-in-firefox --console-log debug  --source-dir ~/src/stbl/examples/default
 ```
 
