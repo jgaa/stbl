@@ -173,7 +173,7 @@ are ready to publish them, by setting the value to "no" or "false".
 
 The configuration-file "stbl.conf" contains site-wide configuration, like
 the language used, authors (with contact information), menu structure, and
-some other things. See the [example](examples/default/stbl.conf)
+some other things. See the [example](examples/default/stbl.conf),
 
 ## Templates
 
@@ -202,11 +202,15 @@ The templates are snippets of html code with macros that are expanded during ren
 The templates have the following macros available, wrapped in {{ }}.
 
 - abstract: The abstract of the article
+- author: The author(s) of an article
+- authors: Alias for author
+- content: The content of an article.
 - expires-ansi: Ansi-date when the article expires.
 - expires: The time the article expires
 - expires: The time the article expires.
 - if-updated: Updated date, including the "Updated label - defined in template updatedate.html) if the article as updated after is was published. If not, this macro is empty.
-- lang: The language for the site, typically used as &gt;html lang={{lang}}&lt;
+- lang: The language for the site, typically used as &lt;html lang={{lang}}&gt;
+- list-articles: A list of articles to be placed in a series cover-page or frontpage. Only available when rendering these special pages.
 - menu: The rendered code fot the menu.
 - now: The current date (when the site was rendered).
 - program-name: The name of the generator (stbl).
@@ -226,11 +230,6 @@ The templates have the following macros available, wrapped in {{ }}.
 - updated: The time the article or series was updated.
 - updatedate: Updated date, including the "Updated label - defined in template updatedate.html)
 - url: The relative url to the article or series
-
-- content: The content of an article.
-- author: The author(s) of an article
-- authors: Alias for author
-- list-articles: A list of articles to be placed in a series cover-page or frontpage. Only available when rendering these special pages.
 
 ## Command line
 
