@@ -380,6 +380,22 @@ protected:
         vars["abstract"] = md.abstract;
         vars["url"] = ctx.GetRelativeUrl(md.relative_url);
         vars["tags"] = RenderTagList(md.tags, ctx);
+
+        vars["pubdate"] = Render("pubdate.html", vars, ctx);
+        vars["updatedate"] = Render("updatedate.html", vars, ctx);
+        if (vars["updated"] != vars["published"]) {
+            vars["if-updated"] = vars["updatedate"];
+        }
+        vars["pubdates"] = Render("pubdates.html", vars, ctx);
+    }
+
+    string Render(const string& templateName,
+                  map<string, string>& vars,
+                  const RenderCtx& ctx) {
+        auto tmplte = LoadTemplate(templateName);
+
+        ProcessTemplate(tmplte, vars);
+        return tmplte;
     }
 
     void CommitToDestination()
