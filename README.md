@@ -27,7 +27,7 @@ These are the design-goals / primary requirements for the project.
 - [x] Generates static HTML5 / responsive websites that can be served by any http server.
 - [ ] RSS feeds
 - [ ] Syntax highlighting of code snippets.
-- [ ] Allow more formats than Markdown (in order to make it easy to import sites from existing. CMS systems).
+- [ ] Allow more formats than Markdown (in order to make it easy to import sites from existing CMS systems).
 - [ ] Optional comments (by some 3rd party services).
 - [ ] Optional statistics (no obligatory ties to Google).
 
