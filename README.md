@@ -16,14 +16,14 @@ one file in markup format for each article (post).
 
 These are the design-goals / primary requirements for the project.
 
-- [x] Simple to use, friction-less when blogging
-- [x] Command line program, so that blogs can be generated anywhere
+- [x] Simple to use, friction-less when blogging.
+- [x] Command line program, so that blogs can be generated anywhere.
 - [x] Few dependencies. Avoid pulling in tons of code to do trivial things.
-- [x] Use Markdown for writing
-- [x] Easy to display code snippets, like on github
-- [x] Generate the html code from templates to allow maximum flexibility
+- [x] Use Markdown for writing.
+- [x] Easy to display code snippets, like on github.
+- [x] Generate the html code from templates to allow maximum flexibility.
 - [x] Fast "time to market" - keep the architecture and code simple.
-- [ ] Syntax highlighting of code snippets
+- [ ] Syntax highlighting of code snippets.
 - [ ] Allow more formats than Markdown (in order to make it easy to import sites from existing CMS systems).
 
 ## Why
