@@ -75,7 +75,8 @@ The top-directory of a site have this layout:
 
 - articles (Directory for content)
 - artifacts (Directory for css, icons, banner images, logos etc.)
-- images (Directory for images you refer to in your documents)
+- files (Optional directory where you can put files you want copied to your website).
+- images (Optional directory for images you refer to in your documents)
 - templates (Templates to generate the pages in the static site)
 - stbl.conf (Site specific configuration)
 
@@ -117,7 +118,7 @@ An example:
     ```
 ```
 
-In this example we have two header directives, the author (me) tags.
+In this example we have two header directives, the author (me), and then tags.
 Then follows the markup.
 
 ## Series
@@ -127,7 +128,7 @@ listed newest first. If you have a series of articles on a subject, you
 may want your readers to read them chronologically. That way you can
 expand the topic little by little, or tell a story in a consistent way.
 
-Stbl will generate a page for the articles in a series, and list the
+Stbl will generate a cover page for the articles in a series, and list the
 articles in the series chronologically, oldest first.
 
 As noted before, a series is identified by a directory under articles/ not
@@ -140,7 +141,7 @@ folder. Underscores in the name are translated to spaces. The forder name
 Some pages, like "About" are special in the way that you probably want a link to them
 from the menu, rather having them listed by date.
 
-Stbl has a special template for such pages, striping them for metadata about authors
+Stbl has a special template for such pages, stripping them for metadata about authors
 and tags. You can even add them to the menu right in the articles header.
 
 Example:
