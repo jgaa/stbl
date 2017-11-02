@@ -25,8 +25,14 @@ LoadProperties(const boost::filesystem::path& path);
 
 std::string ToString(const std::wstring& str);
 std::wstring ToWstring(const std::string& str);
+std::string ToStringAnsi(const time_t& when);
 
 void CopyDirectory(const boost::filesystem::path& src,
                    const boost::filesystem::path& dst);
 
+void EatHeader(std::istream& in);
+
+std::string CreateUuid();
+
 }
+

@@ -60,6 +60,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("keep-tmp-dir,T", "Keep the temporary directory.")
         ("open-in-firefox,f", "Open the generated site in firefox.")
         ("publish,p", "Publish the site (deploy on a web-site).")
+        ("no-update-headers", "Do not update the source article headers.")
         ;
 
     po::options_description locations("Locations");
@@ -116,6 +117,10 @@ bool parse_command_line(int argc, char * argv[], Options &options)
 
     if (vm.count("open-in-firefox")) {
         options.open_in_browser = "firefox";
+    }
+
+    if (vm.count("no-update-headers")) {
+        options.update_source_headers = false;
     }
 
     if (vm.count("publish")) {

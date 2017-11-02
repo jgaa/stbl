@@ -167,7 +167,7 @@ Unpublished articles will not be generated. This lets you work on articles long 
 are ready to publish them, by setting the value to "no" or "false".
 - updated: When the article was last updated. A date in 'YYY-MM-DD HH:MM' format. If unset, the system will fall back to the file-date for the article.
 - expires: When the article expired. A date in 'YYY-MM-DD HH:MM' format. If unset, the article will not expire. Expired articles are not published.
-- unique_id: uuid of the article
+- uuid: uuid of the article
 - title: Title of the article. If not specified, the title is deduced from the file-name.
 - tags: A comma-separated list of tags.
 - abstract: A short abstract of the article, for use in the list of articles.

@@ -2,6 +2,9 @@
 #include <deque>
 #include "stbl/stbl.h"
 #include "stbl/Content.h"
+#include "stbl/logging.h"
+#include "stbl/Scanner.h"
+
 
 using namespace std;
 
@@ -11,7 +14,8 @@ namespace stbl {
 class ContentImpl : public Content
 {
 public:
-    ContentImpl()
+    ContentImpl(const boost::filesystem::path& path)
+    : path_{path}
     {
     }
 
@@ -26,12 +30,21 @@ public:
         return pages_;
     }
 
+    void UpdateSourceHeaders(Scanner& scanner,
+                             const Node::Metadata& meta) override {
+
+        if (!meta.have_uuid || !meta.have_published) {
+            scanner.UpdateRequiredHeaders(path_.string(), meta);
+        }
+    }
+
 private:
+    const boost::filesystem::path path_;
     pages_t pages_;
 };
 
-content_t Content::Create() {
-    return make_shared<ContentImpl>();
+content_t Content::Create(const boost::filesystem::path& path) {
+    return make_shared<ContentImpl>(path);
 }
 
 }

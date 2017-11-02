@@ -89,8 +89,8 @@ public:
 protected:
     void Scan()
     {
-        auto scanner = Scanner::Create(options_);
-        nodes_= scanner->Scan();
+        scanner_ = Scanner::Create(options_);
+        nodes_= scanner_->Scan();
 
         LOG_DEBUG << "Listing nodes after scan: ";
         for(const auto& n: nodes_) {
@@ -253,6 +253,85 @@ protected:
         }
     }
 
+    void RenderRss(const nodes_t& articles,
+                   boost::filesystem::path path,
+                   const std::string& title,
+                   const std::string& description,
+                   const std::string& link,
+                   const std::string& rss_link) {
+
+        if (!options_.options.get<bool>("rss.enabled", true)) {
+            LOG_TRACE << "RSS is disabled. Not generating RSS for: " << link;
+            return;
+        }
+
+        std::stringstream out;
+        out << R"(<?xml version="1.0" encoding="UTF-8" ?>)" << endl
+            << R"(<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">)" << endl
+            << "<channel>" << endl
+            << R"(<atom:link href=")"
+                << rss_link
+                << R"(" rel="self" type="application/rss+xml" />)" << endl
+            << "<title>" << title << "</title>" << endl
+            << "<description>" << description << "</description>" << endl
+            << "<link>" << link << "</link>" << endl
+            << "<lastBuildDate>" << RssTime(time(nullptr)) << "</lastBuildDate>" << endl
+            << "<pubDate>" << RssTime(time(nullptr)) << "</pubDate>" << endl
+            << "<ttl>" << options_.options.get<unsigned>("rss.ttl", 1800) << "</ttl>" << endl;
+
+        for(const auto a: articles) {
+            auto hdr = a->GetMetadata();
+            out << "<item>" << endl
+                << " <title>" << ToString(hdr->title) << "</title>" << endl
+                << " <description>" << hdr->abstract << "</description>" << endl
+                << " <link>" << link << "</link>" << endl
+                << R"( <guid isPermaLink="false">)" << hdr->uuid << "</guid>" << endl
+                << " <pubDate>" << RssTime(hdr->published) << "</pubDate>" << endl
+                << "</item>" << endl;
+        }
+
+        out << "</channel>" << endl
+            << "</rss>" << endl;
+
+        // Use the same file-name as the link, but with another extention
+        path = boost::filesystem::change_extension(path, ".rss");
+        LOG_DEBUG << "Creating RSS feed " << path;
+        Save(path, out.str());
+    }
+
+    // Return a date like: Sat, 07 Sep 2002 0:00:01 GMT
+    string RssTime(const time_t when) {
+        if (!when) {
+            return {};
+        }
+
+        // RFC 822 was written before languages other than US English was invented...
+
+        static array<const char *, 7> days = {
+             "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+
+        static array <const char *, 12> months = {
+             "Jan", "Feb",  "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+             "Sep", "Oct", "Nov", "Dec"};
+
+        const auto *tm = gmtime(&when);
+        if (tm == nullptr) {
+            throw runtime_error("Invalid date after conversion by gmtime");
+        }
+
+        stringstream out;
+        out << days.at(tm->tm_wday) << ", "
+            << std::setfill('0') << std::setw(2) << tm->tm_mday
+            << std::setw(0) << ' ' << months.at(tm->tm_mon)
+            << ' ' << std::setw(4) << (tm->tm_year + 1900)
+            << std::setw(0) << ' ' << std::setw(2) << tm->tm_hour
+            << std::setw(0) << ':' << std::setw(2) << tm->tm_min
+            << std::setw(0) << ':' << std::setw(2) << tm->tm_sec
+            << " GMT";
+
+        return out.str();
+    }
+
     void RenderTag(const TagInfo& ti) {
         if (ti.nodes.empty()) {
             // Not used
@@ -290,6 +369,8 @@ protected:
         ctx.url_recuse_level = GetRecurseLevel(
             ai.article->GetMetadata()->relative_url);
 
+        auto meta = ai.article->GetMetadata();
+
         // TODO: Handle multiple pages
         for(auto& p : ai.article->GetContent()->GetPages()) {
 
@@ -307,7 +388,6 @@ protected:
             LOG_INFO << "Article " << ai.article->GetMetadata()->title
                 << " contains " << words << " words.";
 
-            auto meta = ai.article->GetMetadata();
             auto template_name = meta->tmplte;
             if (template_name.empty()) {
                 template_name= "article.html";
@@ -323,6 +403,10 @@ protected:
             vars["authors"] = vars["author"];
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
+        }
+
+        if (options_.update_source_headers) {
+            ai.article->UpdateSourceHeaders(*scanner_, *meta);
         }
     }
 
@@ -515,6 +599,8 @@ protected:
         }
         AddTags(meta->tags, node);
 
+        meta->updated = publishable.back()->GetMetadata()->updated;
+
         return true;
     }
 
@@ -613,6 +699,15 @@ protected:
         vars["title"] = vars["site-title"];
         vars["abstract"] = vars["site-abstract"];
         vars["url"] = vars["site-url"];
+        vars["rss"] = "index.rss";
+
+        {
+            auto base_url = vars["site-url"];
+            if (!base_url.empty() && (base_url.back() == '/')) {
+                base_url.resize(base_url.size() -1);
+            }
+            vars["rss-abs"] = base_url + "/index.rss";
+        }
 
         AssignHeaderAndFooter(vars, ctx);
 
@@ -638,6 +733,25 @@ protected:
         path frontpage_path = tmp_path_;
         frontpage_path /= "index.html";
         Save(frontpage_path, frontpage);
+
+        nodes_t rss_articles;
+        int max_articles_in_rss_feed = options_.options.get("rss.max-articles", 64);
+        for(auto& a: all_articles_) {
+            rss_articles.push_back(a->article);
+        }
+
+        sort(rss_articles.begin(), rss_articles.end(),
+             [](const auto& left, const auto& right) {
+                 return left->GetMetadata()->published > right->GetMetadata()->published;
+             });
+
+        if (max_articles_in_rss_feed
+            && (rss_articles.size() >= max_articles_in_rss_feed)) {
+            rss_articles.resize(max_articles_in_rss_feed);
+        }
+
+        RenderRss(rss_articles, frontpage_path, vars["site-title"],
+                  vars["site-abstract"], vars["site-url"], vars["rss-abs"]);
     }
 
     void AssignHeaderAndFooter(std::map<std::string, std::string>& vars,
@@ -795,11 +909,6 @@ protected:
         return out.str();
     }
 
-    string ToStringAnsi(const time_t& when) {
-        std::tm tm = *std::localtime(&when);
-        return boost::lexical_cast<string>(put_time(&tm, "%F %R"));
-    }
-
     string ToStringLocal(const time_t& when) {
         static const string format = options_.options.get<string>("system.date.format", "%c");
         std::tm tm = *std::localtime(&when);
@@ -856,6 +965,7 @@ protected:
     path tmp_path_;
 
     const time_t now_;
+    unique_ptr<Scanner> scanner_;
 };
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)

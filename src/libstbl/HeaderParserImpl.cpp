@@ -23,6 +23,7 @@
 #include "stbl/HeaderParser.h"
 #include "stbl/Article.h"
 #include "stbl/logging.h"
+#include "stbl/utility.h"
 
 using namespace std;
 using namespace boost;
@@ -79,15 +80,22 @@ public:
 private:
     void Assign(Article::Header& hdr, const header_map_t headers) {
 
-        hdr.unique_id = GetWide("unique_id", headers);
+        hdr.uuid = Get("uuid", headers);
         hdr.title = GetWide("title", headers);
-        hdr.subject = GetWide("subject", headers);
         hdr.tags = GetWideList("tags", headers);
         hdr.updated = GetTime("updated", headers);
         hdr.abstract = Get("abstract", headers);
         hdr.tmplte = Get("template", headers);
         hdr.type = Get("type", headers);
         hdr.menu = GetWide("menu", headers);
+
+        hdr.have_uuid = !hdr.uuid.empty();
+        hdr.have_updated = hdr.updated != 0;
+        hdr.have_title = !hdr.title.empty();
+
+        if (hdr.uuid.empty()) {
+            hdr.uuid = CreateUuid();
+        }
 
         auto published = Get("published", headers);
 
@@ -96,6 +104,7 @@ private:
                 hdr.is_published = false;
             } else {
                 hdr.published = GetTime("published", headers);
+                hdr.have_published = true;
             }
         }
 

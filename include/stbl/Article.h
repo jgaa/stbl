@@ -5,6 +5,7 @@
 #include "stbl/Content.h"
 
 namespace stbl {
+class Scanner;
 
 class Article : public Node
 {
@@ -23,6 +24,8 @@ public:
     virtual void SetContent(content_t content) = 0;
     virtual authors_t GetAuthors() const = 0;
     virtual void SetAuthors(const authors_t& authors) = 0;
+    virtual void UpdateSourceHeaders(Scanner& scanner,
+                                     const Node::Metadata& meta) = 0;
 
     static std::shared_ptr<Article> Create();
 };

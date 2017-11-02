@@ -46,6 +46,13 @@ public:
         content_ = move(content);
     }
 
+    void UpdateSourceHeaders(stbl::Scanner & scanner,
+                             const Node::Metadata& meta) override {
+        if (content_) {
+            content_->UpdateSourceHeaders(scanner, meta);
+        }
+    }
+
 private:
     articles_t articles_;
     std::shared_ptr<Metadata> metadata_;

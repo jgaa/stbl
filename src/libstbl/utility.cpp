@@ -9,6 +9,10 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/info_parser.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_io.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+
 
 #include "stbl/utility.h"
 #include "stbl/logging.h"
@@ -19,27 +23,6 @@ namespace pt = boost::property_tree;
 namespace fs = boost::filesystem;
 
 namespace stbl {
-
-// boost::string_ref Sf(boost::string_ref::const_iterator start,
-//                      boost::string_ref::const_iterator end,
-//                      bool trim) {
-//     boost::string_ref sf = {start, static_cast<std::size_t>(end - start)};
-//     if (trim) {
-//         while (!sf.empty()
-//             && ((sf.front() == '\n')
-//                 || (sf.front() == '\t')
-//                 || (sf.front() == ' '))) {
-//             sf = {sf.data() + 1, sf.size() -1};
-//         }
-//         while (!sf.empty()
-//             && ((sf.back() == '\n')
-//                 || (sf.back() == '\t')
-//                 || (sf.back() == ' '))) {
-//             sf = {sf.data(), sf.size() -1};
-//         }
-//     }
-//     return sf;
-// }
 
 string Load(const fs::path& path) {
 
@@ -109,6 +92,10 @@ std::wstring ToWstring(const std::string& str) {
     return converter.from_bytes(str);
 }
 
+string ToStringAnsi(const time_t& when) {
+    std::tm tm = *std::localtime(&when);
+    return boost::lexical_cast<string>(put_time(&tm, "%F %R"));
+}
 
 void CopyDirectory(const fs::path& src,
                    const fs::path& dst) {
@@ -125,11 +112,6 @@ void CopyDirectory(const fs::path& src,
 
     for (const auto& de : fs::directory_iterator{src})
     {
-//         const auto& path = de.path();
-//         auto relativePathStr = path.string();
-//         boost::replace_first(relativePathStr, sourceDir.string(), "");
-//         fs::copy(path, dst / relativePathStr);
-
         fs::path d = dst;
         d /= de.path().filename();
         LOG_TRACE << "Copying " << de.path() << " --> " << d;
@@ -144,8 +126,33 @@ void CopyDirectory(const fs::path& src,
                 << " from directory copy. I don't know what it is...";
         }
     }
+}
 
+void EatHeader(std::istream& in) {
 
+    int separators = 0;
+
+    while(in) {
+        if ((in && in.get() == '-')
+            && (in && (in.get() == '-'))
+            && (in && (in.get() == '-'))) {
+            ++separators;
+        }
+
+        while(in && (in.get() != '\n'))
+            ;
+
+        if (separators == 2) {
+            return;
+        }
+    }
+
+    throw runtime_error("Parse error: Failed to locate header section.");
+}
+
+std::string CreateUuid() {
+    boost::uuids::uuid uuid = boost::uuids::random_generator()();
+    return boost::uuids::to_string(uuid);
 }
 
 

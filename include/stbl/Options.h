@@ -19,6 +19,7 @@ struct Options
     std::string open_in_browser;
     bool publish = false; // Require 'publish.command' to be set in config
     std::string publish_destination;
+    bool update_source_headers = true;
 
     // From stbl.conf
     boost::property_tree::ptree options;

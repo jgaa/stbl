@@ -20,6 +20,7 @@
 #include "stbl/Page.h"
 #include "stbl/Scanner.h"
 #include "stbl/HeaderParser.h"
+#include "stbl/utility.h"
 
 using namespace std;
 using namespace boost::filesystem;
@@ -69,6 +70,7 @@ public:
     DirectoryScannerImpl(const Options& options)
     : options_{options}
     {
+        parser_ = HeaderParser::Create();
     }
 
     nodes_t Scan() override {
@@ -81,7 +83,102 @@ public:
         return move(nodes_);
     }
 
+    void UpdateRequiredHeaders(const std::string & article,
+                               const Node::Metadata& meta) override {
+
+        LOG_INFO << "Updating headers in " << article;
+        std::ifstream in(article);
+        if (!in) {
+            auto err = strerror(errno);
+            LOG_ERROR << "IO error. Failed to open "
+                << '"' << article << "\" for write: " << err;
+
+            throw runtime_error("IO error");
+        }
+
+        // Make temporary file
+        auto tmp_name = article + ".tmp";
+        std::ofstream out(tmp_name);
+        if (!out) {
+            auto err = strerror(errno);
+            LOG_ERROR << "IO error. Failed to open "
+                << '"' << tmp_name << "\" for write: " << err;
+
+            throw runtime_error("IO error");
+        }
+
+        // Write header
+        out << "---" << endl;
+        WriteIf(out, "uuid", meta.uuid);
+        if (meta.have_title) {
+            WriteIf(out, "title", meta.title);
+        }
+        WriteIf(out, "abstract", meta.abstract);
+        WriteIf(out, "menu", meta.menu);
+        WriteIf(out, "template", meta.tmplte);
+        WriteIf(out, "type", meta.type);
+        WriteIf(out, "tags", meta.tags);
+        if (meta.have_updated) {
+            WriteIf(out, "updated", meta.updated);
+        }
+        WriteIf(out, "published", meta.published);
+        WriteIf(out, "expires", meta.expires);
+
+        out << "---" << endl;
+
+        // Copy content
+        EatHeader(in);
+        copy(istreambuf_iterator<char>(in), istreambuf_iterator<char>(),
+             ostreambuf_iterator<char>(out));
+
+        in.close();
+        out.close();
+
+        // Set file date
+        auto when = boost::filesystem::last_write_time(article);
+        boost::filesystem::last_write_time(tmp_name, when);
+
+        // Rename
+        boost::filesystem::remove(article);
+        boost::filesystem::rename(tmp_name, article);
+    }
+
 private:
+    void WriteIf(ostream& out, const char *name, const std::string& value) {
+        if (!value.empty()) {
+            out << name << ": " << value << endl;
+        }
+    }
+
+    void WriteIf(ostream& out, const char *name, const std::wstring& value) {
+        WriteIf(out, name, ToString(value));
+    }
+
+    void WriteIf(ostream& out, const char *name, std::vector<std::wstring> value) {
+        if (!value.empty()) {
+            bool virgin = true;
+            out << name << ": ";
+
+            for(auto& v : value) {
+                if (virgin) {
+                    virgin = false;
+                } else {
+                    out << ", ";
+                }
+
+                out << ToString(v);
+            }
+
+            out << endl;
+        }
+    }
+
+    void WriteIf(ostream& out, const char *name, const time_t& value) {
+        if (value) {
+            WriteIf(out, name, ToStringAnsi(value));
+        }
+    }
+
     void ScanDir(const path& path, Context ctx) {
         if (!is_directory(path)) {
             LOG_ERROR << path << " is not a directory!";
@@ -237,7 +334,7 @@ private:
                 article->SetMetadata(hdr);
                 article->SetAuthors(hdr->authors);
 
-                auto content = Content::Create();
+                auto content = Content::Create(a.full_path);
                 content->AddPage(Page::Create(a.full_path));
                 article->SetContent(move(content));
 
@@ -338,12 +435,12 @@ private:
     }
 
     void ParseHeader(Article::Header& header, std::string input) {
-        auto parser = HeaderParser::Create();
-        parser->Parse(header, input);
+        parser_->Parse(header, input);
     }
 
     const Options& options_;
     nodes_t nodes_;
+    unique_ptr<HeaderParser> parser_;
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
 };
 

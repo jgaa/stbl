@@ -18,9 +18,8 @@ public:
     enum class Type { ARTICLE, SERIES };
 
     struct Metadata {
-        std::wstring unique_id;
+        std::string uuid;
         std::wstring title;
-        std::wstring subject;
         std::string abstract;
         std::wstring menu;
         std::string tmplte;
@@ -32,6 +31,10 @@ public:
         bool is_published = true;
         std::string article_path_part;
         std::string relative_url;
+        bool have_uuid = false;
+        bool have_published = false;
+        bool have_updated = false;
+        bool have_title = false;
     };
 
 

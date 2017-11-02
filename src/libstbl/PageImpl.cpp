@@ -8,6 +8,7 @@
 #include "stbl/stbl.h"
 #include "stbl/Page.h"
 #include "stbl/logging.h"
+#include "stbl/utility.h"
 #include "markdown.h"
 
 using namespace std;
@@ -102,28 +103,6 @@ public:
     }
 
 private:
-    void EatHeader(std::istream& in) {
-
-        int separators = 0;
-
-        while(in) {
-            if ((in && in.get() == '-')
-                && (in && (in.get() == '-'))
-                && (in && (in.get() == '-'))) {
-                ++separators;
-            }
-
-            while(in && (in.get() != '\n'))
-                ;
-
-            if (separators == 2) {
-                return;
-            }
-        }
-
-        throw runtime_error("Parse error: Failed to locate header section.");
-    }
-
     const boost::filesystem::path path_;
 };
 
