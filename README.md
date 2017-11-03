@@ -185,15 +185,17 @@ some other things. See the [example](examples/default/stbl.conf),
 
 The templates are snippets of html code with macros that are expanded during rendering.
 
-- article.html: Defines how to render the code for an article
 - article-in-list.html: Defines how to render the code for an article in a list of articles.
+- article.html: Defines how to render the code for an article
 - author.html: Defines how to render the code for an author
 - footer.html: Defines how to render the page-footer
 - frontpage.html: Defines how to render the front-page
 - info.html: Defines how to render special pages, like About
 - menu.html: Defines how to render the menu
 - menuitem.html: Defines how to render a menu-item
+- next.html: The html-code to link to the next page.
 - page-header.html: Defines how to render the page header (html / head entity)
+- prev.html: The html-code to link to the previous page.
 - pubdate.html: Defines how to render the date of publication
 - pubdates.html: Defines how to render the date of publication and the update date (if the article is updater after it was published).
 - series.html: Defines how to render the cover-page for a series.
@@ -218,7 +220,11 @@ The templates have the following macros available, wrapped in {{ }}.
 - lang: The language for the site, typically used as &lt;html lang={{lang}}&gt;
 - list-articles: A list of articles to be placed in a series cover-page or frontpage. Only available when rendering these special pages.
 - menu: The rendered code fot the menu.
+- next-if: The template next.html expanded, if there is a next page.
+- next: The relative path to the next page (if the front-page is generated over several pages).
 - now: The current date (when the site was rendered).
+- prev-if: The template prev.html expanded, if there is a previous page.
+- prev: The relative path to the previous page (if the front-page is generated over several pages).
 - program-name: The name of the generator (stbl).
 - program-version: The version of the generator.
 - pubdate: Published date, including the "Published label - defined in template pubdate.html)
@@ -227,8 +233,8 @@ The templates have the following macros available, wrapped in {{ }}.
 - published: The time the article was published.
 - published: The time the article was published.
 - rel: Relative path to the root of the site. Enables relative links in the templates.
-- rss: Relative link to rss feed for the page (currently only for the front page).
 - rss-abs: Full url to the rss feed for the page (currently only for the front page).
+- rss: Relative link to rss feed for the page (currently only for the front page).
 - site-abstract: The abstract (or slogan) of the site (from stbl.conf).
 - site-title: The title of the site (from stbl.conf).
 - site-url: The fully qualified url to the site (from stbl.conf).
