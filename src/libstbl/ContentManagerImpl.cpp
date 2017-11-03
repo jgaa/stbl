@@ -701,8 +701,6 @@ protected:
 
     void RenderFrontpage() {
         RenderCtx ctx;
-        string frontpage = LoadTemplate("frontpage.html");
-
         std::map<std::string, std::string> vars;
 
         AssignDefauls(vars, ctx);
@@ -723,29 +721,80 @@ protected:
 
         AssignHeaderAndFooter(vars, ctx);
 
-        auto articles = articles_for_frontpages_;
-        sort(articles.begin(), articles.end(),
+        auto fp_articles = articles_for_frontpages_;
+        sort(fp_articles.begin(), fp_articles.end(),
              [](const auto& left, const auto& right) {
-                 return left->GetMetadata()->updated > right->GetMetadata()->updated;
+                 auto res = left->GetMetadata()->updated - right->GetMetadata()->updated;
+                 if (res) {
+                     return res > 0;
+                 }
+                 return left->GetMetadata()->title > right->GetMetadata()->title;
              });
 
-        vars["list-articles"] = RenderNodeList(articles, ctx);
+        const int max_articles = options_.options.get("max-articles-on-frontpage", 16);
+        nodes_t articles;
+        int page_count = 0;
 
-        {
-            vector<wstring> tags;
-            for(const auto& t: tags_) {
-                tags.push_back(t.first);
+        for(auto i = fp_articles.begin();; ++i) {
+
+            if (i != fp_articles.end()) {
+                articles.push_back(*i);
             }
 
-            vars["tags"] = RenderTagList(tags, ctx);
+            if ((i == fp_articles.end()) || (articles.size() >= max_articles)) {
+                vars["list-articles"] = RenderNodeList(articles, ctx);
+
+                {
+                    vector<wstring> tags;
+                    for(const auto& t: tags_) {
+                        tags.push_back(t.first);
+                    }
+
+                    vars["tags"] = RenderTagList(tags, ctx);
+                }
+
+                if (page_count) {
+                    vars["prev"] = GetFrontPageName(page_count -1);
+                    vars["if-prev"] = Render("prev.html", vars, ctx);
+                } else {
+                    vars.erase("prev");
+                    vars.erase("if-prev");
+                }
+
+                if (i != fp_articles.end()) {
+                    vars["next"] = GetFrontPageName(page_count +1);
+                    vars["if-next"] = Render("next.html", vars, ctx);
+                } else {
+                    vars.erase("next");
+                    vars.erase("if-next");
+                }
+
+                string frontpage = LoadTemplate("frontpage.html");
+                ProcessTemplate(frontpage, vars);
+                auto dst_path = tmp_path_.string() + "/"s + GetFrontPageName(page_count);
+                LOG_DEBUG << "Generating frontpage " << dst_path;
+                Save(dst_path, frontpage);
+                ++page_count;
+                articles.clear();
+            }
+
+            if (i == fp_articles.end()) {
+                break;
+            }
         }
 
-        ProcessTemplate(frontpage, vars);
+        RenderRssForFrontpage(GetFrontPageName(0), vars);
+    }
 
-        path frontpage_path = tmp_path_;
-        frontpage_path /= "index.html";
-        Save(frontpage_path, frontpage);
+    string GetFrontPageName(const int page) {
+        if (page == 0) {
+            return "index.html";
+        }
 
+        return "index_p"s + to_string(page) + ".html";
+    }
+
+    void RenderRssForFrontpage(path path, std::map<std::string, std::string>& vars) {
         nodes_t rss_articles;
         int max_articles_in_rss_feed = options_.options.get("rss.max-articles", 64);
         for(auto& a: all_articles_) {
@@ -764,7 +813,7 @@ protected:
             rss_articles.resize(max_articles_in_rss_feed);
         }
 
-        RenderRss(rss_articles, frontpage_path, vars["site-title"],
+        RenderRss(rss_articles, path, vars["site-title"],
                   vars["site-abstract"], vars["site-url"], vars["rss-abs"]);
     }
 
