@@ -281,10 +281,13 @@ protected:
 
         for(const auto a: articles) {
             auto hdr = a->GetMetadata();
+
+            const auto url = GetSiteUrl() + "/"s + hdr->relative_url;
+
             out << "<item>" << endl
                 << " <title>" << ToString(hdr->title) << "</title>" << endl
                 << " <description>" << hdr->abstract << "</description>" << endl
-                << " <link>" << link << "</link>" << endl
+                << " <link>" << url << "</link>" << endl
                 << R"( <guid isPermaLink="false">)" << hdr->uuid << "</guid>" << endl
                 << " <pubDate>" << RssTime(hdr->published) << "</pubDate>" << endl
                 << "</item>" << endl;
@@ -297,6 +300,15 @@ protected:
         path = boost::filesystem::change_extension(path, ".rss");
         LOG_DEBUG << "Creating RSS feed " << path;
         Save(path, out.str());
+    }
+
+    string GetSiteUrl() const {
+        auto url = options_.options.get<string>("url");
+        if (!url.empty() && (url.back() == '/')) {
+            url.resize(url.size() -1);
+        }
+
+        return url;
     }
 
     // Return a date like: Sat, 07 Sep 2002 0:00:01 GMT
@@ -737,6 +749,7 @@ protected:
         nodes_t rss_articles;
         int max_articles_in_rss_feed = options_.options.get("rss.max-articles", 64);
         for(auto& a: all_articles_) {
+            if (FilterRss(*a->article))
             rss_articles.push_back(a->article);
         }
 
@@ -752,6 +765,27 @@ protected:
 
         RenderRss(rss_articles, frontpage_path, vars["site-title"],
                   vars["site-abstract"], vars["site-url"], vars["rss-abs"]);
+    }
+
+    bool FilterRss(const Node& article) {
+        auto meta = article.GetMetadata();
+
+        if (article.GetType() != Node::Type::ARTICLE) {
+            LOG_TRACE << article << " is not not an article. Retracting from RSS feed";
+            return false;
+        }
+
+        if (!meta->is_published) {
+            LOG_TRACE << article << " is not in published state. Retracting from RSS feed";
+            return false;
+        }
+
+        if (meta->type == "info") {
+            LOG_TRACE << article << " has type info. Retracting from RSS feed";
+            return false;
+        }
+
+        return true;
     }
 
     void AssignHeaderAndFooter(std::map<std::string, std::string>& vars,
