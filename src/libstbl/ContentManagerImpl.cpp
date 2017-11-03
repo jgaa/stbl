@@ -749,8 +749,9 @@ protected:
         nodes_t rss_articles;
         int max_articles_in_rss_feed = options_.options.get("rss.max-articles", 64);
         for(auto& a: all_articles_) {
-            if (FilterRss(*a->article))
-            rss_articles.push_back(a->article);
+            if (FilterRss(*a->article)) {
+                rss_articles.push_back(a->article);
+            }
         }
 
         sort(rss_articles.begin(), rss_articles.end(),
