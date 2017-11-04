@@ -24,3 +24,4 @@ target_link_libraries(stbl
     ${DEFAULT_LIBRARIES}
     )
 
+install(TARGETS stbl DESTINATION bin)
