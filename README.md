@@ -16,6 +16,7 @@ one file in markup format for each article (post).
 
 These are the design-goals / primary requirements for the project.
 
+- [x] Creates responsive web-sites "out of the box" for an optimal desktop and mobile user experience.
 - [x] Simple to use, friction-less when blogging.
 - [x] Command line program, so that blogs can be generated anywhere.
 - [x] Few dependencies. Avoid pulling in tons of code to do trivial things.
