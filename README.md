@@ -163,6 +163,7 @@ The following headers are recognized:
 
 - author: The name of the author of the article. If both authors and author is specified, the author in the 'author' field will appear first among the authors on the generated page.
 - authors: A comma-separated list of authors.
+- banner: A (preferably high-resolution) image to be used as a banner picture at the top of the article. Stbl will make scaled variants for different screen sizes.
 - published: When the article was published: A date in 'YYYY-MM-DD HH:MM' format, or 'no' or 'false' if the article is unpublished. If the value is unset, the system will fall back to the file-date for the article. If the date is set to the future, the article will beheld back1.
 Unpublished articles will not be generated. This lets you work on articles long before you
 are ready to publish them, by setting the value to "no" or "false".
@@ -213,6 +214,7 @@ The templates have the following macros available, wrapped in {{ }}.
 - abstract: The abstract of the article
 - author: The author(s) of an article
 - authors: Alias for author
+- banner: html5 picture element with scaled images for different screen sizes.
 - content: The content of an article.
 - expires-ansi: Ansi-date when the article expires.
 - expires: The time the article expires
