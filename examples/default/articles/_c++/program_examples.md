@@ -1,6 +1,7 @@
 ---
-authors: jgaa
+uuid: 0fa79133-079a-4715-ad7c-8f62b421ff3d
 tags: c++, programming, example
+published: 2017-10-25 11:30
 ---
 Just some code to test / show code blocks.
 

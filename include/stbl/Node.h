@@ -24,6 +24,7 @@ public:
         std::wstring menu;
         std::string tmplte;
         std::string type;
+        std::string banner;
         std::vector<std::wstring> tags;
         time_t updated = 0;
         time_t published = 0;

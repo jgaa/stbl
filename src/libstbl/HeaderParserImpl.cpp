@@ -88,7 +88,7 @@ private:
         hdr.tmplte = Get("template", headers);
         hdr.type = Get("type", headers);
         hdr.menu = GetWide("menu", headers);
-
+        hdr.banner = Get("banner", headers);
         hdr.have_uuid = !hdr.uuid.empty();
         hdr.have_updated = hdr.updated != 0;
         hdr.have_title = !hdr.title.empty();

@@ -1,6 +1,7 @@
 ---
+uuid: 0aa46639-3a79-4db1-97b0-7a4cfa40b00a
 tags: testing, css
-author: alice
+published: 2017-10-25 12:00
 ---
 In out series of testing stuff, we have some to css!
 

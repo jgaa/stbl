@@ -1,6 +1,7 @@
 project(libstbl)
 
 include_directories(${STBL_ROOT_DIR}/externals/cpp-markdown/src/)
+include_directories(${STBL_ROOT_DIR}/3rdparty/gil_extensions)
 
 set(ACTUAL_SOURCES
     ContentManagerImpl.cpp
@@ -11,6 +12,8 @@ set(ACTUAL_SOURCES
     PageImpl.cpp
     logging.cpp
     HeaderParserImpl.cpp
+    ImageImpl.cpp
+    ImageMgrImpl.cpp
     utility.cpp
     ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown-tokens.cpp
     ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown.cpp

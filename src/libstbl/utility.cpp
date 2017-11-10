@@ -49,11 +49,7 @@ void Save(const fs::path& path,
           bool createDirectoryIsMissing) {
 
     if (createDirectoryIsMissing) {
-        const auto directory = path.parent_path();
-        if (!is_directory(directory)) {
-            LOG_DEBUG << "Creating directory: " << directory;
-            create_directories(directory);
-        }
+        CreateDirectoryForFile(path);
     }
 
     std::ofstream out(path.string());
@@ -67,6 +63,14 @@ void Save(const fs::path& path,
     }
 
     out << data;
+}
+
+void CreateDirectoryForFile(const boost::filesystem::path& path) {
+    const auto directory = path.parent_path();
+    if (!is_directory(directory)) {
+        LOG_DEBUG << "Creating directory: " << directory;
+        create_directories(directory);
+    }
 }
 
 boost::property_tree::ptree
@@ -95,6 +99,16 @@ std::wstring ToWstring(const std::string& str) {
 string ToStringAnsi(const time_t& when) {
     std::tm tm = *std::localtime(&when);
     return boost::lexical_cast<string>(put_time(&tm, "%F %R"));
+}
+
+time_t Roundup(time_t when, const int roundup) {
+    const bool add = (when % roundup) != 0;
+    when /= roundup;
+    when *= roundup;
+    if (add) {
+        when += roundup;
+    }
+    return when;
 }
 
 void CopyDirectory(const fs::path& src,

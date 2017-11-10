@@ -13,6 +13,7 @@ if (NOT DEFINED STBL_ROOT_DIR)
     set(STBL_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
+find_package(JPEG REQUIRED)
 
 find_package(Boost REQUIRED COMPONENTS
         system
@@ -32,11 +33,14 @@ endif()
 set(DEFAULT_LIBRARIES
     ${THREADLIBS}
     ${Boost_LIBRARIES}
+    ${JPEG_LIBRARIES}
     )
 
-include_directories(${STBL_ROOT_DIR}/include)
-include_directories(${Boost_INCLUDE_DIRS})
-
+include_directories(
+    ${STBL_ROOT_DIR}/include
+    ${Boost_INCLUDE_DIRS}
+    ${JPEG_INCLUDE_DIR}
+    )
 
 add_subdirectory(src)
 

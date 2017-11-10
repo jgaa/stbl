@@ -3,7 +3,6 @@
 #include <iostream>
 #include <string>
 
-//#include <boost/utility/string_ref.hpp>
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/ptree.hpp>
 
@@ -18,7 +17,7 @@ std::string Load(const boost::filesystem::path& path);
 void Save(const boost::filesystem::path& path,
           const std::string& data,
           bool createDirectoryIsMissing = false);
-
+void CreateDirectoryForFile(const boost::filesystem::path& path);
 
 boost::property_tree::ptree
 LoadProperties(const boost::filesystem::path& path);
@@ -26,6 +25,7 @@ LoadProperties(const boost::filesystem::path& path);
 std::string ToString(const std::wstring& str);
 std::wstring ToWstring(const std::string& str);
 std::string ToStringAnsi(const time_t& when);
+time_t Roundup(time_t when, const int roundup);
 
 void CopyDirectory(const boost::filesystem::path& src,
                    const boost::filesystem::path& dst);

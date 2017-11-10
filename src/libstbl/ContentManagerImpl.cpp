@@ -13,12 +13,15 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string.hpp>
 
 #include "stbl/Options.h"
 #include "stbl/ContentManager.h"
 #include "stbl/Scanner.h"
 #include "stbl/Node.h"
 #include "stbl/Series.h"
+#include "stbl/ImageMgr.h"
 #include "stbl/logging.h"
 #include "stbl/utility.h"
 
@@ -67,6 +70,7 @@ public:
 
     ContentManagerImpl(const Options& options)
     : options_{options}, now_{time(nullptr)}
+    , roundup_{options.options.get<time_t>("system.date.roundup", 1800)}
     {
     }
 
@@ -90,6 +94,23 @@ protected:
     void Scan()
     {
         scanner_ = Scanner::Create(options_);
+
+        {
+            string str_widths = options_.options.get<string>("banner.widths",
+                                              "94, 248, 480, 640, 720, 950");
+            vector<string> values;
+            boost::split(values, str_widths, boost::is_any_of(" ,"));
+            ImageMgr::widths_t widths;
+            for(const auto& v: values) {
+                if (v.empty()) {
+                    continue;
+                }
+                widths.push_back(stoi(v));
+            }
+
+            images_ = ImageMgr::Create(widths,
+                options_.options.get<int>("banner.quality", 95));
+        }
         nodes_= scanner_->Scan();
 
         LOG_DEBUG << "Listing nodes after scan: ";
@@ -411,8 +432,18 @@ protected:
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
             vars["content"] = content.str();
-            vars["author"] = RenderAuthors(ai.article->GetAuthors(), ctx);
+            auto authors = ai.article->GetAuthors();
+            if (authors.empty()) {
+                auto default_author = options_.options.get<string>("people.default", "");
+                if (!default_author.empty()) {
+                    authors.push_back(move(default_author));
+                }
+            }
+            vars["author"] = RenderAuthors(authors, ctx);
             vars["authors"] = vars["author"];
+            if (!meta->banner.empty()) {
+                vars["banner"] = RenderBanner(*meta, ctx);
+            }
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
         }
@@ -420,6 +451,41 @@ protected:
         if (options_.update_source_headers) {
             ai.article->UpdateSourceHeaders(*scanner_, *meta);
         }
+    }
+
+    string RenderBanner(const Node::Metadata& meta, const RenderCtx& ctx) {
+        static const int align = options_.options.get<int>("banner.align", 0);
+
+        path image_path = options_.source_path;
+        image_path /= "images";
+        image_path /= meta.banner;
+
+        auto imgs = images_->Prepare(image_path);
+
+        stringstream out;
+        string default_src;
+
+        out << R"(<picture class="banner">)" << endl;
+        for(const auto v: imgs) {
+            if (default_src.empty() && (v.size.width >= 300)) {
+                default_src = v.relative_path;
+                break;
+            }
+        }
+
+        for(auto it = imgs.rbegin(); it != imgs.rend(); ++it) {
+            const int width = it->size.width + align;
+            out << "<source media=\"(min-width: "
+                <<  width << "px)\" srcset=\""
+                << it->relative_path
+                << "\">" << endl;
+        }
+
+        if (!default_src.empty()) {
+            out << R"(<img src=")" << default_src << R"(" alt="Banner">)" << endl;
+        }
+        out << "</picture>" << endl;
+        return out.str();
     }
 
     void RenderSerie(const serie_t& serie) {
@@ -469,11 +535,12 @@ protected:
     }
 
     void Assign(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
-        vars["updated"] = ToStringLocal(md.updated);
-        vars["published"] = ToStringLocal(md.published);
+
+        vars["updated"] = ToStringLocal(Roundup(md.updated, roundup_));
+        vars["published"] = ToStringLocal(Roundup(md.published, roundup_));
         vars["expires"] = ToStringLocal(md.expires);
-        vars["updated-ansi"] = ToStringAnsi(md.updated);
-        vars["published-ansi"] = ToStringAnsi(md.published);
+        vars["updated-ansi"] = ToStringAnsi(Roundup(md.updated, roundup_));
+        vars["published-ansi"] = ToStringAnsi(Roundup(md.published, roundup_));
         vars["expires-ansi"] = ToStringAnsi(md.expires);
         vars["title"] = stbl::ToString(md.title);
         vars["abstract"] = md.abstract;
@@ -783,7 +850,10 @@ protected:
             }
         }
 
-        RenderRssForFrontpage(GetFrontPageName(0), vars);
+        path frontpage_path = tmp_path_;
+        frontpage_path /= GetFrontPageName(0);
+
+        RenderRssForFrontpage(frontpage_path, vars);
     }
 
     string GetFrontPageName(const int page) {
@@ -1050,6 +1120,8 @@ protected:
 
     const time_t now_;
     unique_ptr<Scanner> scanner_;
+    unique_ptr<ImageMgr> images_;
+    const time_t roundup_;
 };
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)
