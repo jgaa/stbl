@@ -18,8 +18,12 @@ public:
         articles_.push_back(article);
     }
 
-    void AddArticles(articles_t articles) override {
+    void AddArticles(const articles_t& articles) override {
         articles_.insert(articles_.end(), articles.begin(), articles.end());
+    }
+
+    void SetArticles(articles_t&&  articles) override {
+        articles_ = move(articles);
     }
 
     stbl::Node::Type GetType() const override {

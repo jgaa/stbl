@@ -680,6 +680,8 @@ protected:
 
         meta->updated = publishable.back()->GetMetadata()->updated;
 
+        series->SetArticles(move(publishable));
+
         return true;
     }
 
