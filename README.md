@@ -233,10 +233,10 @@ The templates have the following macros available, wrapped in {{ }}.
 - lang: The language for the site, typically used as &lt;html lang={{lang}}&gt;
 - list-articles: A list of articles to be placed in a series cover-page or frontpage. Only available when rendering these special pages.
 - menu: The rendered code fot the menu.
-- next-if: The template next.html expanded, if there is a next page.
+- if-next: The template next.html expanded, if there is a next page.
 - next: The relative path to the next page (if the front-page is generated over several pages).
 - now: The current date (when the site was rendered).
-- prev-if: The template prev.html expanded, if there is a previous page.
+- if-prev: The template prev.html expanded, if there is a previous page.
 - prev: The relative path to the previous page (if the front-page is generated over several pages).
 - program-name: The name of the generator (stbl).
 - program-version: The version of the generator.
