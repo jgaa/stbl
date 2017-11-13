@@ -24,6 +24,7 @@
 #include "stbl/ImageMgr.h"
 #include "stbl/logging.h"
 #include "stbl/utility.h"
+#include "templates_res.h"
 
 using namespace std;
 using namespace boost::filesystem;
@@ -431,6 +432,7 @@ protected:
             AssignDefauls(vars, ctx);
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
+            AssignNavigation(vars, *ai.article, ctx);
             vars["content"] = content.str();
             auto authors = ai.article->GetAuthors();
             if (authors.empty()) {
@@ -450,6 +452,38 @@ protected:
 
         if (options_.update_source_headers) {
             ai.article->UpdateSourceHeaders(*scanner_, *meta);
+        }
+    }
+
+    void AssignNavigation(map<string, string>& vars, const Article& article,
+                          const RenderCtx& ctx) {
+
+        if (auto series = article.GetSeries()) {
+            auto articles = series->GetArticles();
+            node_t next, prev;
+            auto uuid = article.GetMetadata()->uuid;
+            for(auto it = articles.begin(); it != articles.end(); ++it) {
+                if ((*it)->GetMetadata()->uuid == uuid) {
+                    if (it != articles.begin()) {
+                        prev = *(it - 1);
+                    }
+                    auto nit = it + 1;
+                    if (nit != articles.end()) {
+                        next = *nit;
+                    }
+                    break;
+                }
+            }
+
+            if (prev) {
+                vars["prev"] = prev->GetMetadata()->relative_url;
+                vars["if-prev"] = Render("prev.html", vars, ctx);
+            }
+
+            if (next) {
+                vars["next"] = next->GetMetadata()->relative_url;
+                vars["if-next"] = Render("next.html", vars, ctx);
+            }
         }
     }
 
@@ -658,6 +692,8 @@ protected:
 
 
         for(const auto& a : publishable) {
+
+
             DoAddArticle(a, series);
 
             // Collect tags from the article
@@ -1097,7 +1133,15 @@ protected:
         template_path /= "templates";
         template_path /= name;
 
-        return Load(template_path);
+        if (boost::filesystem::is_regular(template_path)) {
+            return Load(template_path);
+        }
+
+        auto it = embedded_templates_.find(name);
+        if (it == embedded_templates_.end()) {
+            throw runtime_error("Missing embedded template: "s + name);
+        }
+        return it->second;
     }
 
     Options options_;

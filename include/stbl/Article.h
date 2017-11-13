@@ -26,6 +26,8 @@ public:
     virtual void SetAuthors(const authors_t& authors) = 0;
     virtual void UpdateSourceHeaders(Scanner& scanner,
                                      const Node::Metadata& meta) = 0;
+    virtual void SetSeries(const serie_t& serie) = 0;
+    virtual serie_t GetSeries() const  = 0;
 
     static std::shared_ptr<Article> Create();
 };

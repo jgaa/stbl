@@ -53,11 +53,20 @@ public:
         }
     }
 
+    void SetSeries(const serie_t& serie) override {
+        serie_ = serie;
+    }
+
+    serie_t GetSeries() const override {
+        return serie_;
+    }
+
 private:
     articles_t articles_;
     std::shared_ptr<Metadata> metadata_;
     authors_t authors_;
     std::shared_ptr<Content> content_;
+    serie_t serie_;
 };
 
 std::shared_ptr<Article> Article::Create() {

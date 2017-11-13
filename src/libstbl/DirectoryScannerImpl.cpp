@@ -300,12 +300,12 @@ private:
         series->SetMetadata(md);
 
         // Add articles
-        auto articles = ProcessArticles(ctx);
+        auto articles = ProcessArticles(ctx, series);
         series->AddArticles(move(articles));
         return move(series);
     }
 
-    articles_t ProcessArticles(const Context& ctx) {
+    articles_t ProcessArticles(const Context& ctx, serie_t series = {}) {
         articles_t articles;
 
         for(const auto& a : *ctx.articles) {
@@ -334,6 +334,7 @@ private:
 
                 article->SetMetadata(hdr);
                 article->SetAuthors(hdr->authors);
+                article->SetSeries(move(series));
 
                 auto content = Content::Create(a.full_path);
                 content->AddPage(Page::Create(a.full_path));
