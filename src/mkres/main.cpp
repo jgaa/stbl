@@ -9,7 +9,6 @@ using namespace std;
 
 int main(int argc, char *argv[]) {
 
-    // Usage: impl-file, header-file, sources...
     if (argc < 4) {
         cerr << "Usage: mkres namespace resource-name impl-file.cpp header-file.h file [file ...]" << endl;
     }

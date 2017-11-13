@@ -4,8 +4,8 @@ include_directories(${STBL_ROOT_DIR}/externals/cpp-markdown/src/)
 include_directories(${STBL_ROOT_DIR}/3rdparty/gil_extensions)
 
 add_custom_command(
-    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT_DIR}/tests/testsite/templates/*.html
-    DEPENDS ${STBL_ROOT_DIR}/tests/testsite/templates/*.html mkres
+    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT_DIR}/examples/default/templates/*.html
+    DEPENDS ${STBL_ROOT_DIR}/examples/default/templates/*.html mkres
     OUTPUT templates_res.cpp templates_res.h
     COMMENT "Embedding templates..."
     )
