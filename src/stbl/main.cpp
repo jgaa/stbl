@@ -12,6 +12,7 @@
 #include "stbl/logging.h"
 #include "stbl/ContentManager.h"
 #include "stbl/utility.h"
+#include "stbl/stbl_config.h"
 
 using namespace std;
 namespace po = boost::program_options;
@@ -61,6 +62,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("open-in-firefox,f", "Open the generated site in firefox.")
         ("publish,p", "Publish the site (deploy on a web-site).")
         ("no-update-headers", "Do not update the source article headers.")
+        ("version,v", "Show version and exit.")
         ;
 
     po::options_description locations("Locations");
@@ -87,6 +89,11 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             << cmdline_options << endl
             << "Log-levels are:" << endl
             << "   error warning info debug trace " << endl;
+        return false;
+    }
+
+    if (vm.count("version")) {
+        cout << "stbl " << STBL_VERSION << endl;
         return false;
     }
 

@@ -1,16 +1,17 @@
-project(libstbl)
+project(libstbl VERSION 1.10 LANGUAGES CXX)
 
-include_directories(${STBL_ROOT_DIR}/externals/cpp-markdown/src/)
-include_directories(${STBL_ROOT_DIR}/3rdparty/gil_extensions)
+include_directories(${STBL_ROOT}/externals/cpp-markdown/src/)
+include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
 
 add_custom_command(
-    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT_DIR}/examples/default/templates/*.html
-    DEPENDS ${STBL_ROOT_DIR}/examples/default/templates/*.html mkres
+    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT}/examples/default/templates/*.html
+    DEPENDS ${STBL_ROOT}/examples/default/templates/*.html mkres
     OUTPUT templates_res.cpp templates_res.h
     COMMENT "Embedding templates..."
     )
 
-set(ACTUAL_SOURCES
+
+set(SOURCES
     ContentManagerImpl.cpp
     DirectoryScannerImpl.cpp
     SeriesImpl.cpp
@@ -23,29 +24,27 @@ set(ACTUAL_SOURCES
     ImageMgrImpl.cpp
     utility.cpp
     templates_res.cpp
-    ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown-tokens.cpp
-    ${STBL_ROOT_DIR}/externals/cpp-markdown/src/markdown.cpp
+    ${STBL_ROOT}/externals/cpp-markdown/src/markdown-tokens.cpp
+    ${STBL_ROOT}/externals/cpp-markdown/src/markdown.cpp
     )
-
-set(HEADERS
-    ${STBL_ROOT_DIR}/include/stbl/Node.h
-    ${STBL_ROOT_DIR}/include/stbl/Article.h
-    ${STBL_ROOT_DIR}/include/stbl/Series.h
-    ${STBL_ROOT_DIR}/include/stbl/Content.h
-    ${STBL_ROOT_DIR}/include/stbl/Page.h
-    ${STBL_ROOT_DIR}/include/stbl/stbl.h
-    ${STBL_ROOT_DIR}/include/stbl/Options.h
-    ${STBL_ROOT_DIR}/include/stbl/ContentManager.h
-    templates_res.h
-    )
-
-if (WIN32)
-    set(SOURCES ${ACTUAL_SOURCES} ${HEADERS} ${RESFILES})
-else()
-    set(SOURCES ${ACTUAL_SOURCES})
-endif()
 
 add_library(libstbl ${SOURCES})
-target_include_directories(libstbl PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(libstbl PROPERTIES DEBUG_OUTPUT_NAME stblD)
-target_link_libraries(libstbl ${DEFAULT_LIBRARIES})
+set_property(TARGET libstbl PROPERTY CXX_STANDARD 14)
+target_include_directories(libstbl
+    PUBLIC $<BUILD_INTERFACE:${STBL_ROOT}/include> $<INSTALL_INTERFACE:include>
+    PRIVATE ${STBL_ROOT}/src/libstbl
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
+)
+target_link_libraries(libstbl PUBLIC ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
+
+
+# if (WIN32)
+#     set(SOURCES ${ACTUAL_SOURCES} ${HEADERS} ${RESFILES})
+# else()
+#     set(SOURCES ${ACTUAL_SOURCES})
+# endif()
+#
+# add_library(libstbl ${SOURCES})
+# target_include_directories(libstbl PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+# set_target_properties(libstbl PROPERTIES DEBUG_OUTPUT_NAME stblD)
+# target_link_libraries(libstbl ${DEFAULT_LIBRARIES})

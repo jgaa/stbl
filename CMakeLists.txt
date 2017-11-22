@@ -1,51 +1,37 @@
 cmake_minimum_required(VERSION 3.0)
-project (stbl-all)
+project (stbl_project VERSION 0.10 LANGUAGES CXX)
+
+set (STBL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+add_definitions(-DBOOST_ALL_DYN_LINK=1)
 
 if (NOT DEFINED STBL_WITH_UNIT_TESTS)
     option(STBL_WITH_UNIT_TESTS "Enable Unit Testing" ON)
+    if (NOT DEFINED STBL_AUTORUN_UNIT_TESTS)
+        option(STBL_AUTORUN_UNIT_TESTS "Run unit tests during build" OFF)
+    endif()
 endif()
 
-if (NOT DEFINED STBL_AUTORUN_UNIT_TESTS)
-    option(STBL_AUTORUN_UNIT_TESTS "Run Unit Tests automatically after build" OFF)
-endif()
+message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
-if (NOT DEFINED STBL_ROOT_DIR)
-    set(STBL_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
-endif()
+include(cmake_scripts/external-projects.cmake)
+include(cmake_scripts/add_and_run_test.cmake)
+
+# Include Boost as an imported target
+find_package(Boost 1.50 REQUIRED COMPONENTS
+    system
+    program_options
+    filesystem
+    date_time
+    chrono
+    log
+    )
 
 find_package(JPEG REQUIRED)
 
-find_package(Boost REQUIRED COMPONENTS
-        system
-        program_options
-        filesystem
-        date_time
-        chrono
-        log
-    )
-
-if (WIN32)
-    link_directories(${Boost_LIBRARY_DIRS})
-else()
-    add_definitions(-DBOOST_ALL_DYN_LINK=1 -std=c++14)
-endif()
-
-set(DEFAULT_LIBRARIES
-    ${THREADLIBS}
-    ${Boost_LIBRARIES}
-    ${JPEG_LIBRARIES}
-    )
-
-include_directories(
-    ${STBL_ROOT_DIR}/include
-    ${Boost_INCLUDE_DIRS}
-    ${JPEG_INCLUDE_DIR}
-    )
-
-add_subdirectory(src)
+add_subdirectory(src/libstbl)
+add_subdirectory(src/mkres)
+add_subdirectory(src/stbl)
 
 if (STBL_WITH_UNIT_TESTS)
-    enable_testing()
     add_subdirectory(tests)
 endif()
-

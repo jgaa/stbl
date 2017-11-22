@@ -1,20 +1,14 @@
-project (tests)
+project(stbl_unit_tests LANGUAGES CXX)
 
-include_directories(
-    ${STBL_ROOT_DIR}/externals/lest/include
-    ${STBL_ROOT_DIR}/src/libstbl
+MACRO(WFDE_ADD_TEST Name Source)
+    add_executable(${Name} ${Source})
+    add_dependencies(${Name} externalLest)
+    target_link_libraries(${Name} wfde)
+    target_include_directories(${Name}
+        PRIVATE ${STBL_ROOT_DIR}/include>
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
     )
+    add_and_run_test(${Name} ${CMAKE_CURRENT_BINARY_DIR})
+ENDMACRO(WFDE_ADD_TEST)
 
-macro (ADD_AND_RUN_UNITTEST testname targetname)
-add_test(NAME ${testname} COMMAND ${targetname})
-if (STBL_AUTORUN_UNIT_TESTS)
-    add_custom_command(
-        TARGET ${targetname}
-        POST_BUILD
-        COMMENT "running ${testname}"
-        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
-        COMMAND ${CMAKE_CTEST_COMMAND} -C $<CONFIGURATION> -R "${testname}"  --output-on-failure
-    )
-endif()
-endmacro()
 

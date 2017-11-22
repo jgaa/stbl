@@ -1,27 +1,22 @@
 
-project (stbl)
+project(stbl VERSION 0.10 LANGUAGES CXX)
 
-set(ACTUAL_SOURCES
+# project (stbl)
+
+set(SOURCES
     main.cpp
     )
 
-set(HEADERS
-    ${STBL_ROOT_DIR}/include/stbl/BlogPost.h
-    )
+add_executable(${PROJECT_NAME} ${SOURCES})
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)
+target_link_libraries(${PROJECT_NAME} PRIVATE libstbl ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
 
+target_include_directories(${PROJECT_NAME}
+    PRIVATE ${STBL_ROOT}/include>
+    PRIVATE ${CMAKE_BINARY_DIR}/generated-include/
+    PRIVATE ${STBL_ROOT}/src/${PROJECT_NAME}
+)
 
-if (WIN32)
-    set(SOURCES ${ACTUAL_SOURCES} ${HEADERS} ${RESFILES})
-else()
-    set(SOURCES ${ACTUAL_SOURCES})
-endif()
+install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
 
-
-add_executable(stbl ${SOURCES})
-set_target_properties(stbl PROPERTIES DEBUG_OUTPUT_NAME stblD)
-target_link_libraries(stbl
-    libstbl
-    ${DEFAULT_LIBRARIES}
-    )
-
-install(TARGETS stbl DESTINATION bin)
+configure_file(config.h.template ${CMAKE_BINARY_DIR}/generated-include/stbl/stbl_config.h)
