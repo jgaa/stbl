@@ -1,5 +1,6 @@
 
 #include <boost/log/trivial.hpp>
+#include <boost/algorithm/string.hpp>
 #include "stbl/stbl.h"
 #include "stbl_tests.h"
 #include "stbl/Page.h"
@@ -9,7 +10,7 @@ using namespace stbl;
 
 const lest::test specification[] = {
 
-STARTCASE(Test_WfdePath) {
+STARTCASE(TestLinkInList) {
 
     const std::string source =
         "---\n"
@@ -23,7 +24,8 @@ STARTCASE(Test_WfdePath) {
 
     page->Render2Html(out);
 
-    cout << "Result: '" << out.str() << '\'' << endl;
+    CHECK_EQUAL(boost::trim_right_copy(out.str()),
+                R"(<p>- <a href="https://example.com">This</a> is a link to <a href="https://gitub.com">github</a>.</p>)");
 
 } ENDCASE
 }; //lest
@@ -33,7 +35,7 @@ int main( int argc, char * argv[] )
     namespace logging = boost::log;
     logging::core::get()->set_filter
     (
-        logging::trivial::severity >= logging::trivial::trace
+        logging::trivial::severity >= logging::trivial::info
     );
     return lest::run( specification, argc, argv );
 }
