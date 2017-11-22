@@ -1,7 +1,4 @@
-
 project(stbl VERSION 0.10 LANGUAGES CXX)
-
-# project (stbl)
 
 set(SOURCES
     main.cpp

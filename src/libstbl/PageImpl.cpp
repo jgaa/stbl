@@ -2,6 +2,7 @@
 #include <string.h>
 #include <fstream>
 #include <regex>
+#include <sstream>
 
 #include <boost/algorithm/string/replace.hpp>
 
@@ -20,7 +21,12 @@ class PageImpl : public Page
 {
 public:
     PageImpl(const boost::filesystem::path& path)
-    : path_{path}
+    : path_{path}, content_{}
+    {
+    }
+
+     PageImpl(const string& content)
+    : path_{}, content_{content}
     {
     }
 
@@ -28,15 +34,26 @@ public:
     }
 
     size_t Render2Html(std::ostream & out) override {
-        ifstream in(path_.string());
-        if (!in) {
-            auto err = strerror(errno);
-            LOG_ERROR << "IO error. Failed to open "
-                << path_ << ": " << err;
 
-            throw runtime_error("IO error");
+        if (!path_.empty()) {
+            ifstream in(path_.string());
+            if (!in) {
+                auto err = strerror(errno);
+                LOG_ERROR << "IO error. Failed to open "
+                    << path_ << ": " << err;
+
+                throw runtime_error("IO error");
+            }
+
+            return Render2Html(in, out);
         }
 
+        std::istringstream in{content_};
+        return Render2Html(in, out);
+    }
+
+private:
+    size_t Render2Html(istream& in, ostream& out) {
         EatHeader(in);
         string content((std::istreambuf_iterator<char>(in)),
                        istreambuf_iterator<char>());
@@ -102,12 +119,16 @@ public:
         return words;
     }
 
-private:
     const boost::filesystem::path path_;
+    const std::string content_;
 };
 
 page_t Page::Create(const boost::filesystem::path& path) {
     return make_shared<PageImpl>(path);
+}
+
+page_t Page::Create(const string& content) {
+    return make_shared<PageImpl>(content);
 }
 
 }

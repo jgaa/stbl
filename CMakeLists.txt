@@ -33,5 +33,6 @@ add_subdirectory(src/mkres)
 add_subdirectory(src/stbl)
 
 if (STBL_WITH_UNIT_TESTS)
+    enable_testing()
     add_subdirectory(tests)
 endif()
