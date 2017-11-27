@@ -1,15 +1,35 @@
-project(libstbl VERSION 1.10 LANGUAGES CXX)
+project(libstbl VERSION 1.11 LANGUAGES CXX)
 
 include_directories(${STBL_ROOT}/externals/cpp-markdown/src/)
 include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
 
 add_custom_command(
-    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT}/examples/default/templates/*.html
-    DEPENDS ${STBL_ROOT}/examples/default/templates/*.html mkres
+    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT}/examples/bootstrap/templates/*.html
+    DEPENDS ${STBL_ROOT}/examples/bootstrap/templates/*.html mkres
     OUTPUT templates_res.cpp templates_res.h
     COMMENT "Embedding templates..."
     )
 
+add_custom_command(
+    COMMAND mkres stbl embedded_artifacts_ artifacts_res.cpp artifacts_res.h ${STBL_ROOT}/examples/bootstrap/artifacts/*
+    DEPENDS ${STBL_ROOT}/examples/bootstrap/artifacts/* mkres
+    OUTPUT artifacts_res.cpp artifacts_res.h
+    COMMENT "Embedding artifacts..."
+    )
+
+add_custom_command(
+    COMMAND mkres stbl embedded_config_ config_res.cpp config_res.h ${STBL_ROOT}/examples/bootstrap/*.conf
+    DEPENDS ${STBL_ROOT}/examples/bootstrap/*.conf
+    OUTPUT config_res.cpp config_res.h
+    COMMENT "Embedding config..."
+    )
+
+add_custom_command(
+    COMMAND mkres stbl embedded_articles_ articles_res.cpp articles_res.h ${STBL_ROOT}/examples/bootstrap/articles/*.md
+    DEPENDS ${STBL_ROOT}/examples/bootstrap/articles/*.md
+    OUTPUT articles_res.cpp articles_res.h
+    COMMENT "Embedding articles..."
+    )
 
 set(SOURCES
     ContentManagerImpl.cpp
@@ -23,7 +43,11 @@ set(SOURCES
     ImageImpl.cpp
     ImageMgrImpl.cpp
     utility.cpp
+    BootstrapImpl.cpp
     templates_res.cpp
+    artifacts_res.cpp
+    config_res.cpp
+    articles_res.cpp
     ${STBL_ROOT}/externals/cpp-markdown/src/markdown-tokens.cpp
     ${STBL_ROOT}/externals/cpp-markdown/src/markdown.cpp
     )
@@ -34,6 +58,7 @@ target_include_directories(libstbl
     PUBLIC $<BUILD_INTERFACE:${STBL_ROOT}/include> $<INSTALL_INTERFACE:include>
     PRIVATE ${STBL_ROOT}/src/libstbl
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
+    PRIVATE ${CMAKE_BINARY_DIR}/generated-include
 )
 target_link_libraries(libstbl PUBLIC ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
 

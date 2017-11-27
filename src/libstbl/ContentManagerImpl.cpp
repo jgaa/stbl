@@ -25,6 +25,7 @@
 #include "stbl/logging.h"
 #include "stbl/utility.h"
 #include "templates_res.h"
+#include "stbl/stbl_config.h"
 
 using namespace std;
 using namespace boost::filesystem;
@@ -559,7 +560,7 @@ protected:
         vars["site-url"] = options_.options.get<string>(
             "url", options_.destination_path + "index.html");
         vars["program-name"] = PROGRAM_NAME;
-        vars["program-version"] = PROGRAM_VERSION;
+        vars["program-version"] = STBL_VERSION;
         vars["rel"] = ctx.GetRelativeUrl(""s);
         vars["lang"] = options_.options.get<string>("language", "en");
 
@@ -1141,7 +1142,8 @@ protected:
         if (it == embedded_templates_.end()) {
             throw runtime_error("Missing embedded template: "s + name);
         }
-        return it->second;
+
+        return string(reinterpret_cast<const char *>(it->second.first), it->second.second);
     }
 
     Options options_;

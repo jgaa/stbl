@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
-project (stbl_project VERSION 0.10 LANGUAGES CXX)
+project (stbl_project VERSION 0.11 LANGUAGES CXX)
 
 set (STBL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 add_definitions(-DBOOST_ALL_DYN_LINK=1)

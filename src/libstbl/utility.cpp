@@ -46,13 +46,22 @@ string Load(const fs::path& path) {
 
 void Save(const fs::path& path,
           const std::string& data,
-          bool createDirectoryIsMissing) {
+          bool createDirectoryIsMissing,
+          bool binary) {
+
+    LOG_TRACE << "Saving: " << path
+        << (binary ? " [bin]" : " [text]");
+
 
     if (createDirectoryIsMissing) {
         CreateDirectoryForFile(path);
     }
 
-    std::ofstream out(path.string());
+    auto mode = ios_base::out | ios_base::trunc;
+    if (binary) {
+        mode |= ios_base::binary;
+    }
+    std::ofstream out(path.string(), mode);
 
     if (!out) {
         auto err = strerror(errno);
@@ -68,8 +77,14 @@ void Save(const fs::path& path,
 void CreateDirectoryForFile(const boost::filesystem::path& path) {
     const auto directory = path.parent_path();
     if (!is_directory(directory)) {
-        LOG_DEBUG << "Creating directory: " << directory;
-        create_directories(directory);
+        CreateDirectory(directory);
+    }
+}
+
+void CreateDirectory(const boost::filesystem::path& path) {
+    if (!is_directory(path)) {
+        LOG_DEBUG << "Creating directory: " << path;
+        create_directories(path);
     }
 }
 

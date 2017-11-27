@@ -1,4 +1,4 @@
-project(stbl VERSION 0.10 LANGUAGES CXX)
+project(stbl VERSION 0.11 LANGUAGES CXX)
 
 set(SOURCES
     main.cpp
@@ -12,6 +12,7 @@ target_include_directories(${PROJECT_NAME}
     PRIVATE ${STBL_ROOT}/include>
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include/
     PRIVATE ${STBL_ROOT}/src/${PROJECT_NAME}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})

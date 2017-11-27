@@ -28,8 +28,4 @@ using content_t = std::shared_ptr<Content>;
 #   define PROGRAM_NAME "stbl"
 #endif
 
-#ifndef PROGRAM_VERSION
-#   define PROGRAM_VERSION "0.01-devel"
-#endif
-
 }

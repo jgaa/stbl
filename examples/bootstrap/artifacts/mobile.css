@@ -1,0 +1,63 @@
+/* Mobile */
+#banner { 
+    height: 40vw; width: 100vw; 
+    background-image: url('../artifacts/banner-lowres.jpg'); 
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center; 
+    max-width: 100%; 
+    max-height: 232px;
+ }
+
+#sidebar {
+    display: none;
+}
+
+main article blockquote {
+    padding:1%;
+    margin: 1%;
+    border-style: dotted;
+    background-color: lightgrey;
+    border-width: 0.05rem;
+    border-left-width: 0.5rem;
+    border-left-color: red;
+    border-left-style: solid;
+    width: 95%;
+    margin-bottom: 2rem;
+}
+
+#menu-section .show-menu {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    text-decoration: none;
+    color: #fff;
+    background: green;
+    text-align: center;
+    padding: 10px 0;
+    display: block;
+}
+
+#menu-section nav {
+    position: static;
+    display: none;
+    background-color: darkslategray;
+    padding: 0.5rem;
+}
+
+#menu-section input[type=checkbox]:checked ~  #topmenu {
+    display: block;
+}
+
+/*Make all menu links full width*/
+#menu-section a {
+    display: block;
+    width: 92%;
+    background-color: black;
+    color: white;
+    text-decoration: none;
+    color: white;
+    padding: 3%;
+    border-bottom-color: green;
+    border-bottom-width: 2%;
+    border-bottom-style: solid;
+}
+

@@ -13,6 +13,8 @@
 #include "stbl/ContentManager.h"
 #include "stbl/utility.h"
 #include "stbl/stbl_config.h"
+#include "stbl/Bootstrap.h"
+
 
 using namespace std;
 namespace po = boost::program_options;
@@ -63,6 +65,9 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("publish,p", "Publish the site (deploy on a web-site).")
         ("no-update-headers", "Do not update the source article headers.")
         ("version,v", "Show version and exit.")
+        ("init", "Initialize a new blog directory structure at the destination.")
+        ("init-all", "Initialize a new blog directory structure at the destination, including templates and embedded files.")
+        ("init-example", "Initialize a new example blog directory structure at the destination.")
         ;
 
     po::options_description locations("Locations");
@@ -139,8 +144,6 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         options.publish = true;
     }
 
-
-
     if (vm.count("content-layout")) {
         const auto val = vm["content-layout"].as<string>();
         if (val == "simple") {
@@ -152,6 +155,24 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             return false;
         }
 
+    }
+
+    if (vm.count("init")) {
+        auto bootstrap = Bootstrap::Create(options);
+        bootstrap->CreateEmptySite(false);
+        return false;
+    }
+
+    if (vm.count("init-all")) {
+        auto bootstrap = Bootstrap::Create(options);
+        bootstrap->CreateEmptySite(true);
+        return false;
+    }
+
+    if (vm.count("init-example")) {
+        auto bootstrap = Bootstrap::Create(options);
+        bootstrap->CreateNewExampleSite(true);
+        return false;
     }
 
     boost::filesystem::path opts = options.source_path;

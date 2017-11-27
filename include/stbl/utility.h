@@ -16,7 +16,9 @@ namespace stbl {
 std::string Load(const boost::filesystem::path& path);
 void Save(const boost::filesystem::path& path,
           const std::string& data,
-          bool createDirectoryIsMissing = false);
+          bool createDirectoryIsMissing = false,
+          bool binary = false);
+void CreateDirectory(const boost::filesystem::path& path);
 void CreateDirectoryForFile(const boost::filesystem::path& path);
 
 boost::property_tree::ptree
