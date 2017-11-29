@@ -36,7 +36,7 @@ struct HeaderGrammar: qi::grammar <Iterator, ::stbl::HeaderParser::header_map_t(
     HeaderGrammar() : HeaderGrammar::base_type(header_lines, "HeaderGrammar Grammar") {
         field_key    = +qi::char_("0-9a-zA-Z-");
         field_value  = +~qi::char_("\n");
-        header_lines = +(field_key >> *qi::lit(' ') >> ':' >> field_value >> qi::lexeme["\n"]);
+        header_lines = *(field_key >> *qi::lit(' ') >> ':' >> field_value >> qi::lexeme["\n"]);
     }
 
   private:

@@ -42,6 +42,7 @@ class DirectoryScannerImpl : public Scanner
 
             const vector<path> recursed;
             const path full_path;
+            const bool is_index = false;
         };
 
         Context()
@@ -57,13 +58,35 @@ class DirectoryScannerImpl : public Scanner
             mode = Mode::SERIES;
             configuration = make_shared<std::vector<path>>();
             articles = make_shared<std::vector<Location>>();
+            index.reset();
+        }
+
+        // Is at root-level
+        bool IsRoot() const {
+            return recursed.empty();
+        }
+
+        bool IsSeries() const {
+            return mode == Mode::SERIES;
+        }
+
+        void SetIndex(const path& path) {
+            if (!IsRoot() && !IsSeries()) {
+                LOG_ERROR << "An index must be at the root level or in a series folder: "
+                    << path;
+                throw runtime_error("Found index.md out of context: "s + path.string());
+            }
+
+            LOG_DEBUG << "Adding " << path << " to context.";
+            articles->push_back(Location(recursed, path));
         }
 
         Mode mode = Mode::GENERAL;
         vector<path> recursed;
         path current_path;
-        std::shared_ptr<std::vector<path>> configuration;
-        std::shared_ptr<std::vector<Location>> articles;
+        shared_ptr<std::vector<path>> configuration;
+        shared_ptr<std::vector<Location>> articles;
+        shared_ptr<Location> index;
     };
 
 public:
@@ -201,7 +224,7 @@ private:
                 } else {
                     // Series folder.
 
-                    if (ctx.mode == Context::Mode::SERIES) {
+                    if (ctx.IsSeries()) {
                         LOG_ERROR
                             << "Already building a series when examining "
                             << subdir;
@@ -217,13 +240,18 @@ private:
                 }
 
             } else if (is_regular_file(entry.path())) {
+                if (entry.path().filename().string() == "index.md"s) {
+                    ctx.SetIndex(entry.path());
+                    continue;
+                }
+
                 const auto ext = entry.path().extension();
                 if (ext == ".md") {
                     LOG_DEBUG << "Adding article: " << name;
                     ctx.articles->push_back(Context::Location(ctx.recursed, entry.path()));
 
                 } else if (ext == ".conf") {
-                    if (ctx.mode == Context::Mode::SERIES) {
+                    if (ctx.IsSeries()) {
                         LOG_DEBUG << "Adding configuration: " << entry.path();
                         ctx.configuration->push_back(entry.path());
                     } else {
@@ -310,31 +338,40 @@ private:
 
         for(const auto& a : *ctx.articles) {
             auto article = Article::Create();
-            auto md = make_shared<Node::Metadata>();
 
             try {
                 auto hdr = make_shared<Article::Header>();
                 ParseHeader(*hdr, FetchHeader(a.full_path));
 
-                if (hdr->title.empty()) {
-                    hdr->title = GetTitleFromPath(a.full_path);
-                }
+                if (a.full_path.filename() == "index.md") {
+                    hdr->type = "index"s;
+                    hdr->tags.clear();
+                } else {
 
-                if (!hdr->published && hdr->is_published) {
-                    hdr->published = GetTimeFromPath(a.full_path);
-                }
+                    if (hdr->title.empty()) {
+                        hdr->title = GetTitleFromPath(a.full_path);
+                    }
 
-                if (!hdr->updated && hdr->is_published) {
-                    hdr->updated = GetTimeFromPath(a.full_path);
-                }
+                    if (!hdr->published && hdr->is_published) {
+                        hdr->published = GetTimeFromPath(a.full_path);
+                    }
 
-                if (hdr->article_path_part.empty()) {
-                    hdr->article_path_part = GetPath(ctx, a);
+                    if (!hdr->updated && hdr->is_published) {
+                        hdr->updated = GetTimeFromPath(a.full_path);
+                    }
+
+                    if (hdr->article_path_part.empty()) {
+                        hdr->article_path_part = GetPath(ctx, a);
+                    }
+
+                    article->SetAuthors(hdr->authors);
+
+                    if (series) {
+                        article->SetSeries(series);
+                    }
                 }
 
                 article->SetMetadata(hdr);
-                article->SetAuthors(hdr->authors);
-                article->SetSeries(move(series));
 
                 auto content = Content::Create(a.full_path);
                 content->AddPage(Page::Create(a.full_path));

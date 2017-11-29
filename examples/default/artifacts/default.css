@@ -213,3 +213,11 @@ nav.next-prev img {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
 }
+
+section.banner {
+    width: 100%
+}
+
+section.banner picture {
+    width: 95%
+}

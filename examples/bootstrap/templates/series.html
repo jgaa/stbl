@@ -4,21 +4,32 @@
 <body>
 {{site-header}}
 {{site-nav}}
-    <main class="list-articles-in-series">
-        <header class="series">
-            <h1>{{title}}</h1>
-            <section>{{abstract}}</section>
-            <h2>Articles in this series</h2>
-            <p>Note that the articles on this page are listed cronologically, oldest first.</p>
-        </header>
+    <header class="series">
+    <section class="banner">
+{{banner}}
+    </section>
+    </header>
+    <p class="floatstop"></p>
+    <main>
+        <h1>{{title}}</h1>
+        <section>{{abstract}}</section>
+        <section id="content">
+{{content}}
+        </section>
+        <section class="intro">
+<h2Articles in this series</h2>
+<p>Note that the articles on this page are listed chronologically, oldest first.</p>
+        </section>
+    <section class="list-articles-in-series">
 {{list-articles}}
-    </main><div id="sidebar">
-            <h2>Tags in this series</h2>
-                <nav>
-            {{tags}}
-                </nav>
-            <p class=timestamp>Newest article at <time datetime="{{updated-ansi}}">{{updated}}</time>
-            </div>
+    </main>
+    <div id="sidebar">
+        <h2>Tags in this series</h2>
+            <nav>
+        {{tags}}
+            </nav>
+        <p class=timestamp>Newest article at <time datetime="{{updated-ansi}}">{{updated}}</time>
+        </div>
 <p class="floatstop"></p>
 {{footer}}
 </body>

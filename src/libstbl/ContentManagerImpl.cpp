@@ -147,7 +147,11 @@ protected:
                 case Node::Type::ARTICLE: {
                     auto a = dynamic_pointer_cast<Article>(n);
                     assert(a);
-                    AddArticle(a);
+                    if (a->GetMetadata()->type == "index"s) {
+                        index_ = a;
+                    } else {
+                        AddArticle(a);
+                    }
                 } break;
             }
         }
@@ -452,7 +456,9 @@ protected:
         }
 
         if (options_.update_source_headers) {
-            ai.article->UpdateSourceHeaders(*scanner_, *meta);
+            if (ai.article->GetMetadata()->type != "index"s) {
+                ai.article->UpdateSourceHeaders(*scanner_, *meta);
+            }
         }
     }
 
@@ -512,7 +518,7 @@ protected:
             const int width = it->size.width + align;
             out << "<source media=\"(min-width: "
                 <<  width << "px)\" srcset=\""
-                << it->relative_path
+                << ctx.GetRelativeUrl(it->relative_path)
                 << "\">" << endl;
         }
 
@@ -542,9 +548,30 @@ protected:
         vars["article-type"] = boost::lexical_cast<string>(serie->GetType());
         AssignDefauls(vars, ctx);
         AssignHeaderAndFooter(vars, ctx);
-        Assign(*meta, vars, ctx);
-
         auto articles = serie->GetArticles();
+        for(const auto& a: articles) {
+            const auto am = a->GetMetadata();
+            if (am->type == "index"s) {
+                auto pages = index_->GetContent()->GetPages();
+                if (!pages.empty()) {
+                    LOG_TRACE << "Adding content to cover-page";
+                    auto p = pages.front();
+                    stringstream content;
+                    p->Render2Html(content);
+                    vars["content"] = content.str();
+                }
+
+                meta->abstract = am->abstract;
+                meta->banner = am->banner;
+                if (!meta->banner.empty()) {
+                    vars["banner"] = RenderBanner(*meta, ctx);
+                }
+
+                break;
+            }
+        }
+
+        Assign(*meta, vars, ctx);
         vars["list-articles"] = RenderNodeList(articles, ctx);
 
         ProcessTemplate(series, vars);
@@ -817,6 +844,17 @@ protected:
         vars["url"] = vars["site-url"];
         vars["rss"] = "index.rss";
 
+        if (index_) {
+            auto pages = index_->GetContent()->GetPages();
+            if (!pages.empty()) {
+                LOG_TRACE << "Adding content to front-page.";
+                auto p = pages.front();
+                stringstream content;
+                p->Render2Html(content);
+                vars["content"] = content.str();
+            }
+        }
+
         {
             auto base_url = vars["site-url"];
             if (!base_url.empty() && (base_url.back() == '/')) {
@@ -966,9 +1004,13 @@ protected:
         std::stringstream out;
 
         for(const auto& n : nodes) {
+            const auto meta = n->GetMetadata();
+            if (meta->type == "index"s) {
+                continue;
+            }
+
             map<string, string> vars;
             AssignDefauls(vars, ctx);
-            const auto meta = n->GetMetadata();
             vars["article-type"] = boost::lexical_cast<string>(n->GetType());
             Assign(*meta, vars, ctx);
             string item = LoadTemplate("article-in-list.html");
@@ -1154,6 +1196,7 @@ protected:
     // All articles that are published and not expired
     deque<shared_ptr<ArticleInfo>> all_articles_;
     deque<std::shared_ptr<Series>> all_series_;
+    article_t index_; // Optional content for the frontpage
 
     // All articles and series that are to be listed on the front-page(s)
     deque<node_t> articles_for_frontpages_;
