@@ -464,7 +464,7 @@ private:
             }
         }
 
-        LOG_WARN << "Failed to extract header-section from " << path;
+        LOG_ERROR << "Failed to extract header-section from " << path;
         throw runtime_error("Parse error");
     }
 

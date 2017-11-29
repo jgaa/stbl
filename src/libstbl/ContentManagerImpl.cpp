@@ -552,21 +552,22 @@ protected:
         for(const auto& a: articles) {
             const auto am = a->GetMetadata();
             if (am->type == "index"s) {
-                auto pages = index_->GetContent()->GetPages();
-                if (!pages.empty()) {
-                    LOG_TRACE << "Adding content to cover-page";
-                    auto p = pages.front();
-                    stringstream content;
-                    p->Render2Html(content);
-                    vars["content"] = content.str();
-                }
+                if (auto content = a->GetContent()) {
+                    auto pages = content->GetPages();
+                    if (!pages.empty()) {
+                        LOG_TRACE << "Adding content to cover-page";
+                        auto p = pages.front();
+                        stringstream content;
+                        p->Render2Html(content);
+                        vars["content"] = content.str();
+                    }
 
-                meta->abstract = am->abstract;
-                meta->banner = am->banner;
-                if (!meta->banner.empty()) {
-                    vars["banner"] = RenderBanner(*meta, ctx);
+                    meta->abstract = am->abstract;
+                    meta->banner = am->banner;
+                    if (!meta->banner.empty()) {
+                        vars["banner"] = RenderBanner(*meta, ctx);
+                    }
                 }
-
                 break;
             }
         }
