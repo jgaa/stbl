@@ -263,7 +263,7 @@ The templates have the following macros available, wrapped in {{ }}.
 Command-line options:
 
 ```text
-$ stbl --help
+$ tbl  --help
 stbl [options]
 
 General Options:
@@ -273,6 +273,16 @@ General Options:
   -f [ --open-in-firefox ]              Open the generated site in firefox.
   -p [ --publish ]                      Publish the site (deploy on a
                                         web-site).
+  --no-update-headers                   Do not update the source article
+                                        headers.
+  -v [ --version ]                      Show version and exit.
+  --init                                Initialize a new blog directory
+                                        structure at the destination.
+  --init-all                            Initialize a new blog directory
+                                        structure at the destination, including
+                                        templates and embedded files.
+  --init-example                        Initialize a new example blog directory
+                                        structure at the destination.
 
 Locations:
   -s [ --source-dir ] arg               Directory for the sites content.
@@ -286,7 +296,6 @@ Locations:
 
 Log-levels are:
    error warning info debug trace
-
 ```
 
 Examples:
