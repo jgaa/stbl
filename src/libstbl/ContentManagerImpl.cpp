@@ -467,6 +467,8 @@ protected:
 
         if (auto series = article.GetSeries()) {
             auto articles = series->GetArticles();
+            Wash(articles);
+
             node_t next, prev;
             auto uuid = article.GetMetadata()->uuid;
             for(auto it = articles.begin(); it != articles.end(); ++it) {
@@ -492,6 +494,14 @@ protected:
                 vars["if-next"] = Render("next.html", vars, ctx);
             }
         }
+    }
+
+    void Wash(articles_t& articles) {
+        articles.erase(remove_if(articles.begin(), articles.end(), [](const article_t& a) {
+            const auto meta = a->GetMetadata();
+            return !meta->is_published
+                || (meta->type == "index"s);
+        }));
     }
 
     string RenderBanner(const Node::Metadata& meta, const RenderCtx& ctx) {
@@ -573,6 +583,7 @@ protected:
         }
 
         Assign(*meta, vars, ctx);
+        Wash(articles);
         vars["list-articles"] = RenderNodeList(articles, ctx);
 
         ProcessTemplate(series, vars);
@@ -1006,10 +1017,6 @@ protected:
 
         for(const auto& n : nodes) {
             const auto meta = n->GetMetadata();
-            if (meta->type == "index"s) {
-                continue;
-            }
-
             map<string, string> vars;
             AssignDefauls(vars, ctx);
             vars["article-type"] = boost::lexical_cast<string>(n->GetType());
