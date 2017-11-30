@@ -28,14 +28,9 @@ These are the design-goals / primary requirements for the project.
 - [x] Generates static HTML5 websites that can be served by any http server.
 - [x] RSS feeds
 
-
 ## Upcoming features
 
-- [ ] Use banner in stead of css background for front-page?
-- [ ] Use 'index.md' as placeholder for header and introductory text for series
-- [ ] Link back to series from articles in the series
 - [ ] Todo-list style lists
-- [ ] Markdown links in lists (It's broken in the markdown module)
 - [ ] Syntax highlighting of code snippets.
 - [ ] Allow more formats than Markdown (in order to make it easy to import sites from existing CMS systems).
 - [ ] Optional comments (by some 3rd party services).
@@ -60,9 +55,12 @@ I use Debian Stretch and g++ 6.3.
 
 System dependencies:
 - boost libraries
+- libjpeg library
+
+CMake included projects
+- less Unit test framework
 
 Git submodules
-- lest (for future unit tests and integration tests)
 - cpp-markdown (To do the heavy lifting for markdown processing)
 
 ## Linux
@@ -257,6 +255,20 @@ The templates have the following macros available, wrapped in {{ }}.
 - updated: The time the article or series was updated.
 - updatedate: Updated date, including the "Updated label - defined in template updatedate.html)
 - url: The relative url to the article or series
+
+## How to create a new blog
+
+The easiest is to let stbl bootstrap a project, and then just edit the config file and start blogging.
+
+```sh
+~$ mkdir myblog
+~$ cd myblog
+~$ stbl --init
+[2017-11-30 09:54:58.061377] [0x00007ffa0a6c5b80] [info]    Initializing new site: "/home/jgaa/myblog"
+~$ ls
+articles  artifacts  files  images  stbl.conf  templates
+
+```
 
 ## Command line
 
