@@ -318,10 +318,11 @@ Log-levels are:
    error warning info debug trace
 ```
 
-Examples:
+## Examples
 
-To generate the example site and open it in firefox, showing debug-messages on the console:
+To generate the example site that is included in the git repository, and open it in firefox, showing debug-messages on the console:
 ```sh
 $ stbl --open-in-firefox --console-log debug  --source-dir ~/src/stbl/examples/default
 ```
 
+Note that you have to point the --source-dir option to where the examples/default folder is on your file-system.
