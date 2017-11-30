@@ -493,6 +493,9 @@ protected:
                 vars["next"] = next->GetMetadata()->relative_url;
                 vars["if-next"] = Render("next.html", vars, ctx);
             }
+
+            vars["up"] = series->GetMetadata()->relative_url;
+            vars["if-up"] = Render("up.html", vars, ctx);
         }
     }
 
