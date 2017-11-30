@@ -228,14 +228,15 @@ The templates have the following macros available, wrapped in {{ }}.
 - expires-ansi: Ansi-date when the article expires.
 - expires: The time the article expires
 - expires: The time the article expires.
+- if-next: The template next.html expanded, if there is a next page.
+- if-prev: The template prev.html expanded, if there is a previous page.
+- if-up: The template up.html expanded, if this is an article in a series.
 - if-updated: Updated date, including the "Updated label - defined in template updatedate.html) if the article as updated after is was published. If not, this macro is empty.
 - lang: The language for the site, typically used as &lt;html lang={{lang}}&gt;
 - list-articles: A list of articles to be placed in a series cover-page or frontpage. Only available when rendering these special pages.
 - menu: The rendered code fot the menu.
-- if-next: The template next.html expanded, if there is a next page.
 - next: The relative path to the next page (if the front-page is generated over several pages).
 - now: The current date (when the site was rendered).
-- if-prev: The template prev.html expanded, if there is a previous page.
 - prev: The relative path to the previous page (if the front-page is generated over several pages).
 - program-name: The name of the generator (stbl).
 - program-version: The version of the generator.
@@ -252,6 +253,7 @@ The templates have the following macros available, wrapped in {{ }}.
 - site-url: The fully qualified url to the site (from stbl.conf).
 - tags: The list of tags for the article
 - title: The title of the article or series
+- up: Link to the series fir articles that are part of a series
 - updated-ansi: Ansi-date when the article was updated.
 - updated: The time the article or series was updated.
 - updatedate: Updated date, including the "Updated label - defined in template updatedate.html)
