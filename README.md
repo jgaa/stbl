@@ -271,6 +271,13 @@ articles  artifacts  files  images  stbl.conf  templates
 
 ```
 
+Then, when you are ready, you can generate the site.
+```sh
+~$ stbl -s ~/myblog -d /tmp/myblog --open-in-firefox
+```
+
+If you experience any problems, please open an [issue](https://github.com/jgaa/stbl/issues).
+
 ## Command line
 
 Command-line options:
