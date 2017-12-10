@@ -860,6 +860,11 @@ protected:
         vars["rss"] = "index.rss";
 
         if (index_) {
+            auto meta = index_->GetMetadata();
+            if (!meta->banner.empty()) {
+                vars["banner"] = RenderBanner(*meta, ctx);
+            }
+
             auto pages = index_->GetContent()->GetPages();
             if (!pages.empty()) {
                 LOG_TRACE << "Adding content to front-page.";
