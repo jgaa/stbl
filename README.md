@@ -28,6 +28,10 @@ These are the design-goals / primary requirements for the project.
 - [x] Generates static HTML5 websites that can be served by any http server.
 - [x] RSS feeds
 
+## Other features
+- [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
+- Easy to integrate with Google Analytics (and similar services).
+
 ## Upcoming features
 
 - [ ] Todo-list style lists
