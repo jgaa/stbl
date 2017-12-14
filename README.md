@@ -328,3 +328,8 @@ $ stbl --open-in-firefox --console-log debug  --source-dir ~/src/stbl/examples/d
 ```
 
 Note that you have to point the --source-dir option to where the examples/default folder is on your file-system.
+
+## Blog posts about stbl
+
+- All blog posts tagged with *stbl* from [lastviking.eu](https://lastviking.eu/_tags/stbl.html)
+
