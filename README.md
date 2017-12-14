@@ -32,15 +32,6 @@ These are the design-goals / primary requirements for the project.
 - [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
 - Easy to integrate with Google Analytics (and similar services).
 
-## Upcoming features
-
-- Todo-list style lists
-- Syntax highlighting of code snippets.
-- Allow more formats than Markdown (in order to make it easy to import sites from existing CMS systems).
-- Optional comments (by some 3rd party services).
-- Optional statistics (no obligatory ties to Google).
-- Import a set of pictures and generate a gallery page (from the command-line)
-
 ## Why
 
 I like to write. I failed to find an existing tool that did the publishing job for me. I tried several popular approaches (like Drupal and Jekyll), but got nowhere. So I decided to spend
