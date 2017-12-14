@@ -877,6 +877,13 @@ protected:
         vars["url"] = vars["site-url"];
         vars["rss"] = "index.rss";
 
+        auto gsv = options_.options.get("seo.google-site-verification", "");
+        if (!gsv.empty()) {
+            vars["google-site-verification"] =
+                R"(<meta name="google-site-verification" content=")" + gsv +
+                R"("/>)";
+        }
+
         if (index_) {
             auto meta = index_->GetMetadata();
             if (!meta->banner.empty()) {
