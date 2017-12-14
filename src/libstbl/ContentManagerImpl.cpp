@@ -623,10 +623,37 @@ protected:
         vars["program-version"] = STBL_VERSION;
         vars["rel"] = ctx.GetRelativeUrl(""s);
         vars["lang"] = options_.options.get<string>("language", "en");
+        vars["scripts"] = RenderScripts(ctx);
 
         if (!skipMenu) {
             vars["menu"] = RenderMenu(ctx);
         }
+    }
+
+    // Load scripts in 'scrips' folder in ascending order
+    string RenderScripts(const RenderCtx& ctx) {
+        static const string scripts = GetScripts(ctx);
+        return scripts;
+    }
+
+    string GetScripts(const RenderCtx& ctx) {
+        stringstream out;
+
+        std::vector<path> paths;
+
+        path scripts = options_.source_path;
+        scripts /= "scripts";
+        for (const auto& de : boost::filesystem::directory_iterator{scripts}) {
+            paths.push_back(de.path());
+        }
+
+        sort(paths.begin(), paths.end());
+
+        for(const auto& path : paths) {
+            out << Load(path);
+        }
+
+        return out.str();
     }
 
     void Assign(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
