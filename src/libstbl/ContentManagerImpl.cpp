@@ -278,6 +278,24 @@ protected:
                     << ", it does not exist.";
             }
         }
+
+        // Handle special files
+        {
+            auto dst = tmp_path_;
+            auto favicon = dst;
+            favicon /= "artifacts";
+            favicon /= "favicon.ico";
+            if (boost::filesystem::is_regular(favicon)) {
+                dst /= "favicon.ico";
+
+                if (boost::filesystem::is_regular(dst)) {
+                    LOG_TRACE << "Removing existing file: " << dst;
+                    boost::filesystem::remove(dst);
+                }
+                LOG_TRACE << "Copying " << favicon << " --> " << dst;
+                boost::filesystem::copy(favicon, dst);
+            }
+        }
     }
 
     void RenderRss(const nodes_t& articles,
