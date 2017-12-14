@@ -333,3 +333,5 @@ Note that you have to point the --source-dir option to where the examples/defaul
 
 - All blog posts tagged with *stbl* from [lastviking.eu](https://lastviking.eu/_tags/stbl.html)
 
+Please open an issue if you know about a blog-post or article about stbl you would like to see in this list.
+
