@@ -55,6 +55,12 @@ public:
         size_t url_recuse_level = 0; // Relative to the sites root
 
         string GetRelativeUrl(const string url) const {
+            static const regex url_pattern(R"(^https?:\/\/.*)");
+
+            if (regex_match(url, url_pattern)) {
+                return url;
+            }
+
             stringstream out;
             for(size_t level = 0; level < url_recuse_level; ++level) {
                 out << "../";
