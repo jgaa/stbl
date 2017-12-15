@@ -925,6 +925,10 @@ protected:
                 p->Render2Html(content);
                 vars["content"] = content.str();
             }
+
+            if (!meta->abstract.empty()) {
+                vars["abstract"] = meta->abstract;
+            }
         }
 
         {
