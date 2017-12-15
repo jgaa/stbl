@@ -643,14 +643,16 @@ protected:
 
         path scripts = options_.source_path;
         scripts /= "scripts";
-        for (const auto& de : boost::filesystem::directory_iterator{scripts}) {
-            paths.push_back(de.path());
-        }
+        if (boost::filesystem::is_directory(scripts)) {
+            for (const auto& de : boost::filesystem::directory_iterator{scripts}) {
+                paths.push_back(de.path());
+            }
 
-        sort(paths.begin(), paths.end());
+            sort(paths.begin(), paths.end());
 
-        for(const auto& path : paths) {
-            out << Load(path);
+            for(const auto& path : paths) {
+                out << Load(path);
+            }
         }
 
         return out.str();
