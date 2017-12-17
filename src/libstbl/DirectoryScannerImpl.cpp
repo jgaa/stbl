@@ -147,6 +147,8 @@ public:
         WriteIf(out, "published", meta.published);
         WriteIf(out, "expires", meta.expires);
         WriteIf(out, "banner", meta.banner);
+        WriteIf(out, "banner-credits", meta.banner_credits);
+        WriteIf(out, "comments", meta.comments);
 
         out << "---" << endl;
 

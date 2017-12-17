@@ -30,7 +30,8 @@ These are the design-goals / primary requirements for the project.
 
 ## Other features
 - [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
-- Easy to integrate with Google Analytics (and similar services).
+- Easy to [integrate with Google Analytics](https://lastviking.eu/stbl_and_google_analytics.html) and similar services.
+- Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html).
 
 ## Why
 
@@ -171,6 +172,7 @@ The following headers are recognized:
 - published: When the article was published: A date in 'YYYY-MM-DD HH:MM' format, or 'no' or 'false' if the article is unpublished. If the value is unset, the system will fall back to the file-date for the article. If the date is set to the future, the article will beheld back1.
 Unpublished articles will not be generated. This lets you work on articles long before you
 are ready to publish them, by setting the value to "no" or "false".
+- comments: Can be <code>no</code>, to disable commenting, or any one of the configured commenting services, for example <code>disqus</code> if you have [configured your site to use Disqus](https://lastviking.eu/stbl_with_disqus.html)
 - updated: When the article was last updated. A date in 'YYY-MM-DD HH:MM' format. If unset, the system will fall back to the file-date for the article.
 - expires: When the article expired. A date in 'YYY-MM-DD HH:MM' format. If unset, the article will not expire. Expired articles are not published.
 - uuid: uuid of the article
@@ -219,6 +221,7 @@ The templates have the following macros available, wrapped in {{ }}.
 - author: The author(s) of an article
 - authors: Alias for author
 - banner: html5 picture element with scaled images for different screen sizes.
+- comments: html and/or jacascript code for comments on an article.
 - content: The content of an article.
 - expires-ansi: Ansi-date when the article expires.
 - expires: The time the article expires
@@ -232,6 +235,7 @@ The templates have the following macros available, wrapped in {{ }}.
 - menu: The rendered code fot the menu.
 - next: The relative path to the next page (if the front-page is generated over several pages).
 - now: The current date (when the site was rendered).
+- page-url: Full url to the current page
 - prev: The relative path to the previous page (if the front-page is generated over several pages).
 - program-name: The name of the generator (stbl).
 - program-version: The version of the generator.
@@ -252,7 +256,8 @@ The templates have the following macros available, wrapped in {{ }}.
 - updated-ansi: Ansi-date when the article was updated.
 - updated: The time the article or series was updated.
 - updatedate: Updated date, including the "Updated label - defined in template updatedate.html)
-- url: The relative url to the article or series
+- url: The relative url to the article or series.
+- uuid: The unique identifier for an article.
 
 ## How to create a new blog
 

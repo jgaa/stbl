@@ -25,6 +25,8 @@ public:
         std::string tmplte;
         std::string type;
         std::string banner;
+        std::string banner_credits;
+        std::string comments;
         std::vector<std::wstring> tags;
         time_t updated = 0;
         time_t published = 0;

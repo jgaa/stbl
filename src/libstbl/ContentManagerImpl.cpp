@@ -353,15 +353,6 @@ protected:
         Save(path, out.str());
     }
 
-    string GetSiteUrl() const {
-        auto url = options_.options.get<string>("url");
-        if (!url.empty() && (url.back() == '/')) {
-            url.resize(url.size() -1);
-        }
-
-        return url;
-    }
-
     // Return a date like: Sat, 07 Sep 2002 0:00:01 GMT
     string RssTime(const time_t when) {
         if (!when) {
@@ -623,8 +614,7 @@ protected:
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["site-title"] = options_.options.get<string>("name", "Anonymous Nest");
         vars["site-abstract"] = options_.options.get<string>("abstract");
-        vars["site-url"] = options_.options.get<string>(
-            "url", options_.destination_path + "index.html");
+        vars["site-url"] = GetSiteUrl();
         vars["program-name"] = PROGRAM_NAME;
         vars["program-version"] = STBL_VERSION;
         vars["rel"] = ctx.GetRelativeUrl(""s);
@@ -634,6 +624,20 @@ protected:
         if (!skipMenu) {
             vars["menu"] = RenderMenu(ctx);
         }
+    }
+
+    string GetSiteUrl() const {
+        static const string site_url = ComputeSiteUrl();
+        return site_url;
+    }
+
+    string ComputeSiteUrl() const {
+        string url = options_.options.get<string>(
+            "url", options_.destination_path);
+        if (!url.empty() && url[url.size() -1] == '/') {
+            url.resize(url.size() -1);
+        }
+        return url;
     }
 
     // Load scripts in 'scrips' folder in ascending order
@@ -675,14 +679,45 @@ protected:
         vars["title"] = stbl::ToString(md.title);
         vars["abstract"] = md.abstract;
         vars["url"] = ctx.GetRelativeUrl(md.relative_url);
+        vars["page-url"] = GetSiteUrl() + "/" + md.relative_url;
         vars["tags"] = RenderTagList(md.tags, ctx);
-
+        vars["uuid"] = md.uuid;
+        vars["comments"] = RenderComments(md, vars, ctx);
+        vars["banner-credits"] = md.banner_credits;
         vars["pubdate"] = Render("pubdate.html", vars, ctx);
         vars["updatedate"] = Render("updatedate.html", vars, ctx);
         if (vars["updated"] != vars["published"]) {
             vars["if-updated"] = vars["updatedate"];
         }
         vars["pubdates"] = Render("pubdates.html", vars, ctx);
+    }
+
+    string RenderComments(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
+        if (md.comments == "no") {
+            return {};
+        }
+
+        auto comments = md.comments;
+        if (comments.empty()) {
+            comments = options_.options.get("comments.default", "");
+        }
+
+        if (comments.empty()) {
+            return {};
+        }
+
+        const auto key = "comments."s + comments;
+
+        for(const auto& it :  options_.options.get_child(key)) {
+            vars[comments + "-" + it.first] =  it.second.get("", "");
+        }
+
+        string tmplte_file = options_.options.get(key + ".template", "");
+        if (tmplte_file.empty()) {
+            return {};
+        }
+
+        return Render(tmplte_file, vars, ctx);
     }
 
     string Render(const string& templateName,
