@@ -32,6 +32,7 @@ These are the design-goals / primary requirements for the project.
 - [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
 - Easy to [integrate with Google Analytics](https://lastviking.eu/stbl_and_google_analytics.html) and similar services.
 - Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html).
+- Easy to add [Commenting with IntenseDebate](https://lastviking.eu/stbl_with_intensedebate.html).
 
 ## Why
 
