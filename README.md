@@ -177,6 +177,8 @@ are ready to publish them, by setting the value to "no" or "false".
 - updated: When the article was last updated. A date in 'YYY-MM-DD HH:MM' format. If unset, the system will fall back to the file-date for the article.
 - expires: When the article expired. A date in 'YYY-MM-DD HH:MM' format. If unset, the article will not expire. Expired articles are not published.
 - uuid: uuid of the article
+- sitemap-changefreq: Sets the changefreq value in the sitemap. One of always, hourly, daily, weekly, monthly, yearly, never. See [the sitemaps XML Tags definitions](https://www.sitemaps.org/protocol.html#xmlTagDefinitions).
+- sitemap-priority: A value from 0 to 100, where 100 is then highest search range priority for this page. This can be set individually on articles and series cover pages.
 - title: Title of the article. If not specified, the title is deduced from the file-name.
 - tags: A comma-separated list of tags.
 - abstract: A short abstract of the article, for use in the list of articles.
