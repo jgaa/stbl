@@ -27,6 +27,8 @@ public:
         std::string banner;
         std::string banner_credits;
         std::string comments;
+        int sitemap_priority = -1;
+        std::string sitemap_changefreq;
         std::vector<std::wstring> tags;
         time_t updated = 0;
         time_t published = 0;

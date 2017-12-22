@@ -149,6 +149,8 @@ public:
         WriteIf(out, "banner", meta.banner);
         WriteIf(out, "banner-credits", meta.banner_credits);
         WriteIf(out, "comments", meta.comments);
+        WriteIf(out, "sitemap-priority", meta.sitemap_priority);
+        WriteIf(out, "sitemap-changefreq", meta.sitemap_changefreq);
 
         out << "---" << endl;
 
@@ -202,6 +204,12 @@ private:
     void WriteIf(ostream& out, const char *name, const time_t& value) {
         if (value) {
             WriteIf(out, name, ToStringAnsi(value));
+        }
+    }
+
+    void WriteIf(ostream& out, const char *name, const int& value) {
+        if (value) {
+            WriteIf(out, name, to_string(value));
         }
     }
 

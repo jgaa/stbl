@@ -95,6 +95,13 @@ private:
         hdr.have_updated = hdr.updated != 0;
         hdr.have_title = !hdr.title.empty();
 
+        string pri = Get("sitemap-priority", headers);
+        if (!pri.empty()) {
+            hdr.sitemap_priority = stoi(pri);
+        }
+        hdr.sitemap_changefreq = Get("sitemap-changefreq", headers);
+
+
         if (hdr.uuid.empty()) {
             hdr.uuid = CreateUuid();
         }

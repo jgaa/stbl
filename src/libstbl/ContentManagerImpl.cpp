@@ -22,6 +22,7 @@
 #include "stbl/Node.h"
 #include "stbl/Series.h"
 #include "stbl/ImageMgr.h"
+#include "stbl/Sitemap.h"
 #include "stbl/logging.h"
 #include "stbl/utility.h"
 #include "templates_res.h"
@@ -248,6 +249,8 @@ protected:
             "images", "artifacts", "files"
         };
 
+        sitemap_ = Sitemap::Create();
+
         // Create the main page from template
         RenderFrontpage();
 
@@ -270,6 +273,13 @@ protected:
         // Render tags
         for(auto& t: tags_) {
             RenderTag(t.second);
+        }
+
+        // Create sitemap
+        {
+            auto sitemap = tmp_path_;
+            sitemap /= "sitemap.xml";
+            sitemap_->Write(sitemap);
         }
 
         // Copy artifacts, images and other files
@@ -301,6 +311,16 @@ protected:
                 LOG_TRACE << "Copying " << favicon << " --> " << dst;
                 boost::filesystem::copy(favicon, dst);
             }
+        }
+
+        auto robots = tmp_path_;
+        robots /= "robots.txt";
+        if (!boost::filesystem::is_regular(robots)) {
+            std::stringstream out;
+            out << "Sitemap: " << GetSiteUrl() << "/sitemap.xml" << endl
+                << "User-agent: *" << endl
+                << "Disallow: /files" << endl;
+            Save(robots, out.str());
         }
     }
 
@@ -403,6 +423,7 @@ protected:
         vars["name"] = ti.name;
         vars["title"] = ti.name;
         vars["url"] = ctx.GetRelativeUrl(ti.url);
+        vars["page-url"] = GetSiteUrl() + "/" + ti.url;
         AssignHeaderAndFooter(vars, ctx);
         vars["list-articles"] = RenderNodeList(ti.nodes, ctx);
         ProcessTemplate(page, vars);
@@ -410,6 +431,12 @@ protected:
         path dest = tmp_path_;
         dest /= ti.url;
         Save(dest, page, true);
+
+        Sitemap::Entry sm_entry;
+        sm_entry.priority = GetSitemapPriority("tag");
+        sm_entry.url = vars["page-url"];
+        sm_entry.updated = ToStringAnsi(Roundup(now_, roundup_));
+        sitemap_->Add(sm_entry);
     }
 
     template <typename T>
@@ -468,6 +495,14 @@ protected:
             }
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
+
+            Sitemap::Entry sm_entry;
+            sm_entry.priority = GetSitemapPriority("article",
+                static_cast<float>(meta->sitemap_priority) / 100.0);
+            sm_entry.changefreq = meta->sitemap_changefreq;
+            sm_entry.url = vars["page-url"];
+            sm_entry.updated = vars["updated-ansi"];
+            sitemap_->Add(sm_entry);
         }
 
         if (options_.update_source_headers) {
@@ -576,6 +611,12 @@ protected:
         vars["article-type"] = boost::lexical_cast<string>(serie->GetType());
         AssignDefauls(vars, ctx);
         AssignHeaderAndFooter(vars, ctx);
+
+        Sitemap::Entry sm_entry;
+        sm_entry.priority = GetSitemapPriority("series");
+        sm_entry.url = vars["page-url"];
+        sm_entry.updated = vars["updated-ansi"];
+
         auto articles = serie->GetArticles();
         for(const auto& a: articles) {
             const auto am = a->GetMetadata();
@@ -595,6 +636,13 @@ protected:
                     if (!meta->banner.empty()) {
                         vars["banner"] = RenderBanner(*meta, ctx);
                     }
+
+                    if (meta->sitemap_priority >= 0) {
+                        sm_entry.priority = static_cast<float>(
+                            meta->sitemap_priority) / 100.0;
+                    }
+
+                    sm_entry.changefreq = meta->sitemap_changefreq;
                 }
                 break;
             }
@@ -606,6 +654,7 @@ protected:
 
         ProcessTemplate(series, vars);
         Save(dst, series, true);
+        sitemap_->Add(sm_entry);
     }
 
     void AssignDefauls(map<string, string>& vars, const RenderCtx& ctx,
@@ -1034,9 +1083,16 @@ protected:
 
                 string frontpage = LoadTemplate("frontpage.html");
                 ProcessTemplate(frontpage, vars);
-                auto dst_path = tmp_path_.string() + "/"s + GetFrontPageName(page_count);
+
+                const auto fp_path = GetFrontPageName(page_count);
+                auto dst_path = tmp_path_.string() + "/"s + fp_path;
                 LOG_DEBUG << "Generating frontpage " << dst_path;
                 Save(dst_path, frontpage);
+                Sitemap::Entry sm_entry;
+                sm_entry.priority = GetSitemapPriority("frontpage");
+                sm_entry.url = GetSiteUrl() + "/" + fp_path;
+                sm_entry.updated = ToStringAnsi(Roundup(now_, roundup_));
+                sitemap_->Add(sm_entry);
                 ++page_count;
                 articles.clear();
             }
@@ -1050,6 +1106,15 @@ protected:
         frontpage_path /= GetFrontPageName(0);
 
         RenderRssForFrontpage(frontpage_path, vars);
+    }
+
+    float GetSitemapPriority(const string& key, float fixed = -1.0) {
+        if (fixed >= 0.0) {
+            return fixed;
+        }
+        float priority = options_.options.get<float>("seo.sitemap.priority."s + key,
+                                                     50.0) / 100.0;
+        return priority;
     }
 
     string GetFrontPageName(const int page) {
@@ -1328,6 +1393,7 @@ protected:
     unique_ptr<Scanner> scanner_;
     unique_ptr<ImageMgr> images_;
     const time_t roundup_;
+    unique_ptr<Sitemap> sitemap_;
 };
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)
