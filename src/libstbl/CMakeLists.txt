@@ -5,28 +5,28 @@ include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
 
 add_custom_command(
     COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT}/examples/bootstrap/templates/*.html
-    DEPENDS ${STBL_ROOT}/examples/bootstrap/templates/*.html mkres
+    DEPENDS mkres
     OUTPUT templates_res.cpp templates_res.h
     COMMENT "Embedding templates..."
     )
 
 add_custom_command(
     COMMAND mkres stbl embedded_artifacts_ artifacts_res.cpp artifacts_res.h ${STBL_ROOT}/examples/bootstrap/artifacts/*
-    DEPENDS ${STBL_ROOT}/examples/bootstrap/artifacts/* mkres
+    DEPENDS mkres
     OUTPUT artifacts_res.cpp artifacts_res.h
     COMMENT "Embedding artifacts..."
     )
 
 add_custom_command(
     COMMAND mkres stbl embedded_config_ config_res.cpp config_res.h ${STBL_ROOT}/examples/bootstrap/*.conf
-    DEPENDS ${STBL_ROOT}/examples/bootstrap/*.conf
+    DEPENDS mkres
     OUTPUT config_res.cpp config_res.h
     COMMENT "Embedding config..."
     )
 
 add_custom_command(
     COMMAND mkres stbl embedded_articles_ articles_res.cpp articles_res.h ${STBL_ROOT}/examples/bootstrap/articles/*.md
-    DEPENDS ${STBL_ROOT}/examples/bootstrap/articles/*.md
+    DEPENDS mkres
     OUTPUT articles_res.cpp articles_res.h
     COMMENT "Embedding articles..."
     )
@@ -44,6 +44,7 @@ set(SOURCES
     ImageMgrImpl.cpp
     utility.cpp
     BootstrapImpl.cpp
+    SitemapImpl.cpp
     templates_res.cpp
     artifacts_res.cpp
     config_res.cpp
