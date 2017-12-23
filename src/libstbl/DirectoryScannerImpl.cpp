@@ -422,8 +422,13 @@ private:
     }
 
     std::wstring GetTitleFromPath(const path& path) {
-        auto name = path.stem().string();
+        return PrepareTitleFromPath(path.stem().string());
+    }
+
+    std::wstring PrepareTitleFromPath(std::string name) {
+
         boost::replace_all(name, "_", " ");
+
         if(!name.empty()) {
             locale loc;
             name[0] = toupper(name[0], loc);

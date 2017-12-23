@@ -5,23 +5,22 @@
 {{site-header}}
 {{site-nav}}
     <header class="series">
-    <section class="banner">
+    <div class="banner">
 {{banner}}
-    </section>
+    </div>
     </header>
     <p class="floatstop"></p>
     <main>
-        <h1>{{title}}</h1>
-        <section>{{abstract}}</section>
-        <section id="content">
+        <h2>{{title}}</h2>
+        <div class="intro">{{abstract}}</div>
+        <div id="content">
 {{content}}
-        </section>
-        <section class="intro">
-<h2Articles in this series</h2>
-<p>Note that the articles on this page are listed chronologically, oldest first.</p>
-        </section>
+        </div>
     <section class="list-articles-in-series">
+        <h2>Articles in this series</h2>
+        <p>Note that the articles on this page are listed chronologically, oldest first.</p>
 {{list-articles}}
+    </section>
     </main>
     <div id="sidebar">
         <h2>Tags in this series</h2>

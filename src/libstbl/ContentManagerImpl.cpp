@@ -610,7 +610,6 @@ protected:
         std::map<std::string, std::string> vars;
         vars["article-type"] = boost::lexical_cast<string>(serie->GetType());
         AssignDefauls(vars, ctx);
-        AssignHeaderAndFooter(vars, ctx);
 
         Sitemap::Entry sm_entry;
         sm_entry.priority = GetSitemapPriority("series");
@@ -631,6 +630,9 @@ protected:
                         vars["content"] = content.str();
                     }
 
+                    if (!am->title.empty()) {
+                        meta->title = am->title;
+                    }
                     meta->abstract = am->abstract;
                     meta->banner = am->banner;
                     if (!meta->banner.empty()) {
@@ -649,6 +651,7 @@ protected:
         }
 
         Assign(*meta, vars, ctx);
+        AssignHeaderAndFooter(vars, ctx);
         Wash(articles);
         vars["list-articles"] = RenderNodeList(articles, ctx);
 
@@ -993,7 +996,7 @@ protected:
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["title"] = vars["site-title"];
         vars["abstract"] = vars["site-abstract"];
-        vars["url"] = vars["site-url"];
+        vars["url"] = vars["page-url"] = vars["site-url"];
         vars["rss"] = "index.rss";
 
         auto gsv = options_.options.get("seo.google-site-verification", "");
