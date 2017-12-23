@@ -455,16 +455,33 @@ private:
         std::ifstream in(inpath.c_str());
         array<char, 1024> buffer;
         int delimiters = 0;
+        bool start = true;
+        size_t offset {};
 
         while(in) {
             in.getline(buffer.data(), buffer.size());
             const auto len = in.gcount();
 
+            if (start) {
+                if (len >= 3) {
+                    if (static_cast<unsigned char>(buffer[0]) == 0xef
+                        && static_cast<unsigned char>(buffer[1]) == 0xbb
+                        && static_cast<unsigned char>(buffer[2]) == 0xbf) {
+
+                        // BOF
+                        offset = 3;
+                    }
+                }
+                start = false;
+            } else {
+                offset = 0;
+            }
+
             bool is_delimiter = false;
-            if (len >=3) {
-                if ((buffer[0] == '-')
-                    && (buffer[0] == '-')
-                    &&  (buffer[0] == '-')) {
+            if (len >= (offset + 3)) {
+                if ((buffer[offset + 0] == '-')
+                    && (buffer[offset + 1] == '-')
+                    &&  (buffer[offset + 2] == '-')) {
                     ++delimiters;
                     is_delimiter = true;
                 }

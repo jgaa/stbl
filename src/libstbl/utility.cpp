@@ -161,6 +161,17 @@ void EatHeader(std::istream& in) {
 
     int separators = 0;
 
+    if (!in) {
+        throw runtime_error("Parse error: Empty file?");
+    }
+
+    if (in.peek() == 0xef) {
+        in.get();
+        if ((!in || in.get() != 0xbb) || (!in || in.get() != 0xbf)) {
+            throw runtime_error("Parse error: Invalid file format (failed to parse BOM)");
+        }
+    }
+
     while(in) {
         if ((in && in.get() == '-')
             && (in && (in.get() == '-'))
