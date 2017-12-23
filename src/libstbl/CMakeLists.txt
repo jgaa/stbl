@@ -3,30 +3,38 @@ project(libstbl VERSION 1.11 LANGUAGES CXX)
 include_directories(${STBL_ROOT}/externals/cpp-markdown/src/)
 include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
 
+file(GLOB TEMPLATE_SOURCES ${STBL_ROOT}/examples/bootstrap/templates/*.html)
+
 add_custom_command(
-    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${STBL_ROOT}/examples/bootstrap/templates/*.html
-    DEPENDS mkres
+    COMMAND mkres stbl embedded_templates_ templates_res.cpp templates_res.h ${TEMPLATE_SOURCES}
+    DEPENDS mkres ${TEMPLATE_SOURCES}
     OUTPUT templates_res.cpp templates_res.h
     COMMENT "Embedding templates..."
     )
 
+file(GLOB ARTIFACT_SOURCES ${STBL_ROOT}/examples/bootstrap/artifacts/*)
+
 add_custom_command(
-    COMMAND mkres stbl embedded_artifacts_ artifacts_res.cpp artifacts_res.h ${STBL_ROOT}/examples/bootstrap/artifacts/*
-    DEPENDS mkres
+    COMMAND mkres stbl embedded_artifacts_ artifacts_res.cpp artifacts_res.h ${ARTIFACT_SOURCES}
+    DEPENDS mkres ${ARTIFACT_SOURCES}
     OUTPUT artifacts_res.cpp artifacts_res.h
     COMMENT "Embedding artifacts..."
     )
 
+file(GLOB CONFIG_SOURCES ${STBL_ROOT}/examples/bootstrap/*.conf)
+
 add_custom_command(
-    COMMAND mkres stbl embedded_config_ config_res.cpp config_res.h ${STBL_ROOT}/examples/bootstrap/*.conf
-    DEPENDS mkres
+    COMMAND mkres stbl embedded_config_ config_res.cpp config_res.h ${CONFIG_SOURCES}
+    DEPENDS mkres ${CONFIG_SOURCES}
     OUTPUT config_res.cpp config_res.h
     COMMENT "Embedding config..."
     )
 
+file(GLOB ARTICLES_SOURCES ${STBL_ROOT}/examples/bootstrap/articles/*.md)
+
 add_custom_command(
-    COMMAND mkres stbl embedded_articles_ articles_res.cpp articles_res.h ${STBL_ROOT}/examples/bootstrap/articles/*.md
-    DEPENDS mkres
+    COMMAND mkres stbl embedded_articles_ articles_res.cpp articles_res.h ${ARTICLES_SOURCES}
+    DEPENDS mkres ${ARTICLES_SOURCES}
     OUTPUT articles_res.cpp articles_res.h
     COMMENT "Embedding articles..."
     )
@@ -62,15 +70,3 @@ target_include_directories(libstbl
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include
 )
 target_link_libraries(libstbl PUBLIC ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
-
-
-# if (WIN32)
-#     set(SOURCES ${ACTUAL_SOURCES} ${HEADERS} ${RESFILES})
-# else()
-#     set(SOURCES ${ACTUAL_SOURCES})
-# endif()
-#
-# add_library(libstbl ${SOURCES})
-# target_include_directories(libstbl PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-# set_target_properties(libstbl PROPERTIES DEBUG_OUTPUT_NAME stblD)
-# target_link_libraries(libstbl ${DEFAULT_LIBRARIES})
