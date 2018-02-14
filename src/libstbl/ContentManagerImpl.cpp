@@ -742,6 +742,22 @@ protected:
             vars["if-updated"] = vars["updatedate"];
         }
         vars["pubdates"] = Render("pubdates.html", vars, ctx);
+        vars["og-image"] = RenderOgImage(md, vars, ctx);
+
+        if (!md.abstract.empty()) {
+            vars["og-description"] = R"(<meta property="og:description" content=")"s + md.abstract + R"("/>)";
+        }
+    }
+
+    string RenderOgImage(const Node::Metadata& md,
+                         map<string, string>& vars,
+                         const RenderCtx& ctx) {
+        if (md.banner.empty()) {
+            return {};
+        }
+
+        auto path = GetSiteUrl() + "/images/" + md.banner;
+        return R"(<meta property="og:image" content=")"s + path + R"("/>")";
     }
 
     string RenderComments(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {

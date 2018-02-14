@@ -1,13 +1,17 @@
 <head class="page">
 {{scripts}}
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <title>{{title}}</title>
-    <meta name="description" content="{{abstract}}">
-    <meta name="Content-Generator" content="{{program-name}} {{program-version}}">
+    <meta name="description" content="{{abstract}}"/>
+    <meta name="Content-Generator" content="{{program-name}} {{program-version}}"/>
 {{google-site-verification}}
+    <meta property="og:title" content="{{title}}"/>
+    {{og-image}}
+    {{og-description}}
+    <meta property="og:url" content="{{page-url}}" />
     <link rel="stylesheet" href="{{rel}}artifacts/default.css" />
     <link rel="stylesheet" media="only screen and (max-width: 550px)" href="{{rel}}artifacts/mobile.css" />
     <link rel="stylesheet" media="only screen and (min-width: 551px)" href="{{rel}}artifacts/desktop.css" />
-    <link rel="canonical" href="{{page-url}}">
+    <link rel="canonical" href="{{page-url}}"/>
 </head>
