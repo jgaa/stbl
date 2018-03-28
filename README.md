@@ -41,7 +41,7 @@ a few days making my own program to [get it right](https://lastviking.eu/modern_
 
 # License
 
-GPl 3 license. It is Free. Free as in Free Beer. Free as in Free Air.
+GPl 3 license. It is Free. Free as in speech. Free as in Free Air.
 
 # How to build
 
