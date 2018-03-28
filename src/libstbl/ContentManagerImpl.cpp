@@ -476,6 +476,7 @@ protected:
 
             string article = LoadTemplate(template_name);
             map<string, string> vars;
+            vars["minutes-to-read"] = to_string(max<int>(1, words / 275));
             AssignDefauls(vars, ctx);
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
@@ -493,6 +494,9 @@ protected:
             if (!meta->banner.empty()) {
                 vars["banner"] = RenderBanner(*meta, ctx);
             }
+
+            vars["read-time"] = Render("read-time.html", vars, ctx);
+
             ProcessTemplate(article, vars);
             Save(ai.tmp_path, article, true);
 

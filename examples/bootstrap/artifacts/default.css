@@ -213,3 +213,14 @@ nav.next-prev img {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
 }
+
+div.read-time {
+    text-align: center;
+    color: darkslategray;
+}
+
+div.read-time img {
+    height: 0.7rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+}
