@@ -550,9 +550,9 @@ protected:
     }
 
     void Wash(articles_t& articles) {
-        articles.erase(remove_if(articles.begin(), articles.end(), [](const article_t& a) {
+        articles.erase(remove_if(articles.begin(), articles.end(), [this](const article_t& a) {
             const auto meta = a->GetMetadata();
-            return !meta->is_published
+            return !(options_.preview_mode ? true : meta->is_published)
                 || (meta->type == "index"s);
         }));
     }
@@ -799,9 +799,10 @@ protected:
 
     void CommitToDestination()
     {
-        // TODO: Copy only files that have changed.
-        // Make checksums for all the files in the tmp site.
-        // Make checksums of the files in the destination site.
+        if (boost::filesystem::is_directory(options_.destination_path)) {
+            LOG_DEBUG << "Deleting directory: " << options_.destination_path;
+            boost::filesystem::remove_all(options_.destination_path);
+        }
 
         CopyDirectory(tmp_path_, options_.destination_path);
     }
@@ -838,21 +839,21 @@ protected:
 
         if (!meta->is_published) {
             LOG_INFO << *node << " is held back because it is unpublished.";
-            return false;
+            return options_.preview_mode ? true : false;
         }
 
         if (meta->published > now) {
             LOG_INFO << *node
                 << " is held back because it is due to be published at "
                 << put_time(localtime(&meta->published), "%Y-%m-%d %H:%M");
-            return false;
+            return options_.preview_mode ? true : false;
         }
 
         if (meta->expires && (meta->expires < now)) {
             LOG_INFO << *node
                 << " is held back because it expired at "
                 << put_time(localtime(&meta->expires), "%Y-%m-%d %H:%M");
-            return false;
+            return options_.preview_mode ? true : false;
         }
 
         return true;

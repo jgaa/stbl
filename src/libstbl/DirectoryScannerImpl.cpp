@@ -327,12 +327,16 @@ private:
             md->article_path_part = ctx.current_path.stem().string();
         }
 
-        if (!md->published && md->is_published) {
+        if (!md->published && (md->is_published || options_.preview_mode)) {
             md->published = GetTimeFromPath(ctx.current_path);
         }
 
-        if (!md->updated && md->is_published) {
+        if (!md->updated && (md->is_published || options_.preview_mode)) {
             md->updated = GetTimeFromPath(ctx.current_path);
+        }
+
+        if (!md->is_published) {
+            md->tags.push_back(L"UNPUBLISHED");
         }
 
         series->SetMetadata(md);
@@ -362,11 +366,11 @@ private:
                         hdr->title = GetTitleFromPath(a.full_path);
                     }
 
-                    if (!hdr->published && hdr->is_published) {
+                    if (!hdr->published && (hdr->is_published || options_.preview_mode)) {
                         hdr->published = GetTimeFromPath(a.full_path);
                     }
 
-                    if (!hdr->updated && hdr->is_published) {
+                    if (!hdr->updated && (hdr->is_published || options_.preview_mode)) {
                         hdr->updated = GetTimeFromPath(a.full_path);
                     }
 
@@ -379,6 +383,10 @@ private:
                     if (series) {
                         article->SetSeries(series);
                     }
+                }
+
+                if (!hdr->is_published) {
+                    hdr->tags.push_back(L"UNPUBLISHED");
                 }
 
                 article->SetMetadata(hdr);

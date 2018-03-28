@@ -64,6 +64,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("open-in-firefox,f", "Open the generated site in firefox.")
         ("publish,p", "Publish the site (deploy on a web-site).")
         ("no-update-headers", "Do not update the source article headers.")
+        ("preview", "Do not update the source article headers. Generate all articles.")
         ("version,v", "Show version and exit.")
         ("init", "Initialize a new blog directory structure at the destination.")
         ("init-all", "Initialize a new blog directory structure at the destination, including templates and embedded files.")
@@ -133,6 +134,11 @@ bool parse_command_line(int argc, char * argv[], Options &options)
 
     if (vm.count("no-update-headers")) {
         options.update_source_headers = false;
+    }
+
+    if (vm.count("preview")) {
+        options.update_source_headers = false;
+        options.preview_mode = true;
     }
 
     if (vm.count("publish")) {
