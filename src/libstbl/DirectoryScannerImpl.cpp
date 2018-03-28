@@ -328,7 +328,7 @@ private:
         }
 
         if (!md->published && md->is_published) {
-                    md->published = GetTimeFromPath(ctx.current_path);
+            md->published = GetTimeFromPath(ctx.current_path);
         }
 
         if (!md->updated && md->is_published) {
