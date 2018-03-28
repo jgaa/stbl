@@ -216,7 +216,7 @@ private:
         auto local = mktime(&t);
 
         t = {};
-        auto utc_tm = gmtime_r(&local, &t);
+        gmtime_r(&local, &t);
         return mktime(&t);
     }
 
