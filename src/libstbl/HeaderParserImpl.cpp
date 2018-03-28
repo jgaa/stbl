@@ -213,8 +213,11 @@ private:
             throw runtime_error("Parse error");
         }
 
-        auto result = mktime(&t);
-        return result;
+        auto local = mktime(&t);
+
+        t = {};
+        auto utc_tm = gmtime_r(&local, &t);
+        return mktime(&t);
     }
 
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
