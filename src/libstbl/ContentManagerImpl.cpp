@@ -761,7 +761,7 @@ protected:
         }
 
         auto path = GetSiteUrl() + "/images/" + md.banner;
-        return R"(<meta property="og:image" content=")"s + path + R"("/>")";
+        return R"(<meta property="og:image" content=")"s + path + R"("/>)";
     }
 
     string RenderComments(const Node::Metadata& md, map<string, string>& vars, const RenderCtx& ctx) {
