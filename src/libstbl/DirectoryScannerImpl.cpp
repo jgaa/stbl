@@ -117,7 +117,7 @@ public:
         ScanDir(articles, ctx);
         Process(ctx);
 
-        return move(nodes_);
+        return std::move(nodes_);
     }
 
     void UpdateRequiredHeaders(const std::string & article,
@@ -356,7 +356,7 @@ private:
             md->tags.push_back(L"UNPUBLISHED");
         }
 
-        series->SetMetadata(md);
+        //series->SetMetadata(md);
 
         // Add articles
         auto articles = ProcessArticles(ctx, series);
@@ -366,15 +366,17 @@ private:
         for(auto& article : articles) {
             if (article->GetMetadata()->type == "index"s) {
                 index_node = article;
+                md->abstract = index_node->GetMetadata()->abstract;
             } else {
                 md->updated = std::max(md->updated, article->GetMetadata()->latestDate());
             }
         }
 
-        if (index_node) {
-            index_node->setUpdated(md->updated);
-        }
+//        if (index_node) {
+//            index_node->setUpdated(md->updated);
+//        }
 
+        series->SetMetadata(md);
         series->AddArticles(std::move(articles));
         return std::move(series);
     }
@@ -427,7 +429,7 @@ private:
 
                 auto content = Content::Create(a.full_path);
                 content->AddPage(Page::Create(a.full_path));
-                article->SetContent(move(content));
+                article->SetContent(std::move(content));
 
                 articles.push_back(article);
 
@@ -437,7 +439,7 @@ private:
             }
         }
 
-        return move(articles);
+        return std::move(articles);
     }
 
 
