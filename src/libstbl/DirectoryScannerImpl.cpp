@@ -165,6 +165,7 @@ public:
         WriteIf(out, "comments", meta.comments);
         WriteIf(out, "sitemap-priority", meta.sitemap_priority);
         WriteIf(out, "sitemap-changefreq", meta.sitemap_changefreq);
+        WriteIf(out, "part", meta.part);
 
         out << "---" << endl;
 

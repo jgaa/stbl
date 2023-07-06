@@ -10,6 +10,7 @@
 #include "stbl/Page.h"
 #include "stbl/logging.h"
 #include "stbl/utility.h"
+#include "stbl/ContentManager.h"
 #include "markdown.h"
 
 using namespace std;
@@ -33,7 +34,7 @@ public:
     ~PageImpl()  {
     }
 
-    size_t Render2Html(std::ostream & out) override {
+    size_t Render2Html(std::ostream & out, RenderCtx& ctx) override {
 
         if (!path_.empty()) {
             ifstream in(path_.string());
@@ -45,15 +46,15 @@ public:
                 throw runtime_error("IO error");
             }
 
-            return Render2Html(in, out);
+            return Render2Html(in, out, ctx);
         }
 
         std::istringstream in{content_};
-        return Render2Html(in, out);
+        return Render2Html(in, out, ctx);
     }
 
 private:
-    size_t Render2Html(istream& in, ostream& out) {
+    size_t Render2Html(istream& in, ostream& out, RenderCtx& ctx) {
         EatHeader(in);
         string content((std::istreambuf_iterator<char>(in)),
                        istreambuf_iterator<char>());
@@ -98,6 +99,10 @@ private:
                 break;
             }
         }
+
+        // Quick hack to handle images in series.
+        static const std::regex images{R"(.*(!\[.+\])\((images\/.+)\))"};
+        content = std::regex_replace(content, images, "$1("s + ctx.getRelativePrefix() + "$2)");
 
         istringstream stream_content(content);
         markdown::Document doc(stream_content);

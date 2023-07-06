@@ -4,6 +4,7 @@
 #include "stbl/stbl.h"
 #include "stbl_tests.h"
 #include "stbl/Page.h"
+#include "stbl/ContentManager.h"
 
 using namespace std;
 using namespace stbl;
@@ -22,7 +23,9 @@ STARTCASE(TestLinkInList) {
 
     auto page = Page::Create(source);
 
-    page->Render2Html(out);
+
+    RenderCtx ctx;
+    page->Render2Html(out, ctx);
 
     CHECK_EQUAL(boost::trim_right_copy(out.str()),
                 R"(<p>- <a href="https://example.com">This</a> is a link to <a href="https://gitub.com">github</a>.</p>)");

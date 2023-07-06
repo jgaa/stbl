@@ -9,6 +9,7 @@
 namespace stbl {
 
 class Scanner;
+class RenderCtx;
 
 class Page
 {
@@ -23,7 +24,7 @@ public:
     virtual ~Page() = default;
 
     // Return the number of words in the article
-    virtual size_t Render2Html(std::ostream& out) = 0;
+    virtual size_t Render2Html(std::ostream& out, RenderCtx& ctx) = 0;
     static page_t Create(const std::filesystem::path& path);
     static page_t Create(const std::string& content);
 };

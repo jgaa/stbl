@@ -46,7 +46,7 @@ public:
             << " to " << width << 'x' << height
             << " in " << path;
         boost::gil::resize_view(const_view(img_), view(area), bilinear_sampler());
-        boost::gil::write_view(path.c_str(), boost::gil::const_view(img_), boost::gil::jpeg_tag{});
+        boost::gil::write_view(path.c_str(), boost::gil::const_view(area), boost::gil::jpeg_tag{});
 
         Size s;
         s.width = area.width();

@@ -40,6 +40,7 @@ public:
         bool have_published = false;
         bool have_updated = false;
         bool have_title = false;
+        int part = 0;
 
         time_t latestDate() const noexcept {
             return std::max(updated, published);

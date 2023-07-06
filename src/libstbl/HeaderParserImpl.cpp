@@ -95,6 +95,14 @@ private:
         hdr.have_updated = hdr.updated != 0;
         hdr.have_title = !hdr.title.empty();
 
+        if (auto part = Get("part", headers); !part.empty()) {
+            try {
+                hdr.part = stoi(part);
+            } catch(const std::exception& ex) {
+                LOG_WARN << "Failed to cast part: " << part << " to integer.";
+            }
+        }
+
         string pri = Get("sitemap-priority", headers);
         if (!pri.empty()) {
             hdr.sitemap_priority = stoi(pri);

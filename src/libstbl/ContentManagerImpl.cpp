@@ -57,26 +57,7 @@ public:
         string url;
     };
 
-    struct RenderCtx {
-        // The node we are about to render
-        node_t current;
-        size_t url_recuse_level = 0; // Relative to the sites root
 
-        string GetRelativeUrl(const string url) const {
-            static const regex url_pattern(R"(^https?:\/\/.*)");
-
-            if (regex_match(url, url_pattern)) {
-                return url;
-            }
-
-            stringstream out;
-            for(size_t level = 0; level < url_recuse_level; ++level) {
-                out << "../";
-            }
-            out << url;
-            return out.str();
-        }
-    };
 
     struct Menu {
         wstring name;
@@ -471,7 +452,7 @@ protected:
             }
 
             stringstream content;
-            const auto words = p->Render2Html(content);
+            const auto words = p->Render2Html(content, ctx);
 
             LOG_INFO << "Article " << ai.article->GetMetadata()->title
                 << " contains " << words << " words.";
@@ -597,7 +578,7 @@ protected:
         }
 
         if (!default_src.empty()) {
-            out << R"(<img src=")" << default_src << R"(" alt="Banner">)" << endl;
+            out << R"(<img src=")" << ctx.GetRelativeUrl(default_src) << R"(" alt="Banner">)" << endl;
         }
         out << "</picture>" << endl;
         return out.str();
@@ -637,7 +618,7 @@ protected:
                         LOG_TRACE << "Adding content to cover-page";
                         auto p = pages.front();
                         stringstream content;
-                        p->Render2Html(content);
+                        p->Render2Html(content, ctx);
                         vars["content"] = content.str();
                     }
 
@@ -901,13 +882,17 @@ protected:
         // Sort, oldest first
         sort(publishable.begin(), publishable.end(),
              [](const auto& left, const auto& right) {
+                const auto leftPart = left->GetMetadata()->part;
+                const auto rightPart = right->GetMetadata()->part;
+                if (leftPart && rightPart) {
+                    return leftPart < rightPart;
+                }
+
                 return left->GetMetadata()->latestDate() < right->GetMetadata()->latestDate();
              });
 
 
         for(const auto& a : publishable) {
-
-
             DoAddArticle(a, series);
 
             // Collect tags from the article
@@ -1048,7 +1033,7 @@ protected:
                 LOG_TRACE << "Adding content to front-page.";
                 auto p = pages.front();
                 stringstream content;
-                p->Render2Html(content);
+                p->Render2Html(content, ctx);
                 vars["content"] = content.str();
             }
 

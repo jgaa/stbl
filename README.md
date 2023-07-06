@@ -187,6 +187,7 @@ are ready to publish them, by setting the value to "no" or "false".
 - template: Template to use when rendering the article. The default is "article.html".
 - type: "info" if the article is to be held back from listings (like the About page). Default is blank.
 - menu: The name of the menu-item that links to the article. This is typically used for special pages like About or Contact etc.
+- part: Integer, starting at 1 (one), that can be used in series to sort the articles correctly when the series index-page is displayed in the browser. For stand-alone articles the header is ignored.
 
 ## Configuration
 
