@@ -1,5 +1,5 @@
 #include <memory>
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 namespace stbl {
 
@@ -12,13 +12,13 @@ public:
 
     Image() = default;
     virtual ~Image() = default;
-    virtual Size ScaleAndSave(const boost::filesystem::path& path,
+    virtual Size ScaleAndSave(const std::filesystem::path& path,
                               int width,
                               int quality = 95) = 0;
     virtual int GetWidth() const = 0;
     virtual int GetHeight() const = 0;
 
-    static std::unique_ptr<Image> Create(const boost::filesystem::path& path);
+    static std::unique_ptr<Image> Create(const std::filesystem::path& path);
 };
 
 }

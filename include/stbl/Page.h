@@ -2,7 +2,7 @@
 
 #include <ostream>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include "stbl/stbl.h"
 
@@ -24,7 +24,7 @@ public:
 
     // Return the number of words in the article
     virtual size_t Render2Html(std::ostream& out) = 0;
-    static page_t Create(const boost::filesystem::path& path);
+    static page_t Create(const std::filesystem::path& path);
     static page_t Create(const std::string& content);
 };
 

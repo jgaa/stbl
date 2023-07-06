@@ -1,6 +1,6 @@
 #pragma once
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include "stbl/stbl.h"
 #include "stbl/Node.h"
@@ -21,7 +21,7 @@ public:
     virtual void UpdateSourceHeaders(Scanner& scanner,
                                      const Node::Metadata& meta) = 0;
 
-    static content_t Create(const boost::filesystem::path& path);
+    static content_t Create(const std::filesystem::path& path);
 };
 
 }

@@ -29,7 +29,10 @@ public:
     virtual void SetSeries(const serie_t& serie) = 0;
     virtual serie_t GetSeries() const  = 0;
 
+    virtual void setUpdated(time_t updated) = 0;
+
     static std::shared_ptr<Article> Create();
+
 };
 
 }

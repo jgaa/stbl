@@ -3,7 +3,7 @@
 #include <iostream>
 #include <string>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 #include <boost/property_tree/ptree.hpp>
 
 namespace stbl {
@@ -13,28 +13,49 @@ namespace stbl {
 //                      boost::string_ref::const_iterator end,
 //                      bool trim = false) ;
 
-std::string Load(const boost::filesystem::path& path);
-void Save(const boost::filesystem::path& path,
+std::string Load(const std::filesystem::path& path);
+void Save(const std::filesystem::path& path,
           const std::string& data,
           bool createDirectoryIsMissing = false,
           bool binary = false);
-void CreateDirectory(const boost::filesystem::path& path);
-void CreateDirectoryForFile(const boost::filesystem::path& path);
+void CreateDirectory(const std::filesystem::path& path);
+void CreateDirectoryForFile(const std::filesystem::path& path);
 
 boost::property_tree::ptree
-LoadProperties(const boost::filesystem::path& path);
+LoadProperties(const std::filesystem::path& path);
 
 std::string ToString(const std::wstring& str);
 std::wstring ToWstring(const std::string& str);
 std::string ToStringAnsi(const time_t& when);
 time_t Roundup(time_t when, const int roundup);
 
-void CopyDirectory(const boost::filesystem::path& src,
-                   const boost::filesystem::path& dst);
+void CopyDirectory(const std::filesystem::path& src,
+                   const std::filesystem::path& dst);
 
 void EatHeader(std::istream& in);
 
 std::string CreateUuid();
+
+std::filesystem::path MkTmpPath();
+
+template <typename T>
+auto escapeForXml(const T& orig) {
+    std::ostringstream out;
+    for(const auto ch : orig) {
+        if (ch == '<') {
+            out << "&lt;";
+        } else if (ch == '>') {
+            out << "&gt;";
+        } else if (ch == '\"') {
+            out << "&quot;";
+        } else if (ch == '\'') {
+            out << "&apos;";
+        } else {
+            out << ch;
+        }
+    }
+    return out.str();
+}
 
 }
 

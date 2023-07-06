@@ -70,7 +70,7 @@ public:
         }
 
         LOG_TRACE << "Dumping headers: ";
-        for(const auto h : headers) {
+        for (const auto &h : headers) {
             LOG_TRACE << "  '" << h.first << "' --> '" << h.second << "'";
         }
 
@@ -192,7 +192,7 @@ private:
         list = GetList(key, headers);
 
         std::vector<std::wstring> wlist;
-        for(const auto v : list) {
+        for (const auto &v : list) {
             wlist.push_back(converter.from_bytes(v));
         }
 

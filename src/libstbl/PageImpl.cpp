@@ -20,7 +20,7 @@ namespace stbl {
 class PageImpl : public Page
 {
 public:
-    PageImpl(const boost::filesystem::path& path)
+    PageImpl(const std::filesystem::path& path)
     : path_{path}, content_{}
     {
     }
@@ -119,11 +119,11 @@ private:
         return words;
     }
 
-    const boost::filesystem::path path_;
+    const std::filesystem::path path_;
     const std::string content_;
 };
 
-page_t Page::Create(const boost::filesystem::path& path) {
+page_t Page::Create(const std::filesystem::path& path) {
     return make_shared<PageImpl>(path);
 }
 

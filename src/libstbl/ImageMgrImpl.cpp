@@ -1,5 +1,4 @@
 
-
 #include "stbl/stbl.h"
 #include "stbl/ImageMgr.h"
 #include "stbl/logging.h"
@@ -18,7 +17,7 @@ public:
     {
     }
 
-    images_t Prepare(const boost::filesystem::path & path) override {
+    images_t Prepare(const std::filesystem::path & path) override {
         images_t images;
         static const string scale_dir{"_scale_"};
 
@@ -49,7 +48,7 @@ public:
                 + scale_dir + to_string(*w)
                 + "/"s + path.filename().string();
 
-            if (boost::filesystem::exists(dst)) {
+            if (std::filesystem::exists(dst)) {
                 LOG_TRACE << "The scaled image " << dst << " already exists.";
                 auto scaled_img = Image::Create(dst);
                 ii.size.width = scaled_img->GetWidth();

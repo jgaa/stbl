@@ -3,6 +3,7 @@
 #include <fstream>
 #include <streambuf>
 #include <iomanip>
+#include <filesystem>
 
 #include "stbl/Sitemap.h"
 #include "stbl/logging.h"
@@ -15,7 +16,7 @@ namespace stbl {
 class SitemapImpl : public Sitemap {
 public:
     struct Cmp {
-        bool operator()(const Entry& left, const Entry& right) {
+        bool operator()(const Entry& left, const Entry& right) const {
             return left.url < right.url;
         }
     };
@@ -27,7 +28,7 @@ public:
         entries_.insert(entry);
     }
 
-    void Write(const boost::filesystem::path & path) override {
+    void Write(const std::filesystem::path & path) override {
 
         LOG_TRACE << "Saving sitemap: " << path;
 

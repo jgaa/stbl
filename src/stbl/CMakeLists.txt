@@ -1,12 +1,12 @@
-project(stbl VERSION 0.11 LANGUAGES CXX)
+project(stbl VERSION ${STBL_VERSION} LANGUAGES CXX)
 
 set(SOURCES
     main.cpp
     )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
-set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 14)
-target_link_libraries(${PROJECT_NAME} PRIVATE libstbl ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
+set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 17)
+target_link_libraries(${PROJECT_NAME} PRIVATE libstbl ${Boost_LIBRARIES} ${JPEG_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
 
 target_include_directories(${PROJECT_NAME}
     PRIVATE ${STBL_ROOT}/include>
@@ -16,5 +16,3 @@ target_include_directories(${PROJECT_NAME}
 )
 
 install(TARGETS ${PROJECT_NAME} DESTINATION ${CMAKE_INSTALL_BINDIR})
-
-configure_file(config.h.template ${CMAKE_BINARY_DIR}/generated-include/stbl/stbl_config.h)

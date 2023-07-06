@@ -1,8 +1,12 @@
 
 
-#include <boost/gil/image.hpp>
-#include <boost/gil/typedefs.hpp>
-#include <boost/gil/extension/io/jpeg_io.hpp>
+//#include <boost/gil/image.hpp>
+//#include <boost/gil/typedefs.hpp>
+
+#include <filesystem>
+
+#include <boost/gil.hpp>
+#include <boost/gil/extension/io/jpeg.hpp>
 #include <boost/gil/extension/numeric/sampler.hpp>
 #include <boost/gil/extension/numeric/resample.hpp>
 
@@ -23,13 +27,13 @@ namespace stbl {
 class ImageImpl : public Image {
 public:
 
-    ImageImpl(const boost::filesystem::path& path)
+    ImageImpl(const std::filesystem::path& path)
     : path_{path}
     {
-        jpeg_read_image(path.c_str(), img_);
+        boost::gil::read_image(path.c_str(), img_, boost::gil::jpeg_tag{});
     }
 
-    Size ScaleAndSave(const boost::filesystem::path& path,
+    Size ScaleAndSave(const std::filesystem::path& path,
                       int width,
                       int quality) override {
         const auto w = img_.width();
@@ -41,8 +45,8 @@ public:
             << " from " << w << 'x' << h
             << " to " << width << 'x' << height
             << " in " << path;
-        resize_view(const_view(img_), view(area), bilinear_sampler());
-        jpeg_write_view(path.c_str(), const_view(area), quality);
+        boost::gil::resize_view(const_view(img_), view(area), bilinear_sampler());
+        boost::gil::write_view(path.c_str(), boost::gil::const_view(img_), boost::gil::jpeg_tag{});
 
         Size s;
         s.width = area.width();
@@ -59,11 +63,11 @@ public:
     }
 
 private:
-    rgb8_image_t img_;
-    const boost::filesystem::path path_;
+    boost::gil::rgb8_image_t img_;
+    const std::filesystem::path path_;
 };
 
-unique_ptr<Image> Image::Create(const boost::filesystem::path& path) {
+unique_ptr<Image> Image::Create(const std::filesystem::path& path) {
     return make_unique<ImageImpl>(path);
 }
 

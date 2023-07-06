@@ -21,6 +21,7 @@ struct Options
     std::string publish_destination;
     bool update_source_headers = true;
     bool preview_mode = false;
+    bool automatic_update = false;
 
     // From stbl.conf
     boost::property_tree::ptree options;

@@ -5,6 +5,7 @@
 #include <ctime>
 #include <iostream>
 #include <codecvt>
+#include <filesystem>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/info_parser.hpp>
@@ -20,13 +21,13 @@
 using namespace std;
 using boost::string_ref;
 namespace pt = boost::property_tree;
-namespace fs = boost::filesystem;
+namespace fs = std::filesystem;
 
 namespace stbl {
 
 string Load(const fs::path& path) {
 
-    if (!is_regular(path)) {
+    if (!filesystem::is_regular_file(path)) {
         LOG_ERROR << "The file " << path << " need to exist!";
         throw runtime_error("I/O error - Missing required file.");
     }
@@ -74,14 +75,14 @@ void Save(const fs::path& path,
     out << data;
 }
 
-void CreateDirectoryForFile(const boost::filesystem::path& path) {
+void CreateDirectoryForFile(const std::filesystem::path& path) {
     const auto directory = path.parent_path();
     if (!is_directory(directory)) {
         CreateDirectory(directory);
     }
 }
 
-void CreateDirectory(const boost::filesystem::path& path) {
+void CreateDirectory(const std::filesystem::path& path) {
     if (!is_directory(path)) {
         LOG_DEBUG << "Creating directory: " << path;
         create_directories(path);
@@ -90,7 +91,7 @@ void CreateDirectory(const boost::filesystem::path& path) {
 
 boost::property_tree::ptree
 LoadProperties(const fs::path& path) {
-    if (!is_regular(path)) {
+    if (!fs::is_regular_file(path)) {
         LOG_ERROR << "The file " << path << " need to exist!";
         throw runtime_error("I/O error - Missing required file.");
     }
@@ -112,11 +113,19 @@ std::wstring ToWstring(const std::string& str) {
 }
 
 string ToStringAnsi(const time_t& when) {
-    std::tm tm = *std::localtime(&when);
-    return boost::lexical_cast<string>(put_time(&tm, "%F %R"));
+    if (when) {
+        if (const auto tm = std::localtime(&when)) {
+            return boost::lexical_cast<string>(put_time(tm, "%F %R"));
+        }
+    }
+    return {};
 }
 
 time_t Roundup(time_t when, const int roundup) {
+    if (!when) {
+        return {};
+    }
+
     const bool add = (when % roundup) != 0;
     when /= roundup;
     when *= roundup;
@@ -144,8 +153,8 @@ void CopyDirectory(const fs::path& src,
         fs::path d = dst;
         d /= de.path().filename();
         LOG_TRACE << "Copying " << de.path() << " --> " << d;
-        if (is_regular(de.path())) {
-            fs::copy_file(de.path(), d, fs::copy_option::overwrite_if_exists);
+        if (fs::is_regular_file(de.path())) {
+            fs::copy_file(de.path(), d, fs::copy_options::overwrite_existing);
         } else if (is_symlink(de.path())) {
             fs::copy_symlink(de.path(), d);
         } else if (is_directory(de.path())) {
@@ -193,6 +202,13 @@ void EatHeader(std::istream& in) {
 std::string CreateUuid() {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     return boost::uuids::to_string(uuid);
+}
+
+std::filesystem::path MkTmpPath()
+{
+    auto path = std::filesystem::temp_directory_path();
+    path /= CreateUuid();
+    return path;
 }
 
 

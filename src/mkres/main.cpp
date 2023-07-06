@@ -3,7 +3,7 @@
 #include <fstream>
 #include <iomanip>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 using namespace std;
 
@@ -33,9 +33,9 @@ int main(int argc, char *argv[]) {
         << "const resource_t " << res_name << " = {" << endl;
 
     for(int i = 5; i < argc; i++) {
-        const boost::filesystem::path path = argv[i];
+        const std::filesystem::path path = argv[i];
 
-        if (!boost::filesystem::is_regular(path)) {
+        if (!std::filesystem::is_regular_file(path)) {
             clog << "Skipping " << path << endl;
             continue;
         }

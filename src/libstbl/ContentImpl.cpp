@@ -1,4 +1,5 @@
 
+#include <filesystem>
 #include <deque>
 #include "stbl/stbl.h"
 #include "stbl/Content.h"
@@ -14,7 +15,7 @@ namespace stbl {
 class ContentImpl : public Content
 {
 public:
-    ContentImpl(const boost::filesystem::path& path)
+    ContentImpl(const std::filesystem::path& path)
     : path_{path}
     {
     }
@@ -39,11 +40,11 @@ public:
     }
 
 private:
-    const boost::filesystem::path path_;
+    const std::filesystem::path path_;
     pages_t pages_;
 };
 
-content_t Content::Create(const boost::filesystem::path& path) {
+content_t Content::Create(const std::filesystem::path& path) {
     return make_shared<ContentImpl>(path);
 }
 

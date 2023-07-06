@@ -8,8 +8,10 @@
 #include <locale>
 #include <codecvt>
 #include <sstream>
+#include <fstream>
+#include <chrono>
 
-#include <boost/filesystem.hpp>
+#include <filesystem>
 #include <boost/algorithm/string.hpp>
 
 #include "stbl/stbl.h"
@@ -23,9 +25,21 @@
 #include "stbl/utility.h"
 
 using namespace std;
-using namespace boost::filesystem;
+using namespace std::filesystem;
 
 namespace stbl {
+
+namespace {
+template <typename TP>
+std::time_t to_time_t(TP tp)
+{
+    using namespace std::chrono;
+    auto sctp = time_point_cast<system_clock::duration>(tp - TP::clock::now()
+                                                        + system_clock::now());
+    return system_clock::to_time_t(sctp);
+}
+} // ns
+
 
 class DirectoryScannerImpl : public Scanner
 {
@@ -163,12 +177,12 @@ public:
         out.close();
 
         // Set file date
-        auto when = boost::filesystem::last_write_time(article);
-        boost::filesystem::last_write_time(tmp_name, when);
+        auto when = std::filesystem::last_write_time(article);
+        std::filesystem::last_write_time(tmp_name, when);
 
         // Rename
-        boost::filesystem::remove(article);
-        boost::filesystem::rename(tmp_name, article);
+        std::filesystem::remove(article);
+        std::filesystem::rename(tmp_name, article);
     }
 
 private:
@@ -219,7 +233,7 @@ private:
             throw std::runtime_error("Can only scan existing directories.");
         }
 
-        for(auto entry : directory_iterator(path)) {
+        for (const auto &entry : directory_iterator(path)) {
             LOG_TRACE << "Examining " << entry.path();
 
             const auto name = entry.path().filename().string();
@@ -288,7 +302,7 @@ private:
         if (find(ctx.recursed.begin(), ctx.recursed.end(), subdir)
             != ctx.recursed.end()) {
             LOG_ERROR << "Detected recursive loop in directory structure:";
-            for(const auto p: newCtx.recursed) {
+            for (const auto &p : newCtx.recursed) {
                 LOG_ERROR << "   " << p.string();
             }
 
@@ -331,8 +345,10 @@ private:
             md->published = GetTimeFromPath(ctx.current_path);
         }
 
-        if (!md->updated && (md->is_published || options_.preview_mode)) {
-            md->updated = GetTimeFromPath(ctx.current_path);
+        if (options_.automatic_update) {
+            if (!md->updated && (md->is_published || options_.preview_mode)) {
+                md->updated = GetTimeFromPath(ctx.current_path);
+            }
         }
 
         if (!md->is_published) {
@@ -343,8 +359,23 @@ private:
 
         // Add articles
         auto articles = ProcessArticles(ctx, series);
-        series->AddArticles(move(articles));
-        return move(series);
+
+        md->updated = md->published;
+        article_t index_node;
+        for(auto& article : articles) {
+            if (article->GetMetadata()->type == "index"s) {
+                index_node = article;
+            } else {
+                md->updated = std::max(md->updated, article->GetMetadata()->latestDate());
+            }
+        }
+
+        if (index_node) {
+            index_node->setUpdated(md->updated);
+        }
+
+        series->AddArticles(std::move(articles));
+        return std::move(series);
     }
 
     articles_t ProcessArticles(const Context& ctx, serie_t series = {}) {
@@ -370,8 +401,10 @@ private:
                         hdr->published = GetTimeFromPath(a.full_path);
                     }
 
-                    if (!hdr->updated && (hdr->is_published || options_.preview_mode)) {
-                        hdr->updated = GetTimeFromPath(a.full_path);
+                    if (options_.automatic_update) {
+                        if (!hdr->updated && (hdr->is_published || options_.preview_mode)) {
+                            hdr->updated = GetTimeFromPath(a.full_path);
+                        }
                     }
 
                     if (hdr->article_path_part.empty()) {
@@ -414,12 +447,12 @@ private:
             case Options::PathLayout::RECURSIVE:
             {
                 path where;
-                for(const auto p: location.recursed) {
-                    auto filename = p.filename().string();
-                    if (!filename.empty() && (filename[0] == '_')) {
-                        filename = filename.substr(1);
-                    }
-                    where /= filename;
+                for (const auto &p : location.recursed) {
+                auto filename = p.filename().string();
+                if (!filename.empty() && (filename[0] == '_')) {
+                    filename = filename.substr(1);
+                }
+                where /= filename;
                 }
                 where /= location.full_path.stem().string();
                 return where.string();
@@ -445,8 +478,9 @@ private:
         return converter.from_bytes(name);
     }
 
+
     time_t GetTimeFromPath(const path& path) {
-        auto when = last_write_time(path);
+        auto when = to_time_t(last_write_time(path));
         return when;
     }
 

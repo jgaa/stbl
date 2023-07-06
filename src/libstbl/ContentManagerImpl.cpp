@@ -29,7 +29,7 @@
 #include "stbl/stbl_config.h"
 
 using namespace std;
-using namespace boost::filesystem;
+using namespace std::filesystem;
 using namespace std::string_literals;
 
 namespace stbl {
@@ -45,6 +45,13 @@ public:
     };
 
     struct TagInfo {
+
+        void sort() {
+            std::sort(nodes.begin(), nodes.end(), [](const auto& left, const auto& right) {
+                return left->GetMetadata()->latestDate() > right->GetMetadata()->latestDate();
+            });
+        }
+
         nodes_t nodes;
         string name; //utf8 with caps as in first seen version
         string url;
@@ -140,8 +147,7 @@ protected:
         // Prepare menus from config
         ScanMenus(menu_, options_.options.get_child("menu"));
 
-        tmp_path_ = temp_directory_path();
-        tmp_path_ /= unique_path();
+        tmp_path_ = MkTmpPath();
         create_directories(tmp_path_);
 
         for(const auto& n: nodes_) {
@@ -234,7 +240,7 @@ protected:
                     new_menu->url = url;
                 }
 
-                current_menu->children.push_back(move(new_menu));
+                current_menu->children.push_back(std::move(new_menu));
                 current_menu = current_menu->children.back().get();
 
             } while(depth < parts.size());
@@ -272,6 +278,7 @@ protected:
 
         // Render tags
         for(auto& t: tags_) {
+            t.second.sort();
             RenderTag(t.second);
         }
 
@@ -287,7 +294,7 @@ protected:
             path src = options_.source_path, dst = tmp_path_;
             src /= d;
             dst /= d;
-            if (boost::filesystem::is_directory(src)) {
+            if (std::filesystem::is_directory(src)) {
                 CopyDirectory(src, dst);
             } else {
                 LOG_WARN << "Cannot copy directory " << src
@@ -301,21 +308,21 @@ protected:
             auto favicon = dst;
             favicon /= "artifacts";
             favicon /= "favicon.ico";
-            if (boost::filesystem::is_regular(favicon)) {
+            if (std::filesystem::is_regular_file(favicon)) {
                 dst /= "favicon.ico";
 
-                if (boost::filesystem::is_regular(dst)) {
+                if (std::filesystem::is_regular_file(dst)) {
                     LOG_TRACE << "Removing existing file: " << dst;
-                    boost::filesystem::remove(dst);
+                    std::filesystem::remove(dst);
                 }
                 LOG_TRACE << "Copying " << favicon << " --> " << dst;
-                boost::filesystem::copy(favicon, dst);
+                std::filesystem::copy(favicon, dst);
             }
         }
 
         auto robots = tmp_path_;
         robots /= "robots.txt";
-        if (!boost::filesystem::is_regular(robots)) {
+        if (!std::filesystem::is_regular_file(robots)) {
             std::stringstream out;
             out << "Sitemap: " << GetSiteUrl() << "/sitemap.xml" << endl
                 << "User-agent: *" << endl
@@ -325,7 +332,7 @@ protected:
     }
 
     void RenderRss(const nodes_t& articles,
-                   boost::filesystem::path path,
+                   std::filesystem::path path,
                    const std::string& title,
                    const std::string& description,
                    const std::string& link,
@@ -343,21 +350,21 @@ protected:
             << R"(<atom:link href=")"
                 << rss_link
                 << R"(" rel="self" type="application/rss+xml" />)" << endl
-            << "<title>" << title << "</title>" << endl
-            << "<description>" << description << "</description>" << endl
+            << "<title>" << escapeForXml(title) << "</title>" << endl
+            << "<description>" << escapeForXml(description) << "</description>" << endl
             << "<link>" << link << "</link>" << endl
             << "<lastBuildDate>" << RssTime(time(nullptr)) << "</lastBuildDate>" << endl
             << "<pubDate>" << RssTime(time(nullptr)) << "</pubDate>" << endl
             << "<ttl>" << options_.options.get<unsigned>("rss.ttl", 1800) << "</ttl>" << endl;
 
-        for(const auto a: articles) {
+        for (const auto &a : articles) {
             auto hdr = a->GetMetadata();
 
             const auto url = GetSiteUrl() + "/"s + hdr->relative_url;
 
             out << "<item>" << endl
-                << " <title>" << ToString(hdr->title) << "</title>" << endl
-                << " <description>" << hdr->abstract << "</description>" << endl
+                << " <title>" << escapeForXml(ToString(hdr->title)) << "</title>" << endl
+                << " <description>" << escapeForXml(hdr->abstract) << "</description>" << endl
                 << " <link>" << url << "</link>" << endl
                 << R"( <guid isPermaLink="false">)" << hdr->uuid << "</guid>" << endl
                 << " <pubDate>" << RssTime(hdr->published) << "</pubDate>" << endl
@@ -368,7 +375,7 @@ protected:
             << "</rss>" << endl;
 
         // Use the same file-name as the link, but with another extention
-        path = boost::filesystem::change_extension(path, ".rss");
+        path.replace_extension("rss");
         LOG_DEBUG << "Creating RSS feed " << path;
         Save(path, out.str());
     }
@@ -486,7 +493,7 @@ protected:
             if (authors.empty()) {
                 auto default_author = options_.options.get<string>("people.default", "");
                 if (!default_author.empty()) {
-                    authors.push_back(move(default_author));
+                    authors.push_back(std::move(default_author));
                 }
             }
             vars["author"] = RenderAuthors(authors, ctx);
@@ -574,7 +581,7 @@ protected:
         string default_src;
 
         out << R"(<picture class="banner">)" << endl;
-        for(const auto v: imgs) {
+        for (const auto &v : imgs) {
             if (default_src.empty() && (v.size.width >= 300)) {
                 default_src = v.relative_path;
                 break;
@@ -709,8 +716,8 @@ protected:
 
         path scripts = options_.source_path;
         scripts /= "scripts";
-        if (boost::filesystem::is_directory(scripts)) {
-            for (const auto& de : boost::filesystem::directory_iterator{scripts}) {
+        if (std::filesystem::is_directory(scripts)) {
+            for (const auto& de : std::filesystem::directory_iterator{scripts}) {
                 paths.push_back(de.path());
             }
 
@@ -741,9 +748,12 @@ protected:
         vars["comments"] = RenderComments(md, vars, ctx);
         vars["banner-credits"] = md.banner_credits;
         vars["pubdate"] = Render("pubdate.html", vars, ctx);
-        vars["updatedate"] = Render("updatedate.html", vars, ctx);
-        if (vars["updated"] != vars["published"]) {
+        if (const auto& when = vars["updated"]; !when.empty() && when != vars["published"]) {
+            vars["updatedate"] = Render("updatedate.html", vars, ctx);
             vars["if-updated"] = vars["updatedate"];
+            vars["pubished-or-updated"] = vars["updatedate"];
+        } else {
+            vars["pubished-or-updated"] = vars["pubdate"];
         }
         vars["pubdates"] = Render("pubdates.html", vars, ctx);
         vars["og-image"] = RenderOgImage(md, vars, ctx);
@@ -803,9 +813,9 @@ protected:
 
     void CommitToDestination()
     {
-        if (boost::filesystem::is_directory(options_.destination_path)) {
+        if (std::filesystem::is_directory(options_.destination_path)) {
             LOG_DEBUG << "Deleting directory: " << options_.destination_path;
-            boost::filesystem::remove_all(options_.destination_path);
+            std::filesystem::remove_all(options_.destination_path);
         }
 
         CopyDirectory(tmp_path_, options_.destination_path);
@@ -891,7 +901,7 @@ protected:
         // Sort, oldest first
         sort(publishable.begin(), publishable.end(),
              [](const auto& left, const auto& right) {
-                 return left->GetMetadata()->updated < right->GetMetadata()->updated;
+                return left->GetMetadata()->latestDate() < right->GetMetadata()->latestDate();
              });
 
 
@@ -913,14 +923,14 @@ protected:
         all_series_.push_back(node);
 
         // Add all tags from all our published articles to the series
-        for(const auto tag : tags) {
+        for (const auto &tag : tags) {
             meta->tags.push_back(tag);
         }
         AddTags(meta->tags, node);
 
         meta->updated = publishable.back()->GetMetadata()->updated;
 
-        series->SetArticles(move(publishable));
+        series->SetArticles(std::move(publishable));
 
         return true;
     }
@@ -1060,7 +1070,7 @@ protected:
         auto fp_articles = articles_for_frontpages_;
         sort(fp_articles.begin(), fp_articles.end(),
              [](const auto& left, const auto& right) {
-                 auto res = left->GetMetadata()->updated - right->GetMetadata()->updated;
+                auto res = left->GetMetadata()->latestDate() - right->GetMetadata()->latestDate();
                  if (res) {
                      return res > 0;
                  }
@@ -1349,9 +1359,13 @@ protected:
     }
 
     string ToStringLocal(const time_t& when) {
-        static const string format = options_.options.get<string>("system.date.format", "%c");
-        std::tm tm = *std::localtime(&when);
-        return boost::lexical_cast<string>(put_time(&tm, format.c_str()));
+        if (when) {
+            static const string format = options_.options.get<string>("system.date.format", "%c");
+            if (const auto tm = std::localtime(&when)) {
+                return boost::lexical_cast<string>(put_time(tm, format.c_str()));
+            }
+        }
+        return {};
     }
 
     string& ProcessTemplate(string& tmplte,
@@ -1380,7 +1394,7 @@ protected:
         template_path /= "templates";
         template_path /= name;
 
-        if (boost::filesystem::is_regular(template_path)) {
+        if (std::filesystem::is_regular_file(template_path)) {
             return Load(template_path);
         }
 

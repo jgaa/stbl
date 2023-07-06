@@ -13,7 +13,6 @@
 
 
 using namespace std;
-using namespace boost::filesystem;
 using namespace std::string_literals;
 
 namespace stbl {
@@ -28,7 +27,7 @@ public:
     }
 
     void CreateEmptySite(bool all) override {
-        const path root = options_.source_path;
+        const filesystem::path root = options_.source_path;
 
         LOG_INFO << "Initializing new site: " << root;
 
@@ -40,33 +39,34 @@ public:
         // Create directories
         for(const auto& name : initializer_list<string> {
             "articles", "images", "files", "artifacts", "templates"} ) {
-            path p = root;
+            filesystem::path p = root;
             p /= name;
             CreateDirectory(p);
         }
 
         // Create artifacts
-        path artifacts = root;
+        filesystem::path artifacts = root;
         artifacts /= "artifacts";
         SaveList(embedded_artifacts_, artifacts);
 
         if (all) {
-            path templates = root;
+            filesystem::path templates = root;
             templates /= "templates";
             SaveList(embedded_templates_, templates);
         }
     }
 
     void CreateNewExampleSite(bool all) override {
-        const path root = options_.source_path;
+        const filesystem::path root = options_.source_path;
         CreateEmptySite(all);
-        path articles = root;
+        filesystem::path articles = root;
         articles /= "articles";
         SaveList(embedded_articles_, articles);
     }
 
 private:
-    std::string Get(const auto& map, const std::string& name) {
+    template <typename T>
+    std::string Get(const T& map, const std::string& name) {
         auto it = map.find(name);
         if (it == map.end()) {
             throw runtime_error("Missing embedded resource: "s + name);
@@ -75,9 +75,10 @@ private:
         return string(reinterpret_cast<const char *>(it->second.first), it->second.second);
     }
 
-    void SaveList(const auto& list, const path& dir) {
+    template <typename T>
+    void SaveList(const T& list, const filesystem::path& dir) {
         for(const auto& it: list) {
-            path p = dir;
+            filesystem::path p = dir;
             p /= it.first;
 
             auto ext = p.extension();

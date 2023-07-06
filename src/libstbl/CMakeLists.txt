@@ -1,4 +1,4 @@
-project(libstbl VERSION 1.11 LANGUAGES CXX)
+project(libstbl VERSION ${STBL_VERSION} LANGUAGES CXX)
 
 include_directories(${STBL_ROOT}/externals/cpp-markdown/src/)
 include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
@@ -62,7 +62,7 @@ set(SOURCES
     )
 
 add_library(libstbl ${SOURCES})
-set_property(TARGET libstbl PROPERTY CXX_STANDARD 14)
+set_property(TARGET libstbl PROPERTY CXX_STANDARD 17)
 target_include_directories(libstbl
     PUBLIC $<BUILD_INTERFACE:${STBL_ROOT}/include> $<INSTALL_INTERFACE:include>
     PRIVATE ${STBL_ROOT}/src/libstbl

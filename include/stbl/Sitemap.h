@@ -1,6 +1,6 @@
 #include <memory>
 #include <string>
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 namespace stbl {
 
@@ -19,7 +19,7 @@ public:
 
     virtual void Add(const Entry& entry) = 0;
 
-    virtual void Write(const boost::filesystem::path& path) = 0;
+    virtual void Write(const std::filesystem::path& path) = 0;
 
     static std::unique_ptr<Sitemap> Create();
 };

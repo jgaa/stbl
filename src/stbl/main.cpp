@@ -1,12 +1,14 @@
 #include <iostream>
 #include <cstdlib>
+#include <filesystem>
 
 #include <boost/program_options.hpp>
 #include <boost/optional.hpp>
 #include <boost/log/core.hpp>
 #include <boost/log/trivial.hpp>
 #include <boost/log/expressions.hpp>
-#include <boost/filesystem.hpp>
+#include <boost/process/spawn.hpp>
+#include <boost/process/search_path.hpp>
 
 #include "stbl/Options.h"
 #include "stbl/logging.h"
@@ -62,8 +64,11 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             "Log-level for the console-log")
         ("keep-tmp-dir,T", "Keep the temporary directory.")
         ("open-in-firefox,f", "Open the generated site in firefox.")
+        ("open-in-browser,b", "Open the generated site in the defaut browser.")
         ("publish,p", "Publish the site (deploy on a web-site).")
         ("no-update-headers", "Do not update the source article headers.")
+        ("automatic-update,u", po::value(&options.automatic_update)->default_value(options.automatic_update),
+            "Automatically set the updated attribute if the file-time is newer than the publish-time")
         ("preview", "Do not update the source article headers. Generate all articles.")
         ("version,v", "Show version and exit.")
         ("init", "Initialize a new blog directory structure at the destination.")
@@ -108,7 +113,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
     if (vm.count("source-dir")) {
         options.source_path = vm["source-dir"].as<string>();
     } else {
-        options.source_path = boost::filesystem::current_path().string();
+        options.source_path = std::filesystem::current_path().string();
     }
 
     if (vm.count("destination-dir")) {
@@ -119,13 +124,21 @@ bool parse_command_line(int argc, char * argv[], Options &options)
             cerr << "No destination specified, and no HOME environment variable set.";
             return false;
         }
-        boost::filesystem::path dst_path = home;
+        std::filesystem::path dst_path = home;
         dst_path /= ".stbl-site";
         options.destination_path = dst_path.string();
     }
 
     if (vm.count("keep-tmp-dir")) {
         options.keep_tmp_dir = true;
+    }
+
+    if (vm.count("open-in-browser")) {
+        if (filesystem::is_regular_file("/usr/bin/sensible-browser")) {
+            options.open_in_browser = "sensible-browser";
+        } else {
+            options.open_in_browser = "xdg-open";
+        }
     }
 
     if (vm.count("open-in-firefox")) {
@@ -181,7 +194,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         return false;
     }
 
-    boost::filesystem::path opts = options.source_path;
+    std::filesystem::path opts = options.source_path;
     opts /= "stbl.conf";
     options.options = LoadProperties(opts);
 
@@ -208,12 +221,16 @@ int main(int argc, char * argv[])
     }
 
     if (!options.open_in_browser.empty()) {
-        boost::filesystem::path dst_path = options.publish
+        std::filesystem::path dst_path = options.publish
             ? options.options.get<string>("url")
             : options.destination_path;
         dst_path /= "index.html";
-        string cmd = options.open_in_browser + " \""s + dst_path.string() + "\""s;
-        system(cmd.c_str());
+        //system(cmd.c_str());
+        LOG_DEBUG << "Executing: " << options.open_in_browser << ' ' << dst_path;
+        boost::process::spawn(
+            boost::process::search_path(options.open_in_browser),
+            dst_path.c_str());
+        LOG_DEBUG << "Done starting the browser";
     }
 
     return 0;

@@ -1,4 +1,5 @@
 
+#include <assert.h>
 #include <memory>
 #include "stbl/Article.h"
 
@@ -43,7 +44,7 @@ public:
     }
 
     void SetContent(content_t content) override {
-        content_ = move(content);
+        content_ = std::move(content);
     }
 
     void UpdateSourceHeaders(stbl::Scanner & scanner,
@@ -59,6 +60,11 @@ public:
 
     serie_t GetSeries() const override {
         return serie_;
+    }
+
+    void setUpdated(time_t updated) override {
+        assert(metadata_);
+        metadata_->updated = updated;
     }
 
 private:

@@ -1,6 +1,6 @@
 #include <memory>
 #include <vector>
-#include <boost/filesystem.hpp>
+#include <filesystem>
 
 #include "stbl/Image.h"
 
@@ -38,7 +38,7 @@ public:
      * used, sorted by size, smallest first. The idea is to prepare
      * several variants of each image for responsive web sites.
      */
-    virtual images_t Prepare(const boost::filesystem::path& image) = 0;
+    virtual images_t Prepare(const std::filesystem::path& image) = 0;
 
     static std::unique_ptr<ImageMgr> Create(const widths_t& widths,
                                             int quality);

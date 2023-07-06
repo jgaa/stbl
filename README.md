@@ -45,13 +45,13 @@ GPl 3 license. It is Free. Free as in speech. Free as in Free Air.
 
 # How to build
 
-The source code is written in modern C++. It should compile with any recent C++ compiler.
-I use Debian Stretch and g++ 6.3.
+The source code is now in C++ 17. It should compile with any recent C++ compiler.
+The project use cmake.
 
 ## Dependencies
 
 System dependencies:
-- boost libraries
+- boost libraries >= 75
 - libjpeg library
 
 CMake included projects
@@ -65,13 +65,15 @@ Git submodules
 In order to build, clone the project. Then:
 
 ```sh
-$ cd stbl
-$ git submodule update --init
-$ mkdir build
-$ cd build
-$ cmake ..
-$ make
-$ sudo make install
+    sudo apt install libjpeg-dev libboost-all-dev
+    git clone https://github.com/jgaa/stbl.git
+    cd stbl
+    git submodule update --init
+    mkdir build
+    cd build
+    cmake -DCMAKE_BUILD_TYPE=Release ..
+    make -j `nproc`
+    sudo make install
 ```
 
 # How to use
