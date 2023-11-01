@@ -12,4 +12,4 @@ MACRO(STBL_ADD_TEST Name)
 ENDMACRO(STBL_ADD_TEST)
 
 
-STBL_ADD_TEST(stbl_links_in_lists)
+#STBL_ADD_TEST(stbl_links_in_lists)

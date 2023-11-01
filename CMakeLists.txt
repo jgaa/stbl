@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.0)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 if (NOT DEFINED STBL_VERSION)
-    set(STBL_VERSION 0.12.0)
+    set(STBL_VERSION 0.12.1)
 endif()
 #add_definitions(-DSTBL_VERSION=\"${STBL_VERSION}\")
 
@@ -34,7 +34,6 @@ include(cmake_scripts/add_and_run_test.cmake)
 find_package(Boost 1.75 REQUIRED COMPONENTS
     system
     program_options
-    filesystem
     date_time
     chrono
     log
