@@ -1,7 +1,6 @@
 project(libstbl VERSION ${STBL_VERSION} LANGUAGES CXX)
 
-include_directories(${STBL_ROOT}/externals/cpp-markdown/src/)
-include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
+#include_directories(${STBL_ROOT}/3rdparty/gil_extensions)
 
 file(GLOB TEMPLATE_SOURCES ${STBL_ROOT}/examples/bootstrap/templates/*.html)
 
@@ -57,8 +56,6 @@ set(SOURCES
     artifacts_res.cpp
     config_res.cpp
     articles_res.cpp
-    ${STBL_ROOT}/externals/cpp-markdown/src/markdown-tokens.cpp
-    ${STBL_ROOT}/externals/cpp-markdown/src/markdown.cpp
     )
 
 add_library(libstbl ${SOURCES})
@@ -68,5 +65,6 @@ target_include_directories(libstbl
     PRIVATE ${STBL_ROOT}/src/libstbl
     PRIVATE ${CMAKE_CURRENT_BINARY_DIR}
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include
+    PRIVATE ${cmark-gfm_INCLUDE_DIRS}
 )
-target_link_libraries(libstbl PUBLIC ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
+target_link_libraries(libstbl PUBLIC ${cmark-gfm_LIBRARIES} ${Boost_LIBRARIES} ${JPEG_LIBRARIES})

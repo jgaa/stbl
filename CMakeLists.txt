@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.0)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake_scripts")
 
 if (NOT DEFINED STBL_VERSION)
-    set(STBL_VERSION 0.12.1)
+    set(STBL_VERSION 0.13.0)
 endif()
 #add_definitions(-DSTBL_VERSION=\"${STBL_VERSION}\")
 
@@ -29,6 +30,8 @@ message(STATUS "Using ${CMAKE_CXX_COMPILER}")
 
 include(cmake_scripts/external-projects.cmake)
 include(cmake_scripts/add_and_run_test.cmake)
+
+find_package(cmark-gfm REQUIRED)
 
 # Include Boost as an imported target
 find_package(Boost 1.75 REQUIRED COMPONENTS

@@ -6,12 +6,13 @@
 
 #include <boost/algorithm/string/replace.hpp>
 
+#include "cmark-gfm.h"
+
 #include "stbl/stbl.h"
 #include "stbl/Page.h"
 #include "stbl/logging.h"
 #include "stbl/utility.h"
 #include "stbl/ContentManager.h"
-#include "markdown.h"
 
 using namespace std;
 
@@ -67,60 +68,14 @@ private:
             ++words;
         }
 
-        // Quick hack to extract code blocks and convert them to a <pre> block
-        size_t pos = 0;
-        while((pos != content.npos) && (pos < content.size())) {
-            pos = content.find("```", pos);
-            if ((pos != content.npos) && (content.size() >= (pos + 7))) {
-                if ((pos > 0) && content.at(pos -1) != '\n') {
-                    // start-tag is only valid at start of line
-                    pos = content.find('\n', pos);
-                    continue;
-                }
-                const auto spos = content.find('\n', pos);
-                const auto epos = content.find("\n```\n", pos + 4);
-                if (epos != content.npos) {
-                    // pos = start ```
-                    // spos = end of start-line
-                    // epos is start of end ```
-
-                    string code = content.substr(spos, epos - spos);
-                    boost::replace_all(code, "<", "&lt;");
-                    boost::replace_all(code, ">", "&gt;");
-
-                    string code_block = "\n"s
-                        + R"(<pre class="code">)"s
-                        + code
-                        + "\n</pre>\n"s;
-
-                    content.replace(pos, (epos + 4) - pos, code_block);
-                }
-            } else {
-                break;
-            }
-        }
-
         // Quick hack to handle images in series.
         static const std::regex images{R"(.*(!\[.+\])\((images\/.+)\))"};
         content = std::regex_replace(content, images, "$1("s + ctx.getRelativePrefix() + "$2)");
 
-        istringstream stream_content(content);
-        markdown::Document doc(stream_content);
-
-        stringstream out_stream;
-        doc.write(out_stream);
-
-        content.assign(istreambuf_iterator<char>(out_stream),
-                        istreambuf_iterator<char>());
-
-        // We need to fix some potential problems in code-blocks, where the
-        // the markdown process may escape &lt; and &gt;
-        // TODO: Fix it in the markdown processor, as this hack may have side-effects
-        boost::replace_all(content, "&amp;lt;", "&lt;");
-        boost::replace_all(content, "&amp;gt;", "&gt;");
-
-        out << content;
-
+        // Process markdown
+        unique_ptr<char> output{cmark_markdown_to_html(content.c_str(), content.size(), CMARK_OPT_DEFAULT)};
+        content.clear();
+        out << *output;
         return words;
     }
 
