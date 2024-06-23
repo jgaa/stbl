@@ -1,3 +1,0 @@
-[submodule "externals/cpp-markdown"]
-	path = externals/cpp-markdown
-	url = https://github.com/sevenjay/cpp-markdown.git
