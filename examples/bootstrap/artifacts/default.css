@@ -132,13 +132,12 @@ section.author ul {
 }
 
 
-pre.code {
+pre code {
+    display: block;
     padding:1%;
     margin: 1%;
     border-style: dotted;
     border-color: black;
-    background-color: darkslategray;
-    color: white;
     border-width: 0.05rem;
     width: 96%;
     overflow-x: auto;

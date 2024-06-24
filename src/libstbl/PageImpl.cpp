@@ -73,9 +73,21 @@ private:
         content = std::regex_replace(content, images, "$1("s + ctx.getRelativePrefix() + "$2)");
 
         // Process markdown
-        unique_ptr<char> output{cmark_markdown_to_html(content.c_str(), content.size(), CMARK_OPT_DEFAULT)};
-        content.clear();
-        out << *output;
+        if (char * output{cmark_markdown_to_html(content.c_str(), content.size(),
+            CMARK_OPT_DEFAULT | CMARK_OPT_VALIDATE_UTF8)}) {
+            auto deleter = [](void *ptr) {
+                // We are using a C library, so call free()
+                if (ptr) free(ptr);
+            };
+            unique_ptr<char, decltype(deleter)> output_ptr{output, deleter};
+            string_view output_w{output_ptr.get()};
+
+            content.clear();
+            out << output_w;
+            return words;
+        }
+        LOG_ERROR << "Failed to convert markdown to HTML";
+        out << content;
         return words;
     }
 

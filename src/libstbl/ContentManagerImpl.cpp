@@ -15,6 +15,7 @@
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/regex.hpp>
 
 #include "stbl/Options.h"
 #include "stbl/ContentManager.h"
@@ -27,6 +28,7 @@
 #include "stbl/utility.h"
 #include "templates_res.h"
 #include "stbl/stbl_config.h"
+#include "stbl/utility.h"
 
 using namespace std;
 using namespace std::filesystem;
@@ -69,6 +71,26 @@ public:
     : options_{options}, now_{time(nullptr)}
     , roundup_{options.options.get<time_t>("system.date.roundup", 1800)}
     {
+        if (auto chroma = options.options.get_optional<string>("chroma.enabled")) {
+            auto command = options.options.get_optional<string>("chroma.path");
+            if (!command) {
+                command = "chroma";
+            };
+            if (*chroma == "auto") {
+                auto query = *command + " -h";
+                if (std::system(query.c_str()) == 0) {
+                    chroma = "true";
+                } else {
+                    LOG_INFO << "Chroma not found. I will not syntax highlight source code.";
+                }
+            }
+
+            if (*chroma == "true") {
+                syntax_highlighter_ = *command;
+            } else {
+                LOG_WARN << "No syntax highlighter specified.";
+            }
+        }
     }
 
     ~ContentManagerImpl() {
@@ -454,12 +476,19 @@ protected:
             stringstream content;
             const auto words = p->Render2Html(content, ctx);
 
+            string content_str = content.str();
+
             LOG_INFO << "Article " << ai.article->GetMetadata()->title
                 << " contains " << words << " words.";
 
             auto template_name = meta->tmplte;
             if (template_name.empty()) {
                 template_name= "article.html";
+            }
+
+            // syntax highlighting
+            if (content_str.find("<code class=") != string::npos) {
+                SyntaxHighlight(content_str);
             }
 
             string article = LoadTemplate(template_name);
@@ -469,7 +498,7 @@ protected:
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
             AssignNavigation(vars, *ai.article, ctx);
-            vars["content"] = content.str();
+            vars["content"] = std::move(content_str);
             auto authors = ai.article->GetAuthors();
             if (authors.empty()) {
                 auto default_author = options_.options.get<string>("people.default", "");
@@ -1391,6 +1420,65 @@ protected:
         return string(reinterpret_cast<const char *>(it->second.first), it->second.second);
     }
 
+    bool SyntaxHighlight(string& content) {
+        if (syntax_highlighter_.empty()) {
+            return false;
+        }
+
+        static const boost::regex code_block(R"regex(<pre><code class="language-([a-zA-Z0-9+]{1,16})">(.*?)</code></pre>)regex",
+                                             boost::regex::normal | boost::regex::icase);
+
+        boost::smatch matches;
+        size_t start_at = 0;
+        while (boost::regex_search(content.cbegin() + start_at, content.cend(), matches, code_block)) {
+            const auto offset = std::distance(content.cbegin(), matches[0].first);
+            string language= matches[1];
+            std::string code = matches[2];
+            if (language == "c++" || language == "C++") {
+                language = "cpp";
+            }
+            string highlighted = SyntaxHighlightBlock(code, language);
+            if (!highlighted.empty()) {
+                content.replace(matches[0].first, matches[0].second, highlighted);
+                start_at = offset + highlighted.size();
+            } else {
+                start_at = std::distance(content.cbegin(), matches[0].second);
+            }
+            assert(start_at > offset);
+        }
+
+        return true;
+    }
+
+    string SyntaxHighlightBlock(string part, const string& language) {
+        string cmd = syntax_highlighter_;
+
+        auto style = options_.options.get_optional<string>("chroma.style");
+        if (!style) {
+            style = "friendly";
+        }
+
+        boost::replace_all(part, "&amp;", " ");
+        boost::replace_all(part, "&gt;", ">");
+        boost::replace_all(part, "&lt;", "<");
+        boost::replace_all(part, "&br;", "\n");
+        boost::replace_all(part, "&quot;", "\"");
+
+        vector<string> args;
+        args.push_back("--html");
+        args.push_back("--html-only");
+        args.push_back("--html-inline-styles");
+        args.push_back("--html-lines");
+        args.push_back("--html-tab-width=4");
+        // We need to handle section for each block to use thie
+        //args.push_back("--html-linkable-lines");
+        args.push_back("--filename=x." + string(language));
+        args.push_back("--style=" + *style);
+        auto ret = Pipe(cmd, args, part);
+
+        return ret;
+    }
+
     Options options_;
 
     // All the nodes, including expired and not published ones
@@ -1417,6 +1505,7 @@ protected:
     unique_ptr<ImageMgr> images_;
     const time_t roundup_;
     unique_ptr<Sitemap> sitemap_;
+    std::string syntax_highlighter_;
 };
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)

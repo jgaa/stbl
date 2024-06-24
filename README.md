@@ -65,7 +65,7 @@ Git submodules
 In order to build, clone the project. Then:
 
 ```sh
-    sudo apt install libjpeg-dev libboost-all-dev
+    sudo apt install libjpeg-dev libboost-all-dev cmark-gfm
     git clone https://github.com/jgaa/stbl.git
     cd stbl
     git submodule update --init
@@ -193,7 +193,54 @@ are ready to publish them, by setting the value to "no" or "false".
 
 The configuration-file "stbl.conf" contains site-wide configuration, like
 the language used, authors (with contact information), menu structure, and
-some other things. See the [example](examples/default/stbl.conf),
+some other things. See the [example](examples/default/stbl.conf).
+
+## Colorized source listings.
+
+stbl can colorize your source code listings, via the `chroma` command-line program.
+This is actually ment to be a library, but it's written in the programming language `go`
+and can't be used as a library by stbl. It does however also come as a command line
+program, and *that* stbl can use. 
+
+To use colorizing, download a [release of chroma]( https://github.com/alecthomas/chroma/releases)
+and copy the chroma command somewhere in your PATH (for example `/usr/local/bin` under Linux)
+or just specify the full path in `stbl.conf` in the *chroma* section.
+
+### Upgrade from a version before 0.13
+
+This feature was added in stbl version 0.13. If you are using a site initialized with 
+an older version, you ca add a chroma section to `stbl.conf`:
+
+```conf
+; https://github.com/alecthomas/chroma
+; Currently, you must download this app from https://github.com/alecthomas/chroma/releases
+;   and copy the `chroma` program to an appropriate location.
+chroma {
+    ; enabled. One of: true|false|auto
+    ; If `auto`, chroma will be used if the application is available.
+    enabled auto
+    style friendly
+    ; path /usr/local/bin/chroma
+}
+```
+
+You should also update the *code* style in `artifacts/default.css` to:
+
+```css
+pre code {
+    display: block;
+    padding:1%;
+    margin: 1%;
+    border-style: dotted;
+    border-color: black;
+    border-width: 0.05rem;
+    width: 96%;
+    overflow-x: auto;
+    margin-bottom: 2rem;
+}
+```
+
+Set the colors to match your sites theme.
 
 ## Templates
 

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <codecvt>
 #include <filesystem>
+#include <string_view>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/info_parser.hpp>
@@ -13,7 +14,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
-
+#include <boost/process.hpp>
 
 #include "stbl/utility.h"
 #include "stbl/logging.h"
@@ -210,6 +211,36 @@ std::filesystem::path MkTmpPath()
     path /= CreateUuid();
     return path;
 }
+
+string Pipe(const string& cmd,
+            const std::vector<std::string>& args,
+            const string& input)
+{
+    namespace bp = boost::process;
+    bp::ipstream pipe_out; // To read from stdout
+    bp::opstream pipe_in;  // To write to stdin
+    ostringstream output;
+
+    try {
+        bp::child c(boost::process::search_path(cmd), bp::args(args), bp::std_out > pipe_out, bp::std_in < pipe_in);
+
+        // Write buffer to the process's stdin
+        pipe_in.write(input.data(), input.size());
+        pipe_in.flush();
+        pipe_in.pipe().close(); // Close the pipe to indicate end of input
+
+        string line;
+        while (pipe_out.is_open() && !pipe_out.eof()) {
+            getline(pipe_out, line);
+            output << line << std::endl;
+        }
+    } catch (const std::exception& e) {
+        LOG_ERROR << "Failed to run command: " << cmd << " " << e.what();
+        throw;
+    }
+
+    return output.str();
+};
 
 
 }

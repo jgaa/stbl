@@ -1,4 +1,4 @@
-
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -56,6 +56,10 @@ auto escapeForXml(const T& orig) {
     }
     return out.str();
 }
+
+std::string Pipe(const std::string& cmd,
+                 const std::vector<std::string>& args,
+                 const std::string& input);
 
 }
 
