@@ -29,6 +29,7 @@ These are the design-goals / primary requirements for the project.
 - RSS feeds
 
 ## Other features
+- Support for video (without any javascript)
 - [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
 - Easy to [integrate with Google Analytics](https://lastviking.eu/stbl_and_google_analytics.html) and similar services.
 - Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html).
@@ -198,13 +199,33 @@ some other things. See the [example](examples/default/stbl.conf).
 ## Colorized source listings.
 
 stbl can colorize your source code listings, via the `chroma` command-line program.
-This is actually ment to be a library, but it's written in the programming language `go`
+This is actually meant to be a library, but it's written in the programming language `go`
 and can't be used as a library by stbl. It does however also come as a command line
 program, and *that* stbl can use. 
 
 To use colorizing, download a [release of chroma]( https://github.com/alecthomas/chroma/releases)
 and copy the chroma command somewhere in your PATH (for example `/usr/local/bin` under Linux)
 or just specify the full path in `stbl.conf` in the *chroma* section.
+
+## Embedded videos
+
+Videos can be embedded using this syntax:
+```
+![Test video](video/example.mp4;p360)
+```
+The video scale is optional and defaults to *p720*.
+The following scales are supported:
+- p360
+- p480
+- p720
+- p1080
+- p1440
+- p2160
+
+This feature require *ffmpeg** to be installed on the machine. Stbl
+use ffmpeg to scale and prepare the video in .mp4, .webm and .ogg format.
+
+The original videos must be copied to the *video* folder before stbl is run.
 
 ### Upgrade from a version before 0.13
 
