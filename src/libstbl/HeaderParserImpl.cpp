@@ -44,7 +44,23 @@ struct HeaderGrammar: qi::grammar <Iterator, ::stbl::HeaderParser::header_map_t(
     qi::rule<Iterator, std::string()> field_key, field_value;
 };
 
+namespace  {
 
+std::string removeCommentLines(std::string input) {
+    size_t pos = 0;
+    while ((pos = input.find('#', pos)) != std::string::npos) {
+        size_t endPos = input.find('\n', pos);
+        if (endPos != std::string::npos) {
+            input.erase(pos, endPos - pos + 1);
+        } else {
+            // If no newline character is found, erase till the end of the string
+            input.erase(pos);
+        }
+    }
+    return input;
+}
+
+}
 
 class HeaderParserImpl : public HeaderParser
 {
@@ -56,9 +72,10 @@ public:
     }
 
     void Parse(Article::Header& header, std::string& headerBlock) override {
+        auto hdr = removeCommentLines(headerBlock);
         HeaderGrammar<it_t> grammar;
-        auto iter = headerBlock.cbegin();
-        auto end = headerBlock.cend();
+        auto iter = hdr.cbegin();
+        auto end = hdr.cend();
         header_map_t headers;
         bool result = phrase_parse(iter, end, grammar, qi::ascii::blank, headers);
 
