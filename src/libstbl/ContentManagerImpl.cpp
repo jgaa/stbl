@@ -255,7 +255,7 @@ protected:
     void MakeTempSite()
     {
         std::vector<string> directories_to_copy{
-            "images", "artifacts", "files"
+            "images", "video", "artifacts", "files"
         };
 
         sitemap_ = Sitemap::Create();

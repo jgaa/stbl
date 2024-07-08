@@ -5,3 +5,6 @@ published: 2017-10-25 14:30
 ---
 
 In order to test HTML, you can use the [Markup Validation Service](https://validator.w3.org/).
+
+And you can vlog about it!
+

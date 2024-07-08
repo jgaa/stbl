@@ -20,6 +20,7 @@
 #include "stbl/logging.h"
 
 using namespace std;
+using namespace std::string_literals;
 using boost::string_ref;
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
@@ -47,7 +48,7 @@ string Load(const fs::path& path) {
 }
 
 void Save(const fs::path& path,
-          const std::string& data,
+          const string& data,
           bool createDirectoryIsMissing,
           bool binary) {
 
@@ -103,12 +104,12 @@ LoadProperties(const fs::path& path) {
     return tree;
 }
 
-std::string ToString(const std::wstring& str) {
+string ToString(const std::wstring& str) {
     wstring_convert<codecvt_utf8<wchar_t>> converter;
     return converter.to_bytes(str);
 }
 
-std::wstring ToWstring(const std::string& str) {
+std::wstring ToWstring(const string& str) {
     wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     return converter.from_bytes(str);
 }
@@ -200,7 +201,7 @@ void EatHeader(std::istream& in) {
     throw runtime_error("Parse error: Failed to locate header section.");
 }
 
-std::string CreateUuid() {
+string CreateUuid() {
     boost::uuids::uuid uuid = boost::uuids::random_generator()();
     return boost::uuids::to_string(uuid);
 }
@@ -213,7 +214,7 @@ std::filesystem::path MkTmpPath()
 }
 
 string Pipe(const string& cmd,
-            const std::vector<std::string>& args,
+            const std::vector<string>& args,
             const string& input)
 {
     namespace bp = boost::process;
@@ -242,5 +243,4 @@ string Pipe(const string& cmd,
     return output.str();
 };
 
-
-}
+} // ns

@@ -27,6 +27,7 @@ public:
     virtual size_t Render2Html(std::ostream& out, RenderCtx& ctx) = 0;
     static page_t Create(const std::filesystem::path& path);
     static page_t Create(const std::string& content);
+
 };
 
 }

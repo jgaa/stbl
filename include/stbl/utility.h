@@ -62,4 +62,3 @@ std::string Pipe(const std::string& cmd,
                  const std::string& input);
 
 }
-
