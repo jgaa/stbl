@@ -68,9 +68,10 @@ public:
     };
 
     ContentManagerImpl(const Options& options)
-    : options_{options}, now_{time(nullptr)}
+    : now_{time(nullptr)}
     , roundup_{options.options.get<time_t>("system.date.roundup", 1800)}
     {
+        options_ = options;
         if (auto chroma = options.options.get_optional<string>("chroma.enabled")) {
             auto command = options.options.get_optional<string>("chroma.path");
             if (!command) {
@@ -1479,8 +1480,6 @@ protected:
         return ret;
     }
 
-    Options options_;
-
     // All the nodes, including expired and not published ones
     nodes_t nodes_;
 
@@ -1508,10 +1507,19 @@ protected:
     std::string syntax_highlighter_;
 };
 
+const Options &ContentManager::GetOptions()
+{
+    return options_;
+}
+
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)
 {
     return make_shared<ContentManagerImpl>(options);
 }
+
+Options ContentManager::options_;
+
+
 
 }
 

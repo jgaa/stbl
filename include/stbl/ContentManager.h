@@ -51,10 +51,14 @@ public:
 
     /*! Generate the site based on the managers options */
     virtual void ProcessSite() = 0;
+    static const Options& GetOptions();
 
 public:
     /*! Factory */
     static std::shared_ptr<ContentManager> Create(const Options& options);
+
+protected:
+    static Options options_;
 };
 
 }

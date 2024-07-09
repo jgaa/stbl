@@ -150,8 +150,8 @@ private:
 
         // We want the path from "video/" for the output file
         auto relative_path = [](const fs::path& path) {
-            auto pparent = path.parent_path().parent_path();
-            auto parent = path.parent_path();
+            auto pparent = path.parent_path().parent_path().filename();
+            auto parent = path.parent_path().filename();
             auto filename = path.filename();
 
             fs::path path_relative;
@@ -197,7 +197,10 @@ private:
             const string source = matches[2];
             const string scaling = matches[5];
 
-            const auto sources = convertVideo(source, ctx.getRelativePrefix(), toScaling(scaling));
+            fs::path full_video_path = ContentManager::GetOptions().source_path;
+            full_video_path /= source;
+
+            const auto sources = convertVideo(full_video_path, ctx.getRelativePrefix(), toScaling(scaling));
 
             string video_tag = "<video controls>\n";
             for(const auto& src: sources) {
