@@ -205,7 +205,12 @@ int main(int argc, char * argv[])
 {
     Options options;
 
-    if (!parse_command_line(argc, argv, options)) {
+    try {
+        if (!parse_command_line(argc, argv, options)) {
+            return -1;
+        }
+    } catch (std::exception& ex) {
+        cerr << "*** Failed to parse command line: " << ex.what() << endl;
         return -1;
     }
 
@@ -227,10 +232,14 @@ int main(int argc, char * argv[])
         dst_path /= "index.html";
         //system(cmd.c_str());
         LOG_DEBUG << "Executing: " << options.open_in_browser << ' ' << dst_path;
-        boost::process::spawn(
-            boost::process::search_path(options.open_in_browser),
-            dst_path.c_str());
-        LOG_DEBUG << "Done starting the browser";
+            try {
+            boost::process::spawn(
+                boost::process::search_path(options.open_in_browser),
+                dst_path.c_str());
+            LOG_DEBUG << "Done starting the browser";
+        } catch (std::exception& ex) {
+            LOG_ERROR << "Failed to start the browser: " << ex.what();
+        }
     }
 
     return 0;
