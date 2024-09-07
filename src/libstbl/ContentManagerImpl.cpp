@@ -1459,7 +1459,7 @@ protected:
             style = "friendly";
         }
 
-        boost::replace_all(part, "&amp;", " ");
+        boost::replace_all(part, "&amp;", "&");
         boost::replace_all(part, "&gt;", ">");
         boost::replace_all(part, "&lt;", "<");
         boost::replace_all(part, "&br;", "\n");
