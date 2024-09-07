@@ -462,6 +462,7 @@ private:
             }
             default:
                 assert(false && "Unknown layout");
+                throw runtime_error("Unknown layout");
         }
     }
 
