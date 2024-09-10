@@ -1,4 +1,7 @@
 
+#include <array>
+#include <string_view>
+
 #include "stbl/stbl.h"
 #include "stbl/utility.h"
 #include "stbl/Bootstrap.h"
@@ -27,6 +30,11 @@ public:
     }
 
     void CreateEmptySite(bool all) override {
+
+        static constexpr auto dirs = std::to_array<std::string_view>({
+            "articles", "images", "files", "artifacts", "templates", "video"
+        });
+
         const filesystem::path root = options_.source_path;
 
         LOG_INFO << "Initializing new site: " << root;
@@ -37,8 +45,7 @@ public:
         Save(conf_path, Get(embedded_config_, "stbl.conf"), true);
 
         // Create directories
-        for(const auto& name : initializer_list<string> {
-            "articles", "images", "files", "artifacts", "templates"} ) {
+        for(const auto& name : dirs) {
             filesystem::path p = root;
             p /= name;
             CreateDirectory(p);

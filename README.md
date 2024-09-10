@@ -46,7 +46,7 @@ GPl 3 license. It is Free. Free as in speech. Free as in Free Air.
 
 # How to build
 
-The source code is now in C++ 17. It should compile with any recent C++ compiler.
+The source code is now in C++ 20. It should compile with any recent C++ compiler.
 The project use cmake.
 
 ## Dependencies

@@ -59,7 +59,7 @@ set(SOURCES
     )
 
 add_library(libstbl ${SOURCES})
-set_property(TARGET libstbl PROPERTY CXX_STANDARD 17)
+set_property(TARGET libstbl PROPERTY CXX_STANDARD 20)
 target_include_directories(libstbl
     PUBLIC $<BUILD_INTERFACE:${STBL_ROOT}/include> $<INSTALL_INTERFACE:include>
     PRIVATE ${STBL_ROOT}/src/libstbl
