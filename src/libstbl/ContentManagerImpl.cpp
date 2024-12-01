@@ -1238,10 +1238,49 @@ protected:
 
         for(const auto& n : nodes) {
             const auto meta = n->GetMetadata();
+
             map<string, string> vars;
             AssignDefauls(vars, ctx);
             vars["article-type"] = boost::lexical_cast<string>(n->GetType());
             Assign(*meta, vars, ctx);
+
+            if (n->GetType() == Node::Type::SERIES) {
+                // Get the 3 newest articles in the series
+                auto series = dynamic_pointer_cast<Series>(n);
+                auto articles = series->GetArticles();
+                Wash(articles);
+                if (articles.empty()) {
+                    LOG_WARN << "Series " << *n << " has no published articles!";
+                    continue;
+                }
+                // Sort the list of articles, newest first
+                sort(articles.begin(), articles.end(),
+                     [](const auto& left, const auto& right) {
+                         return left->GetMetadata()->latestDate() > right->GetMetadata()->latestDate();
+                     });
+                // Remove the oldest articles if there are more than 3
+                if (articles.size() > 3) {
+                    articles.resize(3);
+                }
+
+                for(const auto a : articles) {
+                    map<string, string> avars;
+                    AssignDefauls(avars, ctx);
+                    avars["article-type"] = boost::lexical_cast<string>(a->GetType());
+                    const auto ameta = a->GetMetadata();
+                    Assign(*ameta, avars, ctx);
+                    string item = LoadTemplate("article-in-series.html");
+                    ProcessTemplate(item, avars);
+                    vars["articles-in-series"] += item + "\n";
+                }
+
+                if (!articles.empty()) {
+                    string item = LoadTemplate("latest-articles-header.html");
+                    ProcessTemplate(item, vars);
+                    vars["latest-articles-in-series"] = item;
+                }
+            }
+
             string item = LoadTemplate("article-in-list.html");
             ProcessTemplate(item, vars);
             out << item << endl;
