@@ -17,7 +17,6 @@ project (stbl_project
     LANGUAGES CXX)
 
 set (STBL_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
-add_definitions(-DBOOST_ALL_DYN_LINK=1)
 
 if (NOT DEFINED STBL_WITH_UNIT_TESTS)
     option(STBL_WITH_UNIT_TESTS "Enable Unit Testing" ON)
@@ -34,6 +33,7 @@ include(cmake_scripts/add_and_run_test.cmake)
 find_package(cmark-gfm REQUIRED)
 
 # Include Boost as an imported target
+set(Boost_USE_STATIC_LIBS ON)
 find_package(Boost 1.75 REQUIRED COMPONENTS
     system
     program_options
