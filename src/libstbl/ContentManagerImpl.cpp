@@ -9,13 +9,17 @@
 #include <regex>
 #include <algorithm>
 #include <set>
+#include <future>
+#include <thread>
 
+#include <boost/asio.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/regex.hpp>
+#include <boost/asio/thread_pool.hpp>
 
 #include "stbl/Options.h"
 #include "stbl/ContentManager.h"
@@ -29,10 +33,12 @@
 #include "templates_res.h"
 #include "stbl/stbl_config.h"
 #include "stbl/utility.h"
+#include "stbl/pipe.h"
 
 using namespace std;
 using namespace std::filesystem;
 using namespace std::string_literals;
+namespace ba = boost::asio;
 
 namespace stbl {
 
@@ -70,6 +76,9 @@ public:
     ContentManagerImpl(const Options& options)
     : now_{time(nullptr)}
     , roundup_{options.options.get<time_t>("system.date.roundup", 1800)}
+    , num_threads_{options.threads == -1
+            ? std::max<size_t>(std::thread::hardware_concurrency() - 1, 2)
+            : static_cast<size_t>(std::max<int>(options.threads, 1))}
     {
         options_ = options;
         if (auto chroma = options.options.get_optional<string>("chroma.enabled")) {
@@ -92,6 +101,8 @@ public:
                 LOG_WARN << "No syntax highlighter specified.";
             }
         }
+
+        LOG_INFO << "Running with " << num_threads_ << " threads";
     }
 
     ~ContentManagerImpl() {
@@ -107,6 +118,8 @@ public:
         if (options_.publish) {
             Publish();
         }
+        LOG_DEBUG << "Waiting for worker-threads to finish";
+        pool_.join();
     }
 
 
@@ -131,10 +144,10 @@ protected:
             images_ = ImageMgr::Create(widths,
                 options_.options.get<int>("banner.quality", 95));
         }
-        nodes_= scanner_->Scan();
+        nodes_ = scanner_->Scan();
 
         LOG_DEBUG << "Listing nodes after scan: ";
-        for(const auto& n: nodes_) {
+        for(const auto& n: Nodes()) {
             LOG_DEBUG << "  " << *n;
 
             if (n->GetType() == Node::Type::SERIES) {
@@ -151,10 +164,10 @@ protected:
         // Prepare menus from config
         ScanMenus(menu_, options_.options.get_child("menu"));
 
-        tmp_path_ = MkTmpPath();
-        create_directories(tmp_path_);
+        tmp_path__ = MkTmpPath();
+        create_directories(GetTmpPath());
 
-        for(const auto& n: nodes_) {
+        for(const auto& n: Nodes()) {
             switch(n->GetType()) {
                 case Node::Type::SERIES: {
                     auto s = dynamic_pointer_cast<Series>(n);
@@ -228,7 +241,7 @@ protected:
             // Just update the existing node
             if (match) {
                 if (!current_menu->url.empty()) {
-                    LOG_WARN << "Overriding existing menu \"" << name
+                    LOG_WARN << "Overriding existing menu \"" << toString(name)
                         << "\": " << current_menu->url << " --> " << url;
                 }
 
@@ -262,7 +275,8 @@ protected:
         sitemap_ = Sitemap::Create();
 
         // Create the main page from template
-        RenderFrontpage();
+        //ba::co_spawn()
+        //RenderFrontpage();
 
         // Create an overview page with all published articles in a tree.
 
@@ -270,32 +284,78 @@ protected:
         //    - One global
         //    - One for each subject
 
-        // Render the articles
-        for(auto& ai : all_articles_) {
-            RenderArticle(*ai);
+        // Render the articles in parallel
+        vector<std::pair<ba::awaitable<void>, string>> tasks;
+
+        tasks.emplace_back(RenderFrontpage(), "RenderFrontpage");
+
+        // Queue tasks
+        for (const auto& ai : all_articles_) {
+            auto name = format("Article: {}", toString(ai->article->GetMetadata()->title));
+            tasks.emplace_back(RenderArticle(*ai), name);
         }
 
-        // Render the series
-        for(auto& n : all_series_) {
-            RenderSerie(n);
+        // Queue series tasks
+        for (const auto& n : all_series_) {
+            tasks.emplace_back(RenderSerie(n), "RenderSerie");
         }
 
-        // Render tags
-        for(auto& t: tags_) {
-            t.second.sort();
-            RenderTag(t.second);
+        // Queue tag tasks
+        for (const auto& t : tags_) {
+            tasks.emplace_back(RenderTag(t.second), "RenderTag");
         }
+
+        // We need to spawn each task separately
+        //std::vector<boost::asio::awaitable<void>> spawned_tasks;
+        //spawned_tasks.reserve(tasks.size());
+        vector<std::future<void>> futures;
+        futures.reserve(tasks.size());
+
+        for (auto& task : tasks) {
+            futures.emplace_back(co_spawn(pool_, std::move(task.first), ba::use_future));
+        }
+
+        LOG_DEBUG << "Waiting for worker-threads to finish";
+        size_t remaining_tasks = futures.size();
+        while(remaining_tasks) {
+            LOG_TRACE << "Looping for worker-threads to finish. "
+                      << "There are " << remaining_tasks << " tasks left.";
+            auto index = 0;
+            for(auto& f : futures) {
+                if (f.valid()) {
+                    try {
+                        LOG_TRACE << "Waiting for worker-thread to finish task: "
+                                  << tasks.at(index).second
+                                  << " There are " << remaining_tasks << " tasks left.";
+                        if (f.wait_for(100ms) == future_status::ready) {
+                            f.get();
+                            --remaining_tasks;
+                        }
+                    } catch (const std::exception& e) {
+                        LOG_ERROR << "Error in worker-thread: " << e.what();
+                    }
+                }
+                ++index;
+            }
+        }
+
+        LOG_DEBUG << "All worker-threads finished. Shutting down thread pool";
+
+        //pool.stop();
+        //pool.join();
+
+        LOG_DEBUG << "Thread pool shut down";
 
         // Create sitemap
         {
-            auto sitemap = tmp_path_;
+            auto sitemap = GetTmpPath();
             sitemap /= "sitemap.xml";
             sitemap_->Write(sitemap);
         }
 
         // Copy artifacts, images and other files
         for(const auto& d : directories_to_copy) {
-            path src = options_.source_path, dst = tmp_path_;
+            path src = options_.source_path, dst = GetTmpPath();
             src /= d;
             dst /= d;
             if (std::filesystem::is_directory(src)) {
@@ -308,7 +368,7 @@ protected:
 
         // Handle special files
         {
-            auto dst = tmp_path_;
+            auto dst = GetTmpPath();
             auto favicon = dst;
             favicon /= "artifacts";
             favicon /= "favicon.ico";
@@ -324,7 +384,7 @@ protected:
             }
         }
 
-        auto robots = tmp_path_;
+        auto robots = GetTmpPath();
         robots /= "robots.txt";
         if (!std::filesystem::is_regular_file(robots)) {
             std::stringstream out;
@@ -417,11 +477,11 @@ protected:
         return out.str();
     }
 
-    void RenderTag(const TagInfo& ti) {
+    ba::awaitable<void> RenderTag(const TagInfo& ti) {
         if (ti.nodes.empty()) {
             // Not used
             LOG_TRACE << "Ignoring unused tag.";
-            return;
+            co_return;
         }
 
         RenderCtx ctx;
@@ -439,7 +499,7 @@ protected:
         vars["list-articles"] = RenderNodeList(ti.nodes, ctx);
         ProcessTemplate(page, vars);
 
-        path dest = tmp_path_;
+        path dest = GetTmpPath();
         dest /= ti.url;
         Save(dest, page, true);
 
@@ -448,6 +508,7 @@ protected:
         sm_entry.url = vars["page-url"];
         sm_entry.updated = ToStringAnsi(Roundup(now_, roundup_));
         sitemap_->Add(sm_entry);
+        co_return;
     }
 
     template <typename T>
@@ -455,13 +516,16 @@ protected:
         return count(p.begin(), p.end(), '/');
     }
 
-    void RenderArticle(const ArticleInfo& ai) {
+    boost::asio::awaitable<void> RenderArticle(const ArticleInfo& ai) {
         RenderCtx ctx;
         ctx.current = ai.article;
-        ctx.url_recuse_level = GetRecurseLevel(
-            ai.article->GetMetadata()->relative_url);
+        ctx.url_recuse_level = GetRecurseLevel(ai.article->GetMetadata()->relative_url);
 
         auto meta = ai.article->GetMetadata();
+
+        if (meta->uuid == "7c7aca65-7a7a-416a-b9e3-b9e090f0b9c7") {
+            int i = 1;
+        }
 
         // TODO: Handle multiple pages
         for(auto& p : ai.article->GetContent()->GetPages()) {
@@ -475,12 +539,11 @@ protected:
             }
 
             stringstream content;
-            const auto words = p->Render2Html(content, ctx);
+            const auto words = co_await p->Render2Html(content, ctx);
 
             string content_str = content.str();
 
-            LOG_INFO << "Article " << ai.article->GetMetadata()->title
-                << " contains " << words << " words.";
+            LOG_INFO << "Article " << *ai.article << " contains " << words << " words.";
 
             auto template_name = meta->tmplte;
             if (template_name.empty()) {
@@ -489,7 +552,7 @@ protected:
 
             // syntax highlighting
             if (content_str.find("<code class=") != string::npos) {
-                SyntaxHighlight(content_str);
+                co_await SyntaxHighlight(content_str);
             }
 
             string article = LoadTemplate(template_name);
@@ -525,6 +588,7 @@ protected:
             sm_entry.url = vars["page-url"];
             sm_entry.updated = vars["updated-ansi"];
             sitemap_->Add(sm_entry);
+            co_return;
         }
 
         if (options_.update_source_headers) {
@@ -614,7 +678,7 @@ protected:
         return out.str();
     }
 
-    void RenderSerie(const serie_t& serie) {
+    ba::awaitable<void> RenderSerie(const serie_t& serie) {
         RenderCtx ctx;
         ctx.current = serie;
         ctx.url_recuse_level = GetRecurseLevel(
@@ -623,7 +687,7 @@ protected:
         string series = LoadTemplate("series.html");
 
         const auto meta = serie->GetMetadata();
-        path dst = tmp_path_;
+        path dst = GetTmpPath();
         dst /= meta->relative_url;
 
         LOG_TRACE << "Generating " << *serie << " --> " << dst;
@@ -648,7 +712,7 @@ protected:
                         LOG_TRACE << "Adding content to cover-page";
                         auto p = pages.front();
                         stringstream content;
-                        p->Render2Html(content, ctx);
+                        co_await p->Render2Html(content, ctx);
                         vars["content"] = content.str();
                     }
 
@@ -670,6 +734,7 @@ protected:
                 }
                 break;
             }
+            co_return;
         }
 
         Assign(*meta, vars, ctx);
@@ -829,14 +894,14 @@ protected:
             std::filesystem::remove_all(options_.destination_path);
         }
 
-        CopyDirectory(tmp_path_, options_.destination_path);
+        CopyDirectory(GetTmpPath(), options_.destination_path);
     }
 
     void Publish() {
         string cmd = options_.options.get<string>("publish.command");
 
         map<string, string> vars;
-        vars["tmp-site"] = tmp_path_.string();
+        vars["tmp-site"] = GetTmpPath().string();
         vars["local-site"] = options_.destination_path;
         vars["destination"] = options_.publish_destination;
 
@@ -848,9 +913,9 @@ protected:
     void CleanUp()
     {
         // Remove the temp site
-        if (!options_.keep_tmp_dir && !tmp_path_.empty() && is_directory(tmp_path_)) {
-            LOG_DEBUG << "Removing temporary directory " << tmp_path_;
-            remove_all(tmp_path_);
+        if (!options_.keep_tmp_dir && !GetTmpPath().empty() && is_directory(GetTmpPath())) {
+            LOG_DEBUG << "Removing temporary directory " << GetTmpPath();
+            remove_all(GetTmpPath());
         }
 
         // Remove any other temporary files
@@ -973,7 +1038,7 @@ protected:
         ai->article = article;
 
         ai->dst_path = options_.destination_path;
-        ai->tmp_path = tmp_path_;
+        ai->tmp_path = GetTmpPath();
 
         string base_path;
         if (series) {
@@ -1028,64 +1093,16 @@ protected:
         }
     }
 
-    wstring ToKey(wstring name) {
+    static wstring ToKey(wstring name) {
         transform(name.begin(), name.end(), name.begin(), ::tolower);
         return name;
     }
 
-    void RenderFrontpage() {
-        RenderCtx ctx;
-        std::map<std::string, std::string> vars;
-
-        AssignDefauls(vars, ctx);
-
-        vars["now-ansi"] = ToStringAnsi(now_);
-        vars["title"] = vars["site-title"];
-        vars["abstract"] = vars["site-abstract"];
-        vars["url"] = vars["page-url"] = vars["site-url"];
-        vars["rss"] = "index.rss";
-
-        auto gsv = options_.options.get("seo.google-site-verification", "");
-        if (!gsv.empty()) {
-            vars["google-site-verification"] =
-                R"(<meta name="google-site-verification" content=")" + gsv +
-                R"("/>)";
-        }
-
-        if (index_) {
-            auto meta = index_->GetMetadata();
-            if (!meta->banner.empty()) {
-                vars["banner"] = RenderBanner(*meta, ctx);
-            }
-
-            auto pages = index_->GetContent()->GetPages();
-            if (!pages.empty()) {
-                LOG_TRACE << "Adding content to front-page.";
-                auto p = pages.front();
-                stringstream content;
-                p->Render2Html(content, ctx);
-                vars["content"] = content.str();
-            }
-
-            if (!meta->abstract.empty()) {
-                vars["abstract"] = meta->abstract;
-            }
-        }
-
-        {
-            auto base_url = vars["site-url"];
-            if (!base_url.empty() && (base_url.back() == '/')) {
-                base_url.resize(base_url.size() -1);
-            }
-            vars["rss-abs"] = base_url + "/index.rss";
-        }
-
-        AssignHeaderAndFooter(vars, ctx);
-
+    void RenderArticleIntros(RenderCtx ctx, std::map<std::string, std::string> vars) {
         auto fp_articles = articles_for_frontpages_;
         sort(fp_articles.begin(), fp_articles.end(),
              [](const auto& left, const auto& right) {
-                auto res = left->GetMetadata()->latestDate() - right->GetMetadata()->latestDate();
+                 auto res = left->GetMetadata()->latestDate() - right->GetMetadata()->latestDate();
                  if (res) {
                      return res > 0;
                  }
@@ -1115,7 +1132,7 @@ protected:
                 }
 
                 if (page_count) {
-                    vars["prev"] = GetFrontPageName(page_count -1);
+                    vars["prev"] = GetArticlesPresentPageName(page_count -1);
                     vars["if-prev"] = Render("prev.html", vars, ctx);
                 } else {
                     vars.erase("prev");
@@ -1123,7 +1140,7 @@ protected:
                 }
 
                 if (i != fp_articles.end()) {
-                    vars["next"] = GetFrontPageName(page_count +1);
+                    vars["next"] = GetArticlesPresentPageName(page_count +1);
                     vars["if-next"] = Render("next.html", vars, ctx);
                 } else {
                     vars.erase("next");
@@ -1133,8 +1150,8 @@ protected:
                 string frontpage = LoadTemplate("frontpage.html");
                 ProcessTemplate(frontpage, vars);
 
-                const auto fp_path = GetFrontPageName(page_count);
-                auto dst_path = tmp_path_.string() + "/"s + fp_path;
+                const auto fp_path = GetArticlesPresentPageName(page_count);
+                auto dst_path = GetTmpPath().string() + "/"s + fp_path;
                 LOG_DEBUG << "Generating frontpage " << dst_path;
                 Save(dst_path, frontpage);
                 Sitemap::Entry sm_entry;
@@ -1150,9 +1167,61 @@ protected:
                 break;
             }
         }
+    }
 
-        path frontpage_path = tmp_path_;
-        frontpage_path /= GetFrontPageName(0);
+    ba::awaitable<void> RenderFrontpage() {
+        RenderCtx ctx;
+        std::map<std::string, std::string> vars;
+
+        AssignDefauls(vars, ctx);
+
+        vars["now-ansi"] = ToStringAnsi(now_);
+        vars["title"] = vars["site-title"];
+        vars["abstract"] = vars["site-abstract"];
+        vars["url"] = vars["page-url"] = vars["site-url"];
+        vars["rss"] = "index.rss";
+
+        auto gsv = options_.options.get("seo.google-site-verification", "");
+        if (!gsv.empty()) {
+            vars["google-site-verification"] =
+                R"(<meta name="google-site-verification" content=")" + gsv +
+                R"("/>)";
+        }
+
+        if (index_) {
+            auto meta = index_->GetMetadata();
+            if (!meta->banner.empty()) {
+                vars["banner"] = RenderBanner(*meta, ctx);
+            }
+
+            auto pages = index_->GetContent()->GetPages();
+            if (!pages.empty()) {
+                LOG_TRACE << "Adding content to front-page.";
+                auto p = pages.front();
+                stringstream content;
+                co_await p->Render2Html(content, ctx);
+                vars["content"] = content.str();
+            }
+
+            if (!meta->abstract.empty()) {
+                vars["abstract"] = meta->abstract;
+            }
+        }
+
+        {
+            auto base_url = vars["site-url"];
+            if (!base_url.empty() && (base_url.back() == '/')) {
+                base_url.resize(base_url.size() -1);
+            }
+            vars["rss-abs"] = base_url + "/index.rss";
+        }
+
+        AssignHeaderAndFooter(vars, ctx);
+
+        RenderArticleIntros(ctx, vars);
+
+        path frontpage_path = GetTmpPath();
+        frontpage_path /= GetArticlesPresentPageName(0);
 
         RenderRssForFrontpage(frontpage_path, vars);
     }
@@ -1166,7 +1235,7 @@ protected:
         return priority;
     }
 
-    string GetFrontPageName(const int page) {
+    string GetArticlesPresentPageName(const int page) {
         if (page == 0) {
             return "index.html";
         }
@@ -1289,6 +1358,14 @@ protected:
         return out.str();
     }
 
+    std::optional<TagInfo> GetTag(const std::wstring& key) const {
+        auto k = ToKey(key);
+        if (auto t = tags_.find(k); t != tags_.end()) {
+            return t->second;
+        }
+        return {};
+    }
+
     template <typename TagList>
     string RenderTagList(const TagList& tags, const RenderCtx& ctx) {
 
@@ -1298,15 +1375,19 @@ protected:
             map<string, string> vars;
             AssignDefauls(vars, ctx);
 
-            auto key = ToKey(tag);
-            auto tag_info = tags_[key];
+            // Only render tags that we know
+            if (auto t = GetTag(tag)) {
+                const auto& tag_info = *t;
 
-            vars["url"] = ctx.GetRelativeUrl(tag_info.url);
-            vars["name"] = stbl::ToString(tag);
+                vars["url"] = ctx.GetRelativeUrl(tag_info.url);
+                vars["name"] = stbl::ToString(tag);
 
-            string tmplte = LoadTemplate("tag.html");
-            ProcessTemplate(tmplte, vars);
-            out << tmplte << endl;
+                string tmplte = LoadTemplate("tag.html");
+                ProcessTemplate(tmplte, vars);
+                out << tmplte << endl;
+            } else {
+                LOG_WARN << "Tag " << stbl::ToString(tag) << " not found!";
+            }
         }
 
         return out.str();
@@ -1460,9 +1541,9 @@ protected:
         return string(reinterpret_cast<const char *>(it->second.first), it->second.second);
     }
 
-    bool SyntaxHighlight(string& content) {
+    boost::asio::awaitable<bool> SyntaxHighlight(string& content) {
         if (syntax_highlighter_.empty()) {
-            return false;
+            co_return false;
         }
 
         static const boost::regex code_block(R"regex(<pre><code class="language-([a-zA-Z0-9+]{1,16})">(.*?)</code></pre>)regex",
@@ -1477,7 +1558,7 @@ protected:
             if (language == "c++" || language == "C++") {
                 language = "cpp";
             }
-            string highlighted = SyntaxHighlightBlock(code, language);
+            string highlighted = co_await SyntaxHighlightBlock(code, language);
             if (!highlighted.empty()) {
                 content.replace(matches[0].first, matches[0].second, highlighted);
                 start_at = offset + highlighted.size();
@@ -1487,10 +1568,10 @@ protected:
             assert(start_at > offset);
         }
 
-        return true;
+        co_return true;
     }
 
-    string SyntaxHighlightBlock(string part, const string& language) {
+    boost::asio::awaitable<string> SyntaxHighlightBlock(string part, const string& language) {
         string cmd = syntax_highlighter_;
 
         auto style = options_.options.get_optional<string>("chroma.style");
@@ -1514,9 +1595,19 @@ protected:
         //args.push_back("--html-linkable-lines");
         args.push_back("--filename=x." + string(language));
         args.push_back("--style=" + *style);
-        auto ret = Pipe(cmd, args, part);
 
-        return ret;
+        try {
+            auto ret = co_await stbl::popen(pipe_strand_, cmd, part, args);
+            co_return ret;
+        } catch (const std::exception& e) {
+            LOG_ERROR << "Failed to syntax highlight: " << e.what();
+            co_return part;
+            //throw;
+        }
+    }
+
+    nodes_t& Nodes() {
+        return nodes_;
     }
 
     // All the nodes, including expired and not published ones
@@ -1536,7 +1627,11 @@ protected:
     // Root menu item
     Menu menu_;
 
-    path tmp_path_;
+    path tmp_path__;
+
+    const std::filesystem::path& GetTmpPath() const {
+        return tmp_path__;
+    }
 
     const time_t now_;
     unique_ptr<Scanner> scanner_;
@@ -1544,6 +1639,11 @@ protected:
     const time_t roundup_;
     unique_ptr<Sitemap> sitemap_;
     std::string syntax_highlighter_;
+    const size_t num_threads_{};/*{options_.threads == -1
+                                  ? std::max<size_t>(std::thread::hardware_concurrency() - 1, 2)
+                                  : static_cast<size_t>(std::max<int>(options_.threads, 1))}*/
+    ba::thread_pool pool_{num_threads_};
+    ba::strand<ba::thread_pool::executor_type> pipe_strand_{pool_.get_executor()};
 };
 
 const Options &ContentManager::GetOptions()

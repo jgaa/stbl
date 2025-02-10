@@ -1,29 +1,42 @@
 #pragma once
 
-#include <ostream>
+#include <string>
+#include <codecvt>
+
+#if !defined(WIN32) && !defined(__APPLE__) && __has_include(<sys/syscall.h>)
+#	define LOGFAULT_USE_TID_AS_NAME 1
+#endif
+
+#ifdef ERROR
+// Thank you SO much Microsoft!
+#   undef ERROR
+#endif
+
+#include "logfault/logfault.h"
 
 
-#include <boost/log/trivial.hpp>
-#include <boost/log/core.hpp>
-#include <boost/log/expressions.hpp>
-#include <boost/log/attributes.hpp>
-#include <boost/log/sources/basic_logger.hpp>
-#include <boost/log/sources/severity_logger.hpp>
-#include <boost/log/sources/record_ostream.hpp>
-#include <boost/log/sinks/sync_frontend.hpp>
-#include <boost/log/sinks/text_ostream_backend.hpp>
-#include <boost/log/attributes/scoped_attribute.hpp>
-#include <boost/log/utility/setup/common_attributes.hpp>
+#define LOG_NONE    ::logfault::LogLevel::DISABLED
+#define LOG_ERROR   LFLOG_ERROR
+#define LOG_WARN    LFLOG_WARN
+#define LOG_INFO    LFLOG_INFO
+#define LOG_DEBUG   LFLOG_DEBUG
+#define LOG_TRACE   LFLOG_TRACE
 
-#define LOG_ERROR     BOOST_LOG_TRIVIAL(error)
-#define LOG_WARN      BOOST_LOG_TRIVIAL(warning)
-#define LOG_INFO      BOOST_LOG_TRIVIAL(info)
-#define LOG_DEBUG     BOOST_LOG_TRIVIAL(debug)
-#define LOG_TRACE     BOOST_LOG_TRIVIAL(trace)
-
-#include "stbl/Node.h"
+#define LOG_ERROR_N   LFLOG_ERROR  << __PRETTY_FUNCTION__ << " - "
+#define LOG_WARN_N    LFLOG_WARN   << __PRETTY_FUNCTION__ << " - "
+#define LOG_INFO_N    LFLOG_INFO   << __PRETTY_FUNCTION__ << " - "
+#define LOG_DEBUG_N   LFLOG_DEBUG  << __PRETTY_FUNCTION__ << " - "
+#define LOG_TRACE_N   LFLOG_TRACE  << __PRETTY_FUNCTION__ << " - "
 
 namespace stbl {
-::std::ostream& operator << (::std::ostream& out, const ::stbl::Node::Type& value);
-::std::ostream& operator << (::std::ostream& out, const ::stbl::Node& node);
+
+inline std::string toString(const std::wstring& wstr) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+    return converter.to_bytes(wstr);
+}
+
+} // ns
+
+inline std::ostream& operator << (std::ostream& o, const std::wstring& wstr) {
+    return o << ::stbl::toString(wstr);
 }

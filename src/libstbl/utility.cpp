@@ -7,6 +7,7 @@
 #include <codecvt>
 #include <filesystem>
 #include <string_view>
+#include <thread>
 
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/info_parser.hpp>
@@ -14,16 +15,17 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/uuid/uuid_generators.hpp>
-#include <boost/process.hpp>
+#include <boost/asio.hpp>
 
 #include "stbl/utility.h"
 #include "stbl/logging.h"
 
 using namespace std;
 using namespace std::string_literals;
-using boost::string_ref;
+//using boost::string_ref;
 namespace pt = boost::property_tree;
 namespace fs = std::filesystem;
+namespace asio = boost::asio;
 
 namespace stbl {
 
@@ -213,34 +215,92 @@ std::filesystem::path MkTmpPath()
     return path;
 }
 
-string Pipe(const string& cmd,
-            const std::vector<string>& args,
-            const string& input)
-{
-    namespace bp = boost::process;
-    bp::ipstream pipe_out; // To read from stdout
-    bp::opstream pipe_in;  // To write to stdin
-    ostringstream output;
 
-    try {
-        bp::child c(boost::process::search_path(cmd), bp::args(args), bp::std_out > pipe_out, bp::std_in < pipe_in);
+// string Pipe(const string& cmd,
+//             const std::vector<string>& args,
+//             const string& input)
+// {
+//     namespace bp = boost::process;
+//     bp::ipstream pipe_out; // To read from stdout
+//     bp::opstream pipe_in;  // To write to stdin
+//     ostringstream output;
 
-        // Write buffer to the process's stdin
-        pipe_in.write(input.data(), input.size());
-        pipe_in.flush();
-        pipe_in.pipe().close(); // Close the pipe to indicate end of input
+//     try {
+//         bp::child c(boost::process::search_path(cmd), bp::args(args), bp::std_out > pipe_out, bp::std_in < pipe_in);
 
-        string line;
-        while (pipe_out.is_open() && !pipe_out.eof()) {
-            getline(pipe_out, line);
-            output << line << std::endl;
-        }
-    } catch (const std::exception& e) {
-        LOG_ERROR << "Failed to run command: " << cmd << " " << e.what();
-        throw;
-    }
+//         // Write buffer to the process's stdin
+//         pipe_in.write(input.data(), input.size());
+//         pipe_in.flush();
+//         pipe_in.pipe().close(); // Close the pipe to indicate end of input
 
-    return output.str();
-};
+//         string line;
+//         while (pipe_out.is_open() && !pipe_out.eof()) {
+//             getline(pipe_out, line);
+//             output << line << std::endl;
+//         }
+//     } catch (const std::exception& e) {
+//         LOG_ERROR << "Failed to run command: " << cmd << " " << e.what();
+//         throw;
+//     }
+
+//     return output.str();
+// };
+
+// asio::awaitable<string> Pipe(const string& cmd, const vector<string>& args, const string& input) {
+//     //auto executor = co_await asio::this_coro::executor;
+//     //auto& io_context = static_cast<asio::io_context&>(executor.context());  // ✅ Correct way to get io_context
+//     //auto& io_context = asio::get_executor(executor).context();  // ✅ Correct way to
+
+//     static boost::asio::io_context io_context;
+//     static std::thread io_thread([&] {
+//         io_context.run();
+//     });
+
+//     namespace bp = boost::process::v2;
+//     bp::async_pipe pipe_out(io_context);
+//     bp::async_pipe pipe_in(io_context);
+//     ostringstream output;
+
+//     // Lambda to unfold args
+//     auto unfold = [](const string& acc, const string& arg) {
+//         return acc + " " + arg;
+//     };
+
+//     accumulate(begin(args), end(args), string(), unfold);
+
+//     LOG_DEBUG << "Running command: " << cmd << " " << accumulate(begin(args), end(args), string(), unfold);
+
+//     try {
+//         // Start the process asynchronously
+//         bp::child c(
+//             bp::search_path(cmd),
+//             bp::args(args),
+//             bp::std_out > pipe_out,
+//             bp::std_in < pipe_in,
+//             io_context
+//             );
+
+//         // Write input asynchronously
+//         co_await asio::async_write(pipe_in, asio::buffer(input), asio::use_awaitable);
+//         pipe_in.close();  // Close stdin after writing input
+
+//         // Read output asynchronously
+//         std::vector<char> buffer(4096);namespace bp = boost::process;
+//         std::size_t bytes_read = co_await asio::async_read(pipe_out, asio::buffer(buffer), asio::use_awaitable);
+
+//         output.write(buffer.data(), bytes_read);
+//         pipe_out.close();
+
+//         // Ensure child process completes
+//         c.wait();
+//     } catch (const std::exception& e) {
+//         LOG_ERROR << "Failed to run command: " << cmd << " "
+//              << accumulate(begin(args), end(args), string(), unfold)
+//              << ". Error: " << e.what() << endl;
+//         co_return "";
+//     }
+
+//     co_return output.str();
+// }
 
 } // ns

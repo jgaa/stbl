@@ -1,8 +1,9 @@
 #pragma once
 
 #include <ostream>
-
 #include <filesystem>
+
+#include <boost/asio/awaitable.hpp>
 
 #include "stbl/stbl.h"
 
@@ -24,7 +25,7 @@ public:
     virtual ~Page() = default;
 
     // Return the number of words in the article
-    virtual size_t Render2Html(std::ostream& out, RenderCtx& ctx) = 0;
+    virtual boost::asio::awaitable<size_t> Render2Html(std::ostream& out, RenderCtx& ctx) = 0;
     static page_t Create(const std::filesystem::path& path);
     static page_t Create(const std::string& content);
 

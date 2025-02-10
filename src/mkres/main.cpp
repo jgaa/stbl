@@ -20,7 +20,6 @@ int main(int argc, char *argv[]) {
     ofstream hdr(argv[4]);
     int count = 0;
 
-
     hdr << "#include <map>" << endl
         << "#include <string>" << endl << endl
         << "namespace " << ns << '{' << endl << endl

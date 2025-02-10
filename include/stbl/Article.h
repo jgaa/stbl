@@ -32,7 +32,6 @@ public:
     virtual void setUpdated(time_t updated) = 0;
 
     static std::shared_ptr<Article> Create();
-
 };
 
 }

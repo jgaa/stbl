@@ -1,12 +1,11 @@
 #include <iostream>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <optional>
 
 #include <boost/program_options.hpp>
-#include <boost/optional.hpp>
-#include <boost/log/core.hpp>
-#include <boost/log/trivial.hpp>
-#include <boost/log/expressions.hpp>
+//#include <boost/optional.hpp>
 #include <boost/process/spawn.hpp>
 #include <boost/process/search_path.hpp>
 
@@ -23,45 +22,69 @@ namespace po = boost::program_options;
 using namespace stbl;
 using namespace std::string_literals;
 
+struct LogOptions {
+    string console_log_level = "info";
+    string log_level = "info";
+    string log_file;
+    bool truncate_log_file = false;
+};
 
-void setup_logging(po::variables_map vm)
+
+void setup_logging(const LogOptions& lo)
 {
-    namespace logging = boost::log;
+    const static map<string_view, logfault::LogLevel> mapping = {
+        {"error", logfault::LogLevel::ERROR},
+        {"warning", logfault::LogLevel::WARN},
+        {"info", logfault::LogLevel::INFO},
+        {"debug", logfault::LogLevel::DEBUGGING},
+        {"trace", logfault::LogLevel::TRACE}};
 
-    const static map<string, logging::trivial::severity_level> mapping = {
-        {"error", logging::trivial::error},
-        {"warning", logging::trivial::warning},
-        {"warn", logging::trivial::warning},
-        {"info", logging::trivial::info},
-        {"debug", logging::trivial::debug},
-        {"trace", logging::trivial::trace}};
-
-    auto level = logging::trivial::info;
-    if (vm.count("console-log")) {
-        auto cmd_line_level = mapping.find(vm["console-log"].as<string>());
-        if (cmd_line_level == mapping.end()) {
-            cerr << "*** Log level '" << vm["console-log"].as<string>()
-                << "' is undefined." << endl;
+    auto to_level = [](string_view name) -> optional<logfault::LogLevel> {
+        if (name.empty() || name == "off" || name == "false") {
+            return {};
         }
 
-        level = cmd_line_level->second;
+        if (auto it = mapping.find(name); it != mapping.end()) {
+            return it->second;
+        }
+
+        return {};
+    };
+
+
+    if (auto level = to_level(lo.console_log_level)) {
+        logfault::LogManager::Instance().AddHandler(
+            make_unique<logfault::StreamHandler>(clog, *level));
     }
 
-    logging::core::get()->set_filter
-    (
-        logging::trivial::severity >= level
-    );
+    if (!lo.log_file.empty()) {
+        if (auto level = to_level(lo.log_level)) {
+            logfault::LogManager::Instance().AddHandler(
+                make_unique<logfault::StreamHandler>(lo.log_file, *level, lo.truncate_log_file));
+        }
+    }
 };
 
 
 bool parse_command_line(int argc, char * argv[], Options &options)
 {
+    LogOptions log_options;
     po::options_description general("General Options");
 
     general.add_options()
         ("help,h", "Print help and exit")
-        ("console-log,C", po::value<string>(),
-            "Log-level for the console-log")
+        ("log-to-console,C",
+         po::value(&log_options.console_log_level)->default_value(log_options.console_log_level),
+         "Log-level to the console; one of 'error', 'warn', 'info', 'debug', 'trace'. Empty string to disable.")
+        ("log-level",
+         po::value<string>(&log_options.log_level)->default_value(log_options.log_level),
+         "Log-level; one of one of 'error', 'warn', 'info', 'debug', 'trace'.")
+        ("log-file",
+         po::value<string>(&log_options.log_file),
+         "Log-file to write a log to. Default is to use only the console.")
+        ("truncate-log-file",
+         po::bool_switch(&log_options.truncate_log_file),
+         "Truncate the logfile if it already exists.")
         ("keep-tmp-dir,T", "Keep the temporary directory.")
         ("open-in-firefox,f", "Open the generated site in firefox.")
         ("open-in-browser,b", "Open the generated site in the defaut browser.")
@@ -74,6 +97,8 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("init", "Initialize a new blog directory structure at the destination.")
         ("init-all", "Initialize a new blog directory structure at the destination, including templates and embedded files.")
         ("init-example", "Initialize a new example blog directory structure at the destination.")
+        ("threads", po::value(&options.threads)->default_value(options.threads),
+          "Number of threads to use for processing. Default is -1 (auto).)")
         ;
 
     po::options_description locations("Locations");
@@ -108,7 +133,7 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         return false;
     }
 
-    setup_logging(vm);
+    setup_logging(log_options);
 
     if (vm.count("source-dir")) {
         options.source_path = vm["source-dir"].as<string>();
@@ -230,7 +255,6 @@ int main(int argc, char * argv[])
             ? options.options.get<string>("url")
             : options.destination_path;
         dst_path /= "index.html";
-        //system(cmd.c_str());
         LOG_DEBUG << "Executing: " << options.open_in_browser << ' ' << dst_path;
             try {
             boost::process::spawn(
@@ -241,6 +265,8 @@ int main(int argc, char * argv[])
             LOG_ERROR << "Failed to start the browser: " << ex.what();
         }
     }
+
+    LOG_INFO << "Done";
 
     return 0;
 }

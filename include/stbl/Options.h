@@ -22,6 +22,7 @@ struct Options
     bool update_source_headers = true;
     bool preview_mode = false;
     bool automatic_update = false;
+    int threads = -1;
 
     // From stbl.conf
     boost::property_tree::ptree options;

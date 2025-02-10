@@ -2,16 +2,14 @@
 
 #include <iostream>
 #include <string>
+#include <ctime>
 
 #include <filesystem>
 #include <boost/property_tree/ptree.hpp>
+#include <boost/asio.hpp>
+#include <boost/asio/awaitable.hpp>
 
 namespace stbl {
-
-// // Utility functions
-// boost::string_ref Sf(boost::string_ref::const_iterator start,
-//                      boost::string_ref::const_iterator end,
-//                      bool trim = false) ;
 
 std::string Load(const std::filesystem::path& path);
 void Save(const std::filesystem::path& path,
@@ -57,8 +55,4 @@ auto escapeForXml(const T& orig) {
     return out.str();
 }
 
-std::string Pipe(const std::string& cmd,
-                 const std::vector<std::string>& args,
-                 const std::string& input);
-
-}
+} // namespace stbl

@@ -7,6 +7,7 @@
 
 
 #include "stbl/Node.h"
+#include "stbl/logging.h"
 
 namespace stbl {
 
@@ -20,12 +21,13 @@ namespace stbl {
 
     const auto meta = node.GetMetadata();
     std::string name;
+    std::string uuid;
     if (meta) {
-        std::wstring_convert<::std::codecvt_utf8_utf16<wchar_t>> converter;
-        name = converter.to_bytes(meta->title);
+        name = toString(meta->title);
+        uuid = meta->uuid;
     }
 
-    return out << '\"' << name << "\" (" << node.GetType() << ')';
+    return out << uuid << " \"" << name << "\" (" << node.GetType() << ')';
 }
 
 

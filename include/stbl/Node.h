@@ -56,4 +56,7 @@ public:
     virtual void SetMetadata(const std::shared_ptr<Metadata>& metadata) = 0;
 };
 
-}
+::std::ostream& operator << (::std::ostream& out, const ::stbl::Node::Type& value);
+::std::ostream& operator << (::std::ostream& out, const ::stbl::Node& node);
+
+} // namespace stbl

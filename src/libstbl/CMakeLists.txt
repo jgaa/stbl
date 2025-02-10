@@ -59,7 +59,6 @@ set(SOURCES
     )
 
 add_library(libstbl ${SOURCES})
-set_property(TARGET libstbl PROPERTY CXX_STANDARD 20)
 target_include_directories(libstbl
     PUBLIC $<BUILD_INTERFACE:${STBL_ROOT}/include> $<INSTALL_INTERFACE:include>
     PRIVATE ${STBL_ROOT}/src/libstbl
@@ -67,4 +66,4 @@ target_include_directories(libstbl
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include
     PRIVATE ${cmark-gfm_INCLUDE_DIRS}
 )
-target_link_libraries(libstbl PUBLIC ${cmark-gfm_LIBRARIES} ${Boost_LIBRARIES} ${JPEG_LIBRARIES})
+target_link_libraries(libstbl PUBLIC ${cmark-gfm_LIBRARIES} ${Boost_LIBRARIES} ${JPEG_LIBRARIES} logfault)

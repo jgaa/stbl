@@ -6,6 +6,7 @@
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/regex.hpp>
+#include <boost/asio/experimental/awaitable_operators.hpp>
 
 #include "cmark-gfm.h"
 
@@ -14,6 +15,7 @@
 #include "stbl/logging.h"
 #include "stbl/utility.h"
 #include "stbl/ContentManager.h"
+#include "stbl/pipe.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -38,7 +40,7 @@ public:
     ~PageImpl()  {
     }
 
-    size_t Render2Html(std::ostream & out, RenderCtx& ctx) override {
+    boost::asio::awaitable<size_t> Render2Html(std::ostream & out, RenderCtx& ctx) override {
 
         if (!path_.empty()) {
             ifstream in(path_.string());
@@ -50,15 +52,15 @@ public:
                 throw runtime_error("IO error");
             }
 
-            return Render2Html(in, out, ctx);
+            co_return co_await Render2Html(in, out, ctx);
         }
 
         std::istringstream in{content_};
-        return Render2Html(in, out, ctx);
+        co_return co_await Render2Html(in, out, ctx);
     }
 
 private:
-    size_t Render2Html(istream& in, ostream& out, RenderCtx& ctx) {
+    boost::asio::awaitable<size_t> Render2Html(istream& in, ostream& out, RenderCtx& ctx) {
         EatHeader(in);
         string content((std::istreambuf_iterator<char>(in)),
                        istreambuf_iterator<char>());
@@ -71,7 +73,7 @@ private:
             ++words;
         }
 
-        handleVideo(content, ctx);
+        co_await handleVideo(content, ctx);
 
         // Quick hack to handle images in series.
         static const std::regex images{R"(.*(!\[.+\])\((images\/.+)\))"};
@@ -89,11 +91,11 @@ private:
 
             content.clear();
             out << output_w;
-            return words;
+            co_return words;
         }
         LOG_ERROR << "Failed to convert markdown to HTML";
         out << content;
-        return words;
+        co_return words;
     }
 
     enum class Scaling {
@@ -105,11 +107,12 @@ private:
         p2160 = 2160
     };
 
-    std::vector<std::string>
+    boost::asio::awaitable<std::vector<std::string>>
     convertVideo(const std::filesystem::path& inputFilePath, const std::string& prefix,  Scaling scaling) {
+        vector<string> result;
         if (!fs::exists(inputFilePath)) {
             LOG_ERROR << "Input file does not exist: " << inputFilePath;
-            return {};
+            co_return result;
         }
 
         const int height = static_cast<int>(scaling);
@@ -123,29 +126,73 @@ private:
 
         const string scale_filter = "scale=-2:" + std::to_string(height);
 
-        const string cmd_mp4 = "ffmpeg -i " + inputFilePath.string() + " -vf \"" + scale_filter +
-                               "\" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k " + output_mp4.string();
-        const string cmd_webm = "ffmpeg -i " + inputFilePath.string() + " -vf \"" + scale_filter +
-                                "\" -c:v libvpx-vp9 -b:v 0 -crf 31 -c:a libvorbis " + output_webm.string();
-        const string cmd_ogv = "ffmpeg -i " + inputFilePath.string() + " -vf \"" + scale_filter +
-                               "\" -c:v libtheora -q:v 7 -c:a libvorbis -q:a 5 " + output_ogv.string();
-
         if (!fs::exists(output_mp4)) {
-            LOG_DEBUG << "Executing: " << cmd_mp4;
+            vector<string> args;
+            args.push_back("-loglevel");
+            args.push_back("error");
+            args.push_back("-i");
+            args.push_back(inputFilePath.string());
+            args.push_back("-vf");
+            args.push_back(scale_filter);
+            args.push_back("-c:v");
+            args.push_back("libx264");
+            args.push_back("-crf");
+            args.push_back("23");
+            args.push_back("-preset");
+            args.push_back("medium");
+            args.push_back("-c:a");
+            args.push_back("aac");
+            args.push_back("-b:a");
+            args.push_back("128k");
+            args.push_back(output_mp4.string());
+
+            //LOG_DEBUG << "Executing: " << cmd_mp4;
             CreateDirectoryForFile(output_mp4);
-            std::system(cmd_mp4.c_str());
+            co_await run("ffmpeg", args);
         }
 
         if (!fs::exists(output_webm)) {
-            LOG_DEBUG << "Executing: " << cmd_webm;
+            vector<string> args;
+            args.push_back("-loglevel");
+            args.push_back("error");
+            args.push_back("-i");
+            args.push_back(inputFilePath.string());
+            args.push_back("-vf");
+            args.push_back(scale_filter);
+            args.push_back("-c:v");
+            args.push_back("libvpx-vp9");
+            args.push_back("-b:v");
+            args.push_back("0");
+            args.push_back("-crf");
+            args.push_back("31");
+            args.push_back("-c:a");
+            args.push_back("libvorbis");
+            args.push_back(output_webm.string());
+
             CreateDirectoryForFile(output_webm);
-            std::system(cmd_webm.c_str());
+            co_await run("ffmpeg", args);
         }
 
         if (!fs::exists(output_ogv)) {
-            LOG_DEBUG << "Executing: " << cmd_ogv;
+            vector<string> args;
+            args.push_back("-loglevel");
+            args.push_back("error");
+            args.push_back("-i");
+            args.push_back(inputFilePath.string());
+            args.push_back("-vf");
+            args.push_back(scale_filter);
+            args.push_back("-c:v");
+            args.push_back("libtheora");
+            args.push_back("-q:v");
+            args.push_back("7");
+            args.push_back("-c:a");
+            args.push_back("libvorbis");
+            args.push_back("-q:a");
+            args.push_back("5");
+            args.push_back(output_ogv.string());
+
             CreateDirectoryForFile(output_ogv);
-            std::system(cmd_ogv.c_str());
+            co_await run("ffmpeg", args);
         }
 
         // We want the path from "video/" for the output file
@@ -160,12 +207,11 @@ private:
             return path_relative;
         };
 
-        vector<string> result;
         result.emplace_back("<source src=\""s + prefix + relative_path(output_webm).string() + "\" type=\"video/webm\">");
         result.emplace_back("<source src=\""s + prefix + relative_path(output_mp4).string() + "\" type=\"video/mp4\">");
         result.emplace_back("<source src=\""s + prefix + relative_path(output_ogv).string() + "\" type=\"video/ogg\">");
 
-        return result;
+        co_return result;
     }
 
     Scaling toScaling(std::string_view name) {
@@ -184,7 +230,7 @@ private:
         return Scaling::p720;
     }
 
-    void handleVideo(std::string& content, RenderCtx& ctx)
+    boost::asio::awaitable<void> handleVideo(std::string& content, RenderCtx& ctx)
     {
         static const boost::regex video_pat{R"(!\[(.*?)\]\((video\/([a-zA-Z0-9\-_\.]+))(;(p\d+))?\))",
                                             boost::regex::normal | boost::regex::icase};
@@ -200,7 +246,7 @@ private:
             fs::path full_video_path = ContentManager::GetOptions().source_path;
             full_video_path /= source;
 
-            const auto sources = convertVideo(full_video_path, ctx.getRelativePrefix(), toScaling(scaling));
+            const auto sources = co_await convertVideo(full_video_path, ctx.getRelativePrefix(), toScaling(scaling));
 
             string video_tag = "<video controls>\n";
             for(const auto& src: sources) {

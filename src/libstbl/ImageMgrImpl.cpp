@@ -32,7 +32,7 @@ public:
                     ii.relative_path = "images/"s + path.filename().string();
                     ii.size.width = image->GetWidth();
                     ii.size.height = image->GetHeight();
-                    images.push_back(move(ii));
+                    images.push_back(std::move(ii));
                 }
                 break;
             }
@@ -70,8 +70,7 @@ private:
 };
 
 
-std::unique_ptr<ImageMgr> ImageMgr::Create(const ImageMgr::widths_t& widths,
-                                           int quality) {
+std::unique_ptr<ImageMgr> ImageMgr::Create(const ImageMgr::widths_t& widths, int quality) {
     return make_unique<ImageMgrImpl>(widths, quality);
 }
 
