@@ -274,16 +274,6 @@ protected:
 
         sitemap_ = Sitemap::Create();
 
-        // Create the main page from template
-        //ba::co_spawn()
-        //RenderFrontpage();
-
-        // Create an overview page with all published articles in a tree.
-
-        // Create XSS feed pages.
-        //    - One global
-        //    - One for each subject
-
         // Render the articles in parallel
         vector<std::pair<ba::awaitable<void>, string>> tasks;
 
@@ -578,8 +568,12 @@ protected:
 
             vars["read-time"] = Render("read-time.html", vars, ctx);
 
-            ProcessTemplate(article, vars);
-            Save(ai.tmp_path, article, true);
+            if (article.find("{{list-articles}}") != string::npos) {
+                RenderArticleIntros(ctx, vars, ai.tmp_path);
+            } else {
+                ProcessTemplate(article, vars);
+                Save(ai.tmp_path, article, true);
+            }
 
             Sitemap::Entry sm_entry;
             sm_entry.priority = GetSitemapPriority("article",
@@ -1098,8 +1092,17 @@ protected:
         return name;
     }
 
-    void RenderArticleIntros(RenderCtx ctx, std::map<std::string, std::string> vars) {
+    void RenderArticleIntros(RenderCtx ctx, std::map<std::string, std::string> vars, filesystem::path destName = {}) {
         auto fp_articles = articles_for_frontpages_;
+
+        // don't list the article that renders the list.
+        if (ctx.current) {
+            const auto uuid = ctx.current->GetMetadata()->uuid;
+            std::erase_if(fp_articles, [uuid = ctx.current->GetMetadata()->uuid](const auto& a) {
+                return a->GetMetadata()->uuid == uuid;
+            });
+        }
+
         sort(fp_articles.begin(), fp_articles.end(),
              [](const auto& left, const auto& right) {
                  auto res = left->GetMetadata()->latestDate() - right->GetMetadata()->latestDate();
@@ -1150,7 +1153,7 @@ protected:
                 string frontpage = LoadTemplate("frontpage.html");
                 ProcessTemplate(frontpage, vars);
 
-                const auto fp_path = GetArticlesPresentPageName(page_count);
+                const auto fp_path = GetArticlesPresentPageName(page_count, destName);
                 auto dst_path = GetTmpPath().string() + "/"s + fp_path;
                 LOG_DEBUG << "Generating frontpage " << dst_path;
                 Save(dst_path, frontpage);
@@ -1188,10 +1191,16 @@ protected:
                 R"("/>)";
         }
 
+        bool generate_article_listing = true;
         if (index_) {
             auto meta = index_->GetMetadata();
             if (!meta->banner.empty()) {
                 vars["banner"] = RenderBanner(*meta, ctx);
+            }
+
+            if (!meta->tmplte.empty() && (meta->tmplte != "index.html")) {
+                vars["template"] = meta->tmplte;
+                generate_article_listing = false;
             }
 
             auto pages = index_->GetContent()->GetPages();
@@ -1218,7 +1227,15 @@ protected:
 
         AssignHeaderAndFooter(vars, ctx);
 
-        RenderArticleIntros(ctx, vars);
+        if (generate_article_listing) {
+            RenderArticleIntros(ctx, vars);
+        } else {
+            string article = LoadTemplate(vars["template"]);
+            ProcessTemplate(article, vars);
+            auto dst_path = GetTmpPath() / "index.html";
+            Save(dst_path, article, true);
+        }
+
 
         path frontpage_path = GetTmpPath();
         frontpage_path /= GetArticlesPresentPageName(0);
@@ -1235,12 +1252,28 @@ protected:
         return priority;
     }
 
-    string GetArticlesPresentPageName(const int page) {
-        if (page == 0) {
-            return "index.html";
+    string GetArticlesPresentPageName(const int page, filesystem::path destName = {}) {
+
+        if (destName.empty()) {
+            destName = "index.html";
         }
 
-        return "index_p"s + to_string(page) + ".html";
+        if (destName.string().find(GetTmpPath().string()) == 0) {
+            destName = destName.string().substr(GetTmpPath().string().size());
+            // If testName starts with a '/', remove it
+            if (destName.has_root_directory()) {
+                destName = destName.relative_path();
+            }
+        }
+
+        if (page == 0) {
+            return destName.string();
+        }
+
+        const auto fname = destName.stem().string();
+        const auto ext = destName.extension().string();
+
+        return format("{}_p{}.{}", fname, page, ext);
     }
 
     void RenderRssForFrontpage(path path, std::map<std::string, std::string>& vars) {

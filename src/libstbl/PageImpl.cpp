@@ -126,6 +126,7 @@ private:
 
         const string scale_filter = "scale=-2:" + std::to_string(height);
 
+
         if (!fs::exists(output_mp4)) {
             vector<string> args;
             args.push_back("-loglevel");

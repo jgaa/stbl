@@ -29,7 +29,7 @@ boost::asio::awaitable<std::string> popen(T& exexutor, std::string cmd, std::str
     namespace bp = boost::process::v2;
 
     // Without wrapping it in a strand, forcing the execution to be single-threaded,
-    // I got lots of exception due to from epoll() errors on Ubuntu.
+    // I got lots of exception due to epoll() errors on Ubuntu.
     co_return co_await asio::co_spawn(exexutor, [&]() mutable -> asio::awaitable<std::string> {
         auto ex = co_await asio::this_coro::executor;
         LOG_DEBUG << "Running command: " << cmd << detail::unfold(args);
