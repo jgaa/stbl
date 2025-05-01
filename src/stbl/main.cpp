@@ -257,8 +257,8 @@ int main(int argc, char * argv[])
         dst_path /= "index.html";
         LOG_DEBUG << "Executing: " << options.open_in_browser << ' ' << dst_path;
             try {
-            boost::process::spawn(
-                boost::process::search_path(options.open_in_browser),
+            boost::process::v1::spawn(
+                boost::process::v1::search_path(options.open_in_browser),
                 dst_path.c_str());
             LOG_DEBUG << "Done starting the browser";
         } catch (std::exception& ex) {

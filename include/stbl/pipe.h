@@ -8,6 +8,7 @@
 #include <boost/asio/experimental/awaitable_operators.hpp>
 #include <boost/process/v2.hpp>
 #include <boost/process.hpp>
+#include <boost/process/v1/search_path.hpp>
 #include "stbl/logging.h"
 
 namespace stbl {
@@ -36,7 +37,7 @@ boost::asio::awaitable<std::string> popen(T& exexutor, std::string cmd, std::str
 
         asio::readable_pipe pout(ex), perr(ex);
         asio::writable_pipe pin(ex);
-        bp::process         child{ex, boost::process::search_path(cmd), args, bp::process_stdio{.in = pin, .out = pout, .err = perr}};
+        bp::process         child{ex, boost::process::v1::search_path(cmd), args, bp::process_stdio{.in = pin, .out = pout, .err = perr}};
 
         std::string output;
 
@@ -153,7 +154,7 @@ boost::asio::awaitable<bool> run(std::string cmd, L args = {}) {
 
     try {
         //co_await bp::system(executor, boost::process::search_path(cmd), args);
-        bp2::process proc(executor, boost::process::search_path(cmd), args);
+        bp2::process proc(executor, boost::process::v1::search_path(cmd), args);
         const auto rval = co_await proc.async_wait(ba::use_awaitable);
         if (rval) {
             LOG_WARN << "Command: '" << cmd
