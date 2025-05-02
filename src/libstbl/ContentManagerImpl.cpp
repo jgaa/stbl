@@ -754,6 +754,7 @@ protected:
         vars["rel"] = ctx.GetRelativeUrl(""s);
         vars["lang"] = options_.options.get<string>("language", "en");
         vars["scripts"] = RenderScripts(ctx);
+        vars["rss"] = "index.rss";
 
         if (!skipMenu) {
             vars["menu"] = RenderMenu(ctx);
@@ -1189,7 +1190,6 @@ protected:
         vars["title"] = vars["site-title"];
         vars["abstract"] = vars["site-abstract"];
         vars["url"] = vars["page-url"] = vars["site-url"];
-        vars["rss"] = "index.rss";
 
         auto gsv = options_.options.get("seo.google-site-verification", "");
         if (!gsv.empty()) {

@@ -48,6 +48,16 @@ auto escapeForXml(const T& orig) {
             out << "&quot;";
         } else if (ch == '\'') {
             out << "&apos;";
+        } else if (ch == '&') {
+            out << "&amp;";
+        } else if (ch == '\n') {
+            out << "<br />";
+        } else if (ch == '\r') {
+            // ignore
+        } else if (ch == '\t') {
+            out << "    ";
+        } else if (ch < 0x20) {
+            out << "&#" << std::to_string(static_cast<int>(ch)) << ";";
         } else {
             out << ch;
         }

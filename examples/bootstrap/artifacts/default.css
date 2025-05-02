@@ -96,6 +96,26 @@ footer {
     color: darkgray;
 }
 
+.footer-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5em;
+  }
+
+  .generated-by a, .rss a {
+color: inherit;
+text-decoration: underline;
+}
+
+.rss-logo {
+vertical-align: middle;
+width: 1em;
+height: 1em;
+margin-right: 0.25em;
+}
+
+
 header.article div.author {
     text-align: right;
 }
