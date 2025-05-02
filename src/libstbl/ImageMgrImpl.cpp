@@ -9,6 +9,20 @@ using namespace std::string_literals;
 
 namespace stbl {
 
+namespace {
+    bool imageExists(const std::filesystem::path& path, const filesystem::file_time_type& orig_time) {
+        if (std::filesystem::exists(path)) {
+            // Compare write times
+            const auto last_write_time = std::filesystem::last_write_time(path);
+            if (last_write_time >= orig_time) {
+                LOG_TRACE << "The image " << path << " already exists.";
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
 class ImageMgrImpl : public ImageMgr
 {
 public:
@@ -20,6 +34,8 @@ public:
     images_t Prepare(const std::filesystem::path & path) override {
         images_t images;
         static const string scale_dir{"_scale_"};
+
+        const auto updated_time = std::filesystem::last_write_time(path);
 
         auto image = Image::Create(path);
         int largest_width = 0;
@@ -48,7 +64,7 @@ public:
                 + scale_dir + to_string(*w)
                 + "/"s + path.filename().string();
 
-            if (std::filesystem::exists(dst)) {
+            if (imageExists(dst, updated_time)) {
                 LOG_TRACE << "The scaled image " << dst << " already exists.";
                 auto scaled_img = Image::Create(dst);
                 ii.size.width = scaled_img->GetWidth();

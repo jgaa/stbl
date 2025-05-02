@@ -744,6 +744,7 @@ protected:
     void AssignDefauls(map<string, string>& vars, const RenderCtx& ctx,
                        bool skipMenu = false) {
         vars["now"] = ToStringLocal(now_);
+        vars["now-year"] = GetCurrentYear();
         vars["now-ansi"] = ToStringAnsi(now_);
         vars["site-title"] = options_.options.get<string>("name", "Anonymous Nest");
         vars["site-abstract"] = options_.options.get<string>("abstract");
@@ -860,8 +861,14 @@ protected:
 
         const auto key = "comments."s + comments;
 
-        for(const auto& it :  options_.options.get_child(key)) {
-            vars[comments + "-" + it.first] =  it.second.get("", "");
+
+        if (auto node = options_.options.get_child_optional(key)) {
+            for(const auto it :  *node) {
+                vars[comments + "-" + it.first] =  it.second.get("", "");
+            }
+        } else {
+            // No comments
+            return {};
         }
 
         string tmplte_file = options_.options.get(key + ".template", "");
@@ -1135,7 +1142,7 @@ protected:
                 }
 
                 if (page_count) {
-                    vars["prev"] = GetArticlesPresentPageName(page_count -1);
+                    vars["prev"] = GetArticlesPresentPageName(page_count -1, destName);
                     vars["if-prev"] = Render("prev.html", vars, ctx);
                 } else {
                     vars.erase("prev");
@@ -1143,7 +1150,7 @@ protected:
                 }
 
                 if (i != fp_articles.end()) {
-                    vars["next"] = GetArticlesPresentPageName(page_count +1);
+                    vars["next"] = GetArticlesPresentPageName(page_count +1, destName);
                     vars["if-next"] = Render("next.html", vars, ctx);
                 } else {
                     vars.erase("next");
@@ -1273,7 +1280,7 @@ protected:
         const auto fname = destName.stem().string();
         const auto ext = destName.extension().string();
 
-        return format("{}_p{}.{}", fname, page, ext);
+        return format("{}_p{}{}", fname, page, ext);
     }
 
     void RenderRssForFrontpage(path path, std::map<std::string, std::string>& vars) {
@@ -1534,6 +1541,15 @@ protected:
             }
         }
         return {};
+    }
+
+    string GetCurrentYear() {
+        std::time_t now = std::time(nullptr);
+        std::tm* tm = std::localtime(&now);
+
+        std::ostringstream oss;
+        oss << std::put_time(tm, "%Y");
+        return oss.str();
     }
 
     string& ProcessTemplate(string& tmplte,
