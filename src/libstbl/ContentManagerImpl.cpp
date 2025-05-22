@@ -582,7 +582,6 @@ protected:
             sm_entry.url = vars["page-url"];
             sm_entry.updated = vars["updated-ansi"];
             sitemap_->Add(sm_entry);
-            co_return;
         }
 
         if (options_.update_source_headers) {
@@ -590,6 +589,8 @@ protected:
                 ai.article->UpdateSourceHeaders(*scanner_, *meta);
             }
         }
+
+        co_return;
     }
 
     void AssignNavigation(map<string, string>& vars, const Article& article,

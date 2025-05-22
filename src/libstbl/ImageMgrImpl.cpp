@@ -77,6 +77,12 @@ public:
             images.push_back(move(ii));
         }
 
+        // Sort, largest first
+        std::sort(images.begin(), images.end() ,
+                  [](const ImageInfo& a, const ImageInfo& b) {
+                      return a.size.width > b.size.width;
+        });
+
         return images;
     }
 

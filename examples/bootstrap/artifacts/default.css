@@ -243,3 +243,10 @@ div.read-time img {
     padding-left: 0.5rem;
     padding-right: 0.5rem;
 }
+
+.responsive-img,
+picture img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+}

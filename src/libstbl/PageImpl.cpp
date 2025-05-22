@@ -3,6 +3,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <array>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/regex.hpp>
@@ -16,6 +17,7 @@
 #include "stbl/utility.h"
 #include "stbl/ContentManager.h"
 #include "stbl/pipe.h"
+#include "stbl/ImageMgr.h"
 
 using namespace std;
 using namespace std::string_literals;
@@ -74,6 +76,7 @@ private:
         }
 
         co_await handleVideo(content, ctx);
+        co_await handleResponsiveImage(content, ctx);
 
         // Quick hack to handle images in series.
         static const std::regex images{R"(.*(!\[.+\])\((images\/.+)\))"};
@@ -265,8 +268,165 @@ private:
         }
     }
 
+
+    /* ensures images never overflow their container */
+    /* css
+    .responsive-img,
+        picture img {
+        max-width: 100%;
+    height: auto;
+    display: block;
+    }
+
+How it behaves
+Banner (;banner):
+
+Uses <picture> → picks the first <source> whose media test passes.
+
+On a huge viewport you get _scale_1280, on mid-size _scale_720, etc.
+
+Falls back to a reasonable small variant (_scale_360) if none match.
+
+Fixed-px (;300px):
+
+sizes="300px" → browser computes it will render at exactly 300 CSS px.
+
+From your srcset it picks the closest file (e.g. 320w or 360w).
+
+On a Retina device it may pick a “2×” variant if available.
+
+Percentage (;70%):
+
+sizes="70vw" → 70% of the viewport width.
+
+Browser again picks the nearest match from srcset.
+
+Narrow phones:
+
+max-width:100% in your style always caps it so nothing ever overflows.
+*/
+
+
+    boost::asio::awaitable<void>
+    handleResponsiveImage(std::string& content, RenderCtx& ctx)
+    {
+        static const boost::regex img_pat{
+            R"(!\[(.*?)\]\(([^;\)]+)(?:;(\d+px|\d+%|banner))?\))",
+            boost::regex::normal | boost::regex::icase
+        };
+
+        boost::smatch m;
+        size_t offset = 0;
+        while (boost::regex_search(content.cbegin()+offset, content.cend(), m, img_pat)) {
+            size_t start  = std::distance(content.cbegin(), m[0].first);
+            size_t length = std::distance(m[0].first, m[0].second);
+
+            std::string alt   = m[1];
+            std::string src   = m[2];      // e.g. "images/example.jpg"
+            std::string size  = m[3];      // e.g. "300px", "70%", or "banner"
+            std::string name  = filesystem::path(src).stem().string();
+
+            filesystem::path image_path = ContentManager::GetOptions().source_path;
+            image_path /= src;
+            const auto images = GetImageMgr().Prepare(image_path);
+
+            // 1) build the universal srcset
+            // std::string srcset;
+            // for (int w: SCALES) {
+            //     if (!srcset.empty()) srcset += ", ";
+            //     srcset += ctx.getRelativePrefix()
+            //               + "/images/_scale_" + std::to_string(w)
+            //               + "/" + name + ".jpg "
+            //               + std::to_string(w) + "w";
+            // }
+
+            // 2) sizes="" depends on directive
+            //  - banner  → always full-width: 100vw
+            //  - N%      → that percent of viewport: e.g. 70vw
+            //  - Npx     → fixed in CSS pixels: e.g. “300px”
+            std::string sizes_attr;
+            if (size == "banner") {
+                sizes_attr = "100vw";
+            } else if (size.back()=='%')  {
+                sizes_attr = size.substr(0, size.size()-1) + "vw";
+            } else if (size.find("px")!=std::string::npos) {
+                sizes_attr = size;
+            } else {
+                // ALT: `continue;` and use default markdown processing for the image
+                sizes_attr = "100vw";
+            }
+
+            // 3) choose markup style
+            std::string html;
+            if (size == "banner") {
+                // art-directed banner with <picture> + <source> breakpoints
+                html = "<picture>\n";
+                const ImageMgr::ImageInfo *fallback = {};
+                for (const auto& img : images) {
+                    if (!fallback) {
+                        fallback = &img;
+                    } else {
+                        if (fallback->size.width < img.size.width
+                            && img.size.width <= 380) {
+                            fallback = &img;
+                        }
+                    }
+
+                    html += "  <source media=\"(min-width: "s
+                            + std::to_string(img.size.width) + "px)\" srcset=\""
+                            + ctx.getRelativePrefix() + img.relative_path
+                            + "\">\n";
+                }
+
+                if (fallback) {
+                    html += "  <img src=\""s
+                        + ctx.getRelativePrefix() + fallback->relative_path
+                        + " alt=\"" + alt + "\""
+                        + " loading=\"lazy\""
+                        + " style=\"width:100%; height:auto; display:block;\">\n"
+                        + "</picture>";
+                }
+            } else {
+                // inline/content image: single <img> with srcset
+                std::string srcset;
+                for (const auto& img : images) {
+                    if (!srcset.empty()) srcset += ", ";
+                    srcset += ctx.getRelativePrefix() + img.relative_path
+                              + " " + std::to_string(img.size.width) + "w";
+                }
+
+                html = "<img "s
+                       + "src=\"" + ctx.getRelativePrefix()
+                       + "/images/_scale_360/" + name + ".jpg\" "
+                       + "srcset=\"" + srcset + "\" "
+                       + "sizes=\"" + sizes_attr + "\" "
+                       + "alt=\"" + alt + "\" "
+                       + "loading=\"lazy\" "
+                       + "style=\"max-width:100%; height:auto; display:block;\""
+                       + ">";
+            }
+
+            // 4) replace and advance
+            content.replace(start, length, html);
+            offset = start + html.size();
+        }
+
+        co_return;
+    }
+
+    ImageMgr& GetImageMgr() {
+        static const ImageMgr::widths_t scales{128, 248, 360, 480, 720, 1080, 1440, 2160};
+        if (!image_mgr_) {
+            image_mgr_ = ImageMgr::Create(scales, 80);
+        }
+        assert(image_mgr_);
+        return *image_mgr_;
+    }
+
+
     const std::filesystem::path path_;
     const std::string content_;
+    std::unique_ptr<ImageMgr> image_mgr_;
 };
 
 page_t Page::Create(const std::filesystem::path& path) {
