@@ -35,6 +35,11 @@ public:
         images_t images;
         static const string scale_dir{"_scale_"};
 
+        if (!std::filesystem::exists(path)) {
+            LOG_ERROR << "Image does not exist: " << path;
+            return images; // Return empty if the image does not exist
+        }
+
         const auto updated_time = std::filesystem::last_write_time(path);
 
         auto image = Image::Create(path);

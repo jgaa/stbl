@@ -317,12 +317,13 @@ protected:
                         LOG_TRACE << "Waiting for worker-thread to finish task: "
                                   << tasks.at(index).second
                                   << " There are " << remaining_tasks << " tasks left.";
-                        if (f.wait_for(100ms) == future_status::ready) {
+                        if (f.wait_for(200ms) == future_status::ready) {
                             f.get();
                             --remaining_tasks;
                         }
                     } catch (const std::exception& e) {
                         LOG_ERROR << "Error in worker-thread: " << e.what();
+                        --remaining_tasks;
                     }
                 }
                 ++index;
@@ -658,7 +659,7 @@ protected:
             }
         }
 
-        for(auto it = imgs.rbegin(); it != imgs.rend(); ++it) {
+        for(auto it = imgs.begin(); it != imgs.end(); ++it) {
             const int width = it->size.width + align;
             out << "<source media=\"(min-width: "
                 <<  width << "px)\" srcset=\""

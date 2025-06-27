@@ -75,8 +75,8 @@ private:
             ++words;
         }
 
-        co_await handleVideo(content, ctx);
         co_await handleResponsiveImage(content, ctx);
+        co_await handleVideo(content, ctx);
 
         // Quick hack to handle images in series.
         static const std::regex images{R"(.*(!\[.+\])\((images\/.+)\))"};
@@ -318,6 +318,7 @@ max-width:100% in your style always caps it so nothing ever overflows.
         boost::smatch m;
         size_t offset = 0;
         while (boost::regex_search(content.cbegin()+offset, content.cend(), m, img_pat)) {
+            LOG_DEBUG << "Found responsive image: " << m[0] << " at offset " << offset;
             size_t start  = std::distance(content.cbegin(), m[0].first);
             size_t length = std::distance(m[0].first, m[0].second);
 
@@ -325,6 +326,12 @@ max-width:100% in your style always caps it so nothing ever overflows.
             std::string src   = m[2];      // e.g. "images/example.jpg"
             std::string size  = m[3];      // e.g. "300px", "70%", or "banner"
             std::string name  = filesystem::path(src).stem().string();
+
+            if (!src.ends_with(".jpg") && !src.ends_with(".jpeg")) {
+                LOG_TRACE << "Skipping non-JPEG image: " << src;
+                offset += length; // advance past this match
+                continue;
+            }
 
             filesystem::path image_path = ContentManager::GetOptions().source_path;
             image_path /= src;
