@@ -93,6 +93,18 @@ void CreateDirectory(const std::filesystem::path& path) {
     }
 }
 
+bool fileExists(const std::filesystem::path& path, const filesystem::file_time_type& orig_time) {
+    if (std::filesystem::exists(path)) {
+        // Compare write times
+        const auto last_write_time = std::filesystem::last_write_time(path);
+        if (last_write_time >= orig_time) {
+            LOG_TRACE << "The file " << path << " already exists.";
+            return true;
+        }
+    }
+    return false;
+}
+
 boost::property_tree::ptree
 LoadProperties(const fs::path& path) {
     if (!fs::is_regular_file(path)) {

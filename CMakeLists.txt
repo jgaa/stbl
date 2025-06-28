@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if (NOT DEFINED STBL_VERSION)
-    set(STBL_VERSION 0.16.4)
+    set(STBL_VERSION 0.17.0)
 endif()
 #add_definitions(-DSTBL_VERSION=\"${STBL_VERSION}\")
 
@@ -65,6 +65,7 @@ find_package(Boost 1.75 REQUIRED COMPONENTS
     date_time
     chrono
     process
+    json
     )
 
 find_package(Threads REQUIRED)

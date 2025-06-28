@@ -507,6 +507,27 @@ protected:
         return count(p.begin(), p.end(), '/');
     }
 
+    void handleVideo(const Page& page,
+                     map<string, string>& vars) {
+        if (page.containsVideo()) {
+            const auto css = options_.options.get("plyr.css", ""s);
+            const auto js = options_.options.get("plyr.js", ""s);
+            if (!css.empty() && !js.empty()) {
+                vars["plyr-css"] = format(R"(<link rel="stylesheet" href="{}"/>)", css);
+                vars["plyr-js-load"] = format(R"(<script src="{}"></script>)", js);
+                vars["plyr-js-run"] = format(R"(<script>
+  document.addEventListener('DOMContentLoaded', () => {{
+    const configs = {};
+    configs.forEach(cfg => {{
+      new Plyr(cfg.selector, cfg.options);
+    }});
+  }});
+</script>)", page.getVideOptions());
+            }
+        }
+    }
+
+
     boost::asio::awaitable<void> RenderArticle(const ArticleInfo& ai) {
         RenderCtx ctx;
         ctx.current = ai.article;
@@ -531,7 +552,6 @@ protected:
 
             stringstream content;
             const auto words = co_await p->Render2Html(content, ctx);
-
             string content_str = content.str();
 
             LOG_INFO << "Article " << *ai.article << " contains " << words << " words.";
@@ -550,6 +570,7 @@ protected:
             map<string, string> vars;
             vars["minutes-to-read"] = to_string(max<int>(1, words / 275));
             AssignDefauls(vars, ctx);
+            handleVideo(*p, vars);
             Assign(*meta, vars, ctx);
             AssignHeaderAndFooter(vars, ctx);
             AssignNavigation(vars, *ai.article, ctx);
@@ -709,6 +730,7 @@ protected:
                         auto p = pages.front();
                         stringstream content;
                         co_await p->Render2Html(content, ctx);
+                        handleVideo(*p, vars);
                         vars["content"] = content.str();
                     }
 
@@ -1218,6 +1240,7 @@ protected:
                 auto p = pages.front();
                 stringstream content;
                 co_await p->Render2Html(content, ctx);
+                handleVideo(*p, vars);
                 vars["content"] = content.str();
             }
 

@@ -4,10 +4,16 @@
 #include <regex>
 #include <sstream>
 #include <array>
+#include <ranges>
+#include <algorithm>
 
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/regex.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
+#include <boost/process.hpp>
+#include <boost/process/v1/child.hpp>
+#include <boost/process/v1/io.hpp>
+#include <boost/json.hpp>
 
 #include "cmark-gfm.h"
 
@@ -22,6 +28,8 @@
 using namespace std;
 using namespace std::string_literals;
 namespace fs = std::filesystem;
+namespace bp = boost::process;
+namespace json = boost::json;
 
 namespace stbl {
 
@@ -40,6 +48,11 @@ public:
     }
 
     ~PageImpl()  {
+    }
+
+
+    bool containsVideo() const noexcept  override {
+        return using_video_;
     }
 
     boost::asio::awaitable<size_t> Render2Html(std::ostream & out, RenderCtx& ctx) override {
@@ -110,97 +123,151 @@ private:
         p2160 = 2160
     };
 
-    boost::asio::awaitable<std::vector<std::string>>
-    convertVideo(const std::filesystem::path& inputFilePath, const std::string& prefix,  Scaling scaling) {
-        vector<string> result;
-        if (!fs::exists(inputFilePath)) {
-            LOG_ERROR << "Input file does not exist: " << inputFilePath;
-            co_return result;
+    struct Aspect {
+        double ratio;    // width/height
+        bool landscape;  // true if w>=h
+    };
+
+    Aspect computeAspect(int w, int h) {
+        return { double(w) / double(h), w >= h };
+    }
+
+    // naturalWidth is the CSS width (in px) of a video scaled to `targetHeight`,
+    // taking into account the real aspect ratio.
+    int naturalWidthForHeight(double aspectRatio, int targetHeight) {
+        return int(std::round(aspectRatio * targetHeight));
+    }
+
+    static constexpr std::array<Scaling, 6> all_video_scalings {
+            Scaling::p360, Scaling::p480, Scaling::p720,
+            Scaling::p1080, Scaling::p1440, Scaling::p2160
+    };
+
+    struct Dimensions { int width, height; };
+
+    Dimensions probeDimensions(const fs::path& file) {
+        // Prepare an IP stream to capture stdout
+        bp::v1::ipstream out;
+
+        // Spawn ffprobe, redirecting stdout→out, stderr→null
+        bp::v1::child c(
+            bp::v1::search_path("ffprobe"),
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0",
+            file.string(),
+            bp::v1::std_out > out,
+            bp::v1::std_err > bp::v1::null
+            );
+
+        // Read the single line: "WIDTH,HEIGHT"
+        std::string line;
+        if (!std::getline(out, line)) {
+            c.wait();
+            throw std::runtime_error("ffprobe produced no output for " + file.string());
         }
 
-        const int height = static_cast<int>(scaling);
-        const auto filename = inputFilePath.stem().string();
-        const auto parentPath = inputFilePath.parent_path();
-        const auto scale_tag = "_p" + std::to_string(height);
-
-        const auto output_mp4 = parentPath / "_mp4" / (filename + scale_tag + ".mp4");
-        const auto output_webm = parentPath / "_webm" /  (filename + scale_tag + ".webm");
-        const auto output_ogv = parentPath / "_ogv" / (filename + scale_tag + ".ogv");
-
-        const string scale_filter = "scale=-2:" + std::to_string(height);
-
-
-        if (!fs::exists(output_mp4)) {
-            vector<string> args;
-            args.push_back("-loglevel");
-            args.push_back("error");
-            args.push_back("-i");
-            args.push_back(inputFilePath.string());
-            args.push_back("-vf");
-            args.push_back(scale_filter);
-            args.push_back("-c:v");
-            args.push_back("libx264");
-            args.push_back("-crf");
-            args.push_back("23");
-            args.push_back("-preset");
-            args.push_back("medium");
-            args.push_back("-c:a");
-            args.push_back("aac");
-            args.push_back("-b:a");
-            args.push_back("128k");
-            args.push_back(output_mp4.string());
-
-            //LOG_DEBUG << "Executing: " << cmd_mp4;
-            CreateDirectoryForFile(output_mp4);
-            co_await run("ffmpeg", args);
+        // Wait and check exit status
+        c.wait();
+        if (c.exit_code() != 0) {
+            throw std::runtime_error("ffprobe exited with code " +
+                                     std::to_string(c.exit_code()));
         }
 
-        if (!fs::exists(output_webm)) {
-            vector<string> args;
-            args.push_back("-loglevel");
-            args.push_back("error");
-            args.push_back("-i");
-            args.push_back(inputFilePath.string());
-            args.push_back("-vf");
-            args.push_back(scale_filter);
-            args.push_back("-c:v");
-            args.push_back("libvpx-vp9");
-            args.push_back("-b:v");
-            args.push_back("0");
-            args.push_back("-crf");
-            args.push_back("31");
-            args.push_back("-c:a");
-            args.push_back("libvorbis");
-            args.push_back(output_webm.string());
-
-            CreateDirectoryForFile(output_webm);
-            co_await run("ffmpeg", args);
+        // Parse dimensions
+        std::istringstream iss(line);
+        int w, h;
+        char comma;
+        if (!(iss >> w >> comma >> h) || comma != ',') {
+            throw std::runtime_error("Unexpected ffprobe output: " + line);
         }
 
-        if (!fs::exists(output_ogv)) {
-            vector<string> args;
-            args.push_back("-loglevel");
-            args.push_back("error");
-            args.push_back("-i");
-            args.push_back(inputFilePath.string());
-            args.push_back("-vf");
-            args.push_back(scale_filter);
-            args.push_back("-c:v");
-            args.push_back("libtheora");
-            args.push_back("-q:v");
-            args.push_back("7");
-            args.push_back("-c:a");
-            args.push_back("libvorbis");
-            args.push_back("-q:a");
-            args.push_back("5");
-            args.push_back(output_ogv.string());
+        return { w, h };
+    }
 
-            CreateDirectoryForFile(output_ogv);
-            co_await run("ffmpeg", args);
+    struct Rendition {
+        std::string mediaQuery, url, mimeType;
+        Scaling scale;
+    };
+    struct VideoRenditions {
+        std::string posterUrl;
+        std::vector<Rendition> sources;
+        Dimensions dim;
+    };
+
+    fs::path buildPosterPath(const fs::path& path) {
+        // Poster is stored in the same directory as the video, but with a different name
+        return path.parent_path() / "_poster_" / (path.stem().string() + ".jpg");
+    }
+
+    fs::path buildRenditionPath(const fs::path& path, Scaling scaling, const std::string& ext) {
+        // Rendition is stored in the same directory as the video, but with a different name
+        fs::path r = path.parent_path();
+        r /= "_scale_" + std::to_string(static_cast<int>(scaling));
+        fs::create_directories(r); // Ensure the directory exists
+        // Use the original filename stem and append the scaling and extension
+        r /= (path.stem().string() + "." + ext);
+        LOG_TRACE_N << "Rendition path for " << path << " --> " << r;
+        return r;
+    }
+
+    std::string buildMediaQuery(Scaling s, const Aspect& a) {
+        // compute the “cutoff” widths for this scaling level
+        int h = static_cast<int>(s);
+        int w  = naturalWidthForHeight(a.ratio, h);
+
+        // We’ll build mutually exclusive ranges in ascending order:
+        switch (s) {
+        case Scaling::p360: {
+            return "(max-width: " + std::to_string(w) + "px)";
         }
+        case Scaling::p480: {
+            int prevW = naturalWidthForHeight(a.ratio, int(Scaling::p360));
+            return "(min-width: " + std::to_string(prevW + 1) + "px)"
+                                                                " and (max-width: " + std::to_string(w) + "px)";
+        }
+        case Scaling::p720: {
+            int prevW = naturalWidthForHeight(a.ratio, int(Scaling::p480));
+            return "(min-width: " + std::to_string(prevW + 1) + "px)"
+                                                                " and (max-width: " + std::to_string(w) + "px)";
+        }
+        case Scaling::p1080: {
+            int prevW = naturalWidthForHeight(a.ratio, int(Scaling::p720));
+            return "(min-width: " + std::to_string(prevW + 1) + "px)"
+                                                                " and (max-width: " + std::to_string(w) + "px)";
+        }
+        case Scaling::p1440: {
+            int prevW = naturalWidthForHeight(a.ratio, int(Scaling::p1080));
+            return "(min-width: " + std::to_string(prevW + 1) + "px)"
+                                                                " and (max-width: " + std::to_string(w) + "px)";
+        }
+        case Scaling::p2160: {
+            int prevW = naturalWidthForHeight(a.ratio, int(Scaling::p1440));
+            return "(min-width: " + std::to_string(prevW + 1) + "px)";
+        }
+        }
+        return "";
+    }
+
+    boost::asio::awaitable<VideoRenditions>
+    generateRenditions(
+        const fs::path& input,
+        const std::string& urlPrefix,
+        Scaling startLevel) {
+        VideoRenditions out;
+        out.dim = probeDimensions(input);
+        auto aspect= computeAspect(out.dim.width, out.dim.height);
+
+        if (!std::filesystem::exists(input)) {
+            LOG_ERROR << "Video does not exist: " << input;
+            co_return VideoRenditions{}; // Return empty if the input file does not exist
+        }
+
+        const auto updated_time = std::filesystem::last_write_time(input);
 
         // We want the path from "video/" for the output file
-        auto relative_path = [](const fs::path& path) {
+        auto relativePath = [](const fs::path& path) {
             auto pparent = path.parent_path().parent_path().filename();
             auto parent = path.parent_path().filename();
             auto filename = path.filename();
@@ -211,11 +278,76 @@ private:
             return path_relative;
         };
 
-        result.emplace_back("<source src=\""s + prefix + relative_path(output_webm).string() + "\" type=\"video/webm\">");
-        result.emplace_back("<source src=\""s + prefix + relative_path(output_mp4).string() + "\" type=\"video/mp4\">");
-        result.emplace_back("<source src=\""s + prefix + relative_path(output_ogv).string() + "\" type=\"video/ogg\">");
+        // 2a) Poster frame @ 3sec at small thumbnail size
+        fs::path poster = buildPosterPath(input);
+        CreateDirectoryForFile(poster);
+        if (!fileExists(poster, updated_time)) {
+            const string poster_out = poster.string();
+            const string poster_in = input.string();
+            array<string, 11> args{
+                "-loglevel", "error", "-i", poster_in,
+                "-ss", "3", "-vframes", "1",
+                "-vf", (out.dim.width >= out.dim.height
+                        ? "scale=-2:360"
+                        : "scale=360:-2"),
+                poster_out
+            };
 
-        co_return result;
+            co_await run("ffmpeg", args);
+        }
+        out.posterUrl = urlPrefix + relativePath(poster).string();
+
+        // 2b) For each scaling ≥ startLevel generate an MP4 (and optionally WebM)
+        bool landscape = out.dim.width >= out.dim.height;
+        for (auto s : all_video_scalings) {
+            if (s > startLevel) {
+                continue;
+            }
+            int target  = static_cast<int>(s);
+            std::string filter = landscape
+                                     ? "scale=-2:" + std::to_string(target)
+                                     : "scale=" + std::to_string(target) + ":-2";
+
+            fs::path mp4 = buildRenditionPath(input, s, "mp4");
+            CreateDirectoryForFile(mp4);
+            if (!fileExists(mp4, updated_time)) {
+                LOG_INFO_N << "Converting video to " << mp4 << " with scaling " << target;
+                const array<string, 17> args = {
+                    "-loglevel","error","-i",input.string(),
+                    "-vf", filter,
+                    "-c:v","libx264","-crf","21","-preset","slow",
+                    "-c:a","aac","-b:a","128k", mp4.string()
+                };
+
+                co_await run("ffmpeg", args);
+            }
+            out.sources.emplace_back(
+                /* media= */ buildMediaQuery(s, aspect),
+                /* url=   */ urlPrefix + relativePath(mp4).string(),
+                /* type=  */ "video/mp4",
+                /* scale= */ s
+            );
+        }
+
+        // Sort out.sources so that the largest resolution is first
+        std::sort(out.sources.begin(), out.sources.end(),
+                  [](const Rendition& a, const Rendition& b) {
+                      return a.scale < b.scale;
+                  });
+
+        // remove "and (max-width: ...px)" from the last source
+        if (!out.sources.empty()) {
+            Rendition& last = out.sources.back();
+            if (last.mediaQuery.starts_with("(min-width: ")) {
+                // Remove the "and (max-width: ...px)" part
+                size_t pos = last.mediaQuery.find(" and ");
+                if (pos != std::string::npos) {
+                    last.mediaQuery.erase(pos);
+                }
+            }
+        }
+
+        co_return out;
     }
 
     Scaling toScaling(std::string_view name) {
@@ -234,78 +366,109 @@ private:
         return Scaling::p720;
     }
 
-    boost::asio::awaitable<void> handleVideo(std::string& content, RenderCtx& ctx)
+    boost::asio::awaitable<void>
+    handleVideo(std::string& content, RenderCtx& ctx)
     {
-        static const boost::regex video_pat{R"(!\[(.*?)\]\((video\/([a-zA-Z0-9\-_\.]+))(;(p\d+))?\))",
-                                            boost::regex::normal | boost::regex::icase};
-        boost::smatch matches;
-        size_t start_at = 0;
-        while (boost::regex_search(content.cbegin() + start_at, content.cend(), matches, video_pat)) {
-            const auto offset = std::distance(content.cbegin(), matches[0].first);
+        static const boost::regex pat{R"(!\[(.*?)\]\((video\/([A-Za-z0-9\-_\.]+))(;(p\d+))?\))",
+                                      boost::regex::normal | boost::regex::icase};
 
-            const string label = matches[1];
-            const string source = matches[2];
-            const string scaling = matches[5];
+        boost::smatch m;
+        std::vector<std::tuple<std::size_t, std::size_t, std::string>> ops;
+        auto scan_start = content.cbegin();
 
-            fs::path full_video_path = ContentManager::GetOptions().source_path;
-            full_video_path /= source;
+        auto video_num = 0u;
 
-            const auto sources = co_await convertVideo(full_video_path, ctx.getRelativePrefix(), toScaling(scaling));
+        // 1) find all matches (record their start/length + replacement)
+        while (boost::regex_search(scan_start, content.cend(), m, pat)) {
+            // absolute byte-offset in the *original* buffer
+            std::size_t pos  = m.position(size_t{0}) + std::distance(content.cbegin(), scan_start);
+            std::size_t len  = m.length(0);
 
-            string video_tag = "<video controls>\n";
-            for(const auto& src: sources) {
-                video_tag += src + "\n";
+            fs::path input_path = ContentManager::GetOptions().source_path;
+            input_path /= string{m[2]};
+            const auto start_level = toScaling(string{m[5]});
+            const auto rend = co_await generateRenditions(input_path, ctx.getRelativePrefix(), start_level);
+            std::ostringstream tag;
+            tag << format("<video id=\"videoplayer_{}\" controls preload=\"metadata\"", video_num)
+                << " poster=\"" << rend.posterUrl << "\">" << "\n";
+
+            for (auto& r : rend.sources) {
+                tag << "  <source media=\"" << r.mediaQuery
+                    << "\" src=\"" << r.url
+                    << "\" size=\"" << int(r.scale) << ' '
+                    << "\" type=\"" << r.mimeType << "\">" << "\n";
             }
-            video_tag += "Your browser does not support the video tag\n</video>";
 
-            if (!video_tag.empty()) {
-                content.replace(matches[0].first, matches[0].second, video_tag);
-                start_at = offset + video_tag.size();
-            } else {
-                start_at = std::distance(content.cbegin(), matches[0].second);
+            tag << "  Your browser doesn’t support HTML5 video — "
+                   "<a href=\"" << rend.sources.back().url << "\">download it</a>."
+                << "\n</video>";
+
+            ops.emplace_back(pos, len, tag.str());
+
+            // advance scan_start past *this* match in the original buffer
+            scan_start = m[0].second;
+
+            // Build options for Plyr
+            int w0 = rend.dim.width, h0 = rend.dim.height;
+            int g  = std::gcd(w0, h0);
+            int ratioW = w0 / g, ratioH = h0 / g;
+
+            std::vector<int> quals;
+            quals.reserve(rend.sources.size());
+            for (auto &r : rend.sources) {
+                quals.push_back(int(r.scale));
             }
-            assert(start_at > offset);
+            std::sort(quals.begin(), quals.end());
+            quals.erase(std::unique(quals.begin(), quals.end()), quals.end());
+
+            // Turn that into a “360, 480, 720” string
+            std::ostringstream optList;
+            for (size_t i = 0; i < quals.size(); ++i) {
+                optList << quals[i];
+                if (i + 1 < quals.size()) optList << ", ";
+            }
+
+            {
+                json::object cfg;
+                cfg["selector"] = format("#videoplayer_{}", + video_num);
+
+                json::object opts;
+                //opts["ratio"] = format("{}:{}", ratioW, ratioH);
+
+                json::object quality;
+                auto defult_q = ContentManager::GetOptions().options.get("plyr.default", 0);
+                if (ranges::any_of(quals, [defult_q](int q) { return q == defult_q; })) {
+                    quality["default"] = defult_q;
+                }
+
+                json::array qarr;
+                for (int h : quals)
+                    qarr.push_back(h);
+                quality["options"] = std::move(qarr);
+
+                opts["quality"] = std::move(quality);
+                cfg["options"] = std::move(opts);
+
+                // 4) Append to the array
+                video_configs_.push_back(std::move(cfg));
+            }
+            ++video_num;
         }
+
+        // 2) apply replacements *backwards* so offsets remain valid
+        for (auto it = ops.rbegin(); it != ops.rend(); ++it) {
+            std::size_t pos, len;
+            std::string repl;
+            std::tie(pos, len, repl) = *it;
+            content.replace(pos, len, repl);
+        }
+
+        if (!ops.empty()) {
+            using_video_ = true; // mark that this page contains a video
+        }
+
+        co_return;
     }
-
-
-    /* ensures images never overflow their container */
-    /* css
-    .responsive-img,
-        picture img {
-        max-width: 100%;
-    height: auto;
-    display: block;
-    }
-
-How it behaves
-Banner (;banner):
-
-Uses <picture> → picks the first <source> whose media test passes.
-
-On a huge viewport you get _scale_1280, on mid-size _scale_720, etc.
-
-Falls back to a reasonable small variant (_scale_360) if none match.
-
-Fixed-px (;300px):
-
-sizes="300px" → browser computes it will render at exactly 300 CSS px.
-
-From your srcset it picks the closest file (e.g. 320w or 360w).
-
-On a Retina device it may pick a “2×” variant if available.
-
-Percentage (;70%):
-
-sizes="70vw" → 70% of the viewport width.
-
-Browser again picks the nearest match from srcset.
-
-Narrow phones:
-
-max-width:100% in your style always caps it so nothing ever overflows.
-*/
-
 
     boost::asio::awaitable<void>
     handleResponsiveImage(std::string& content, RenderCtx& ctx)
@@ -337,20 +500,6 @@ max-width:100% in your style always caps it so nothing ever overflows.
             image_path /= src;
             const auto images = GetImageMgr().Prepare(image_path);
 
-            // 1) build the universal srcset
-            // std::string srcset;
-            // for (int w: SCALES) {
-            //     if (!srcset.empty()) srcset += ", ";
-            //     srcset += ctx.getRelativePrefix()
-            //               + "/images/_scale_" + std::to_string(w)
-            //               + "/" + name + ".jpg "
-            //               + std::to_string(w) + "w";
-            // }
-
-            // 2) sizes="" depends on directive
-            //  - banner  → always full-width: 100vw
-            //  - N%      → that percent of viewport: e.g. 70vw
-            //  - Npx     → fixed in CSS pixels: e.g. “300px”
             std::string sizes_attr;
             if (size == "banner") {
                 sizes_attr = "100vw";
@@ -430,10 +579,27 @@ max-width:100% in your style always caps it so nothing ever overflows.
         return *image_mgr_;
     }
 
+    std::string getVideOptions() const override {
+        auto opts = json::serialize(video_configs_);
+        return opts;
+    }
+
+    // size_t numVideos() const noexcept override {
+    //     return video_opts_.size();
+    // }
+
+    // std::string getVideOptions(size_t id) const override {
+    //     if (id >= video_opts_.size()) {
+    //         return {};
+    //     }
+    //     return video_opts_[id];
+    // }
 
     const std::filesystem::path path_;
     const std::string content_;
     std::unique_ptr<ImageMgr> image_mgr_;
+    bool using_video_ {false}; // true if the page contains a video
+    json::array video_configs_;
 };
 
 page_t Page::Create(const std::filesystem::path& path) {

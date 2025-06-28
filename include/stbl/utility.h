@@ -18,6 +18,7 @@ void Save(const std::filesystem::path& path,
           bool binary = false);
 void CreateDirectory(const std::filesystem::path& path);
 void CreateDirectoryForFile(const std::filesystem::path& path);
+bool fileExists(const std::filesystem::path& path, const std::filesystem::file_time_type& orig_time);
 
 boost::property_tree::ptree
 LoadProperties(const std::filesystem::path& path);

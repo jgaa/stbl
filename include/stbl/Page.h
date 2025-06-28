@@ -28,7 +28,8 @@ public:
     virtual boost::asio::awaitable<size_t> Render2Html(std::ostream& out, RenderCtx& ctx) = 0;
     static page_t Create(const std::filesystem::path& path);
     static page_t Create(const std::string& content);
-
+    virtual bool containsVideo() const noexcept { return false; }
+    virtual std::string getVideOptions() const {return {};}
 };
 
 }
