@@ -481,18 +481,16 @@ private:
         boost::smatch m;
         size_t offset = 0;
         while (boost::regex_search(content.cbegin()+offset, content.cend(), m, img_pat)) {
-            LOG_DEBUG << "Found responsive image: " << m[0] << " at offset " << offset;
             size_t start  = std::distance(content.cbegin(), m[0].first);
             size_t length = std::distance(m[0].first, m[0].second);
 
             std::string alt   = m[1];
-            std::string src   = m[2];      // e.g. "images/example.jpg"
-            std::string size  = m[3];      // e.g. "300px", "70%", or "banner"
+            std::string src   = m[2];
+            std::string size  = m[3];
             std::string name  = filesystem::path(src).stem().string();
 
             if (!src.ends_with(".jpg") && !src.ends_with(".jpeg")) {
-                LOG_TRACE << "Skipping non-JPEG image: " << src;
-                offset += length; // advance past this match
+                offset += length;
                 continue;
             }
 
@@ -500,50 +498,47 @@ private:
             image_path /= src;
             const auto images = GetImageMgr().Prepare(image_path);
 
-            std::string sizes_attr;
+            // decide attributes
+            std::string sizes_attr;   // empty => omit sizes=
+            std::string extra_style;  // e.g. " width:80%;"
             if (size == "banner") {
                 sizes_attr = "100vw";
-            } else if (size.back()=='%')  {
-                sizes_attr = size.substr(0, size.size()-1) + "vw";
-            } else if (size.find("px")!=std::string::npos) {
-                sizes_attr = size;
+            } else if (!size.empty() && size.back() == '%') {
+                // container-relative width; DO NOT set sizes=
+                const int pct = std::clamp(std::stoi(size), 1, 100);
+                extra_style = " width:" + std::to_string(pct) + "%;";
+                sizes_attr.clear(); // omit sizes entirely for %
+            } else if (!size.empty() && size.find("px") != std::string::npos) {
+                sizes_attr = size;                 // ok for sizes=
+                extra_style = " width:" + size + ";"; // also enforce visible width
             } else {
-                // ALT: `continue;` and use default markdown processing for the image
-                sizes_attr = "100vw";
+                // no ;size → let markdown handle (your chosen behavior)
+                offset += length;
+                continue;
             }
 
-            // 3) choose markup style
+            // build HTML
             std::string html;
             if (size == "banner") {
-                // art-directed banner with <picture> + <source> breakpoints
+                // <picture> art-directed banner
                 html = "<picture>\n";
-                const ImageMgr::ImageInfo *fallback = {};
+                const ImageMgr::ImageInfo* fallback = {};
                 for (const auto& img : images) {
-                    if (!fallback) {
+                    if (!fallback || (fallback->size.width < img.size.width && img.size.width <= 380))
                         fallback = &img;
-                    } else {
-                        if (fallback->size.width < img.size.width
-                            && img.size.width <= 380) {
-                            fallback = &img;
-                        }
-                    }
 
-                    html += "  <source media=\"(min-width: "s
+                    html += "  <source media=\"(min-width: "
                             + std::to_string(img.size.width) + "px)\" srcset=\""
-                            + ctx.getRelativePrefix() + img.relative_path
-                            + "\">\n";
+                            + ctx.getRelativePrefix() + img.relative_path + "\">\n";
                 }
-
                 if (fallback) {
-                    html += "  <img src=\""s
-                        + ctx.getRelativePrefix() + fallback->relative_path
-                        + " alt=\"" + alt + "\""
-                        + " loading=\"lazy\""
-                        + " style=\"width:100%; height:auto; display:block;\">\n"
-                        + "</picture>";
+                    html += "  <img src=\"" + ctx.getRelativePrefix() + fallback->relative_path
+                            + "\" alt=\"" + alt + "\" loading=\"lazy\""
+                            + " style=\"width:100%; height:auto; display:block;\">\n"
+                            + "</picture>";
                 }
             } else {
-                // inline/content image: single <img> with srcset
+                // inline/content image with srcset
                 std::string srcset;
                 for (const auto& img : images) {
                     if (!srcset.empty()) srcset += ", ";
@@ -551,24 +546,25 @@ private:
                               + " " + std::to_string(img.size.width) + "w";
                 }
 
-                html = "<img "s
-                       + "src=\"" + ctx.getRelativePrefix()
+                html = "<img src=\"" + ctx.getRelativePrefix()
                        + "/images/_scale_360/" + name + ".jpg\" "
-                       + "srcset=\"" + srcset + "\" "
-                       + "sizes=\"" + sizes_attr + "\" "
-                       + "alt=\"" + alt + "\" "
-                       + "loading=\"lazy\" "
-                       + "style=\"max-width:100%; height:auto; display:block;\""
-                       + ">";
+                       + "srcset=\"" + srcset + "\" ";
+
+                if (!sizes_attr.empty())
+                    html += "sizes=\"" + sizes_attr + "\" ";
+
+                html += "alt=\"" + alt + "\" loading=\"lazy\" "
+                        // NOTE: omit sizes for %; CSS width enforces container-relative rendering
+                        + "style=\"max-width:100%; height:auto; display:block;" + extra_style + "\">";
             }
 
-            // 4) replace and advance
             content.replace(start, length, html);
             offset = start + html.size();
         }
 
         co_return;
     }
+
 
     ImageMgr& GetImageMgr() {
         static const ImageMgr::widths_t scales{128, 248, 360, 480, 720, 1080, 1440, 2160};
