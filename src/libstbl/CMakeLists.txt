@@ -66,4 +66,9 @@ target_include_directories(libstbl
     PRIVATE ${CMAKE_BINARY_DIR}/generated-include
     PRIVATE ${cmark-gfm_INCLUDE_DIRS}
 )
-target_link_libraries(libstbl PUBLIC ${cmark-gfm_LIBRARIES} ${Boost_LIBRARIES} ${JPEG_LIBRARIES} logfault)
+target_link_libraries(libstbl PUBLIC
+    ${cmark-gfm_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${JPEG_LIBRARIES}
+    logfault::logfault
+)
