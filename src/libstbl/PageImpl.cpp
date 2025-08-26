@@ -33,6 +33,52 @@ namespace json = boost::json;
 
 namespace stbl {
 
+namespace {
+std::string trim_copy(std::string s) {
+    auto issp = [](unsigned char c){ return std::isspace(c); };
+    while (!s.empty() && issp(s.front())) s.erase(s.begin());
+    while (!s.empty() && issp(s.back()))  s.pop_back();
+    return s;
+}
+
+std::string unescape_quoted(std::string s, char quote) {
+    std::string out;
+    out.reserve(s.size());
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '\\' && i + 1 < s.size()) {
+            char n = s[i + 1];
+            if (n == quote || n == '\\') { out.push_back(n); ++i; continue; }
+        }
+        out.push_back(s[i]);
+    }
+    return out;
+}
+
+using macro_args_t = std::map<std::string,std::string>;
+macro_args_t parse_args(std::string_view args_sv) {
+    static const std::regex item_re(
+        R"___(\s*([A-Za-z0-9_]+)\s*(?:=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^,\)]+)))?\s*(?:,|$))___"
+    );
+    std::map<std::string,std::string> out;
+
+    std::match_results<std::string_view::const_iterator> m;
+    auto a_begin = args_sv.begin();
+    auto a_end   = args_sv.end();
+
+    while (std::regex_search(a_begin, a_end, m, item_re)) {
+        std::string key   = m[1].str();
+        std::string value;
+        if (m[2].matched)      value = unescape_quoted(m[2].str(), '"');
+        else if (m[3].matched) value = unescape_quoted(m[3].str(), '\'');
+        else if (m[4].matched) value = trim_copy(m[4].str());
+        else                   value = "true"; // bare flag
+        out.emplace(std::move(key), std::move(value));
+        a_begin = m.suffix().first;
+    }
+    return out;
+}
+} // anon ns
+
 
 class PageImpl : public Page
 {
@@ -88,6 +134,7 @@ private:
             ++words;
         }
 
+        co_await handleMacros(content, ctx);
         co_await handleResponsiveImage(content, ctx);
         co_await handleVideo(content, ctx);
 
@@ -476,6 +523,79 @@ private:
         }
 
         co_return;
+    }
+
+    boost::asio::awaitable<void>
+    handleMacros(std::string& content, RenderCtx& ctx) {
+        // @[name](args)
+        static const std::regex macro_re(R"(@\[([A-Za-z0-9_]+)\]\(([^)]*)\))");
+
+        // Search offset in the *current* buffer
+        std::size_t pos = 0;
+
+        // Safety valve
+        constexpr static std::size_t max_expansions = 16;
+        std::size_t expansions = 0;
+
+        while (pos <= content.size()) {
+            // operate on a view from current offset to avoid invalidated iterators
+            std::string_view view(content);
+            view = view.substr(pos);
+
+            std::match_results<std::string_view::const_iterator> m;
+            if (!std::regex_search(view.begin(), view.end(), m, macro_re))
+                break;
+
+            // compute absolute indices in 'content'
+            const std::size_t match_begin = pos + static_cast<std::size_t>(m[0].first - view.begin());
+            const std::size_t match_end   = pos + static_cast<std::size_t>(m[0].second - view.begin());
+
+            // skip escaped: \@[name](...)
+            if (match_begin > 0 && content[match_begin - 1] == '\\') {
+                pos = match_end; // continue scanning after this literal
+                continue;
+            }
+
+            // Extract name + args safely (copying strings is fine; matches are about to be invalidated)
+            std::string macro_name = m[1].str();
+            std::string args_str   = m[2].str();
+
+            // Parse args
+            auto argmap = parse_args(args_str);
+
+            // Expand (your implementation)
+            //std::string replacement = co_await ctx.expandMacro(macro_name, argmap);
+            string html;
+            if (macro_name == "blogitems") {
+                html = co_await expandBlogItems(ctx, argmap);
+            } else {
+                LOG_WARN_N << "Unknown macro: " << macro_name;
+                pos = match_end;
+                continue;
+            }
+
+            // In-place replace the matched slice with the expansion
+            content.replace(match_begin, match_end - match_begin, html);
+
+            // Advance search offset to *after* the replacement, so we don't reprocess it
+            pos = match_begin + html.size();
+
+            // Protect against infinite recursion / runaway generation
+            if (++expansions > max_expansions) break;
+        }
+
+        co_return;
+    }
+
+    boost::asio::awaitable<string> expandBlogItems(RenderCtx& ctx, const macro_args_t& args) {
+        auto items = 3;
+        if (args.contains("items")) {
+            items = std::max(1, std::min(100, std::stoi(args.at("items"))));
+        }
+        auto html = ContentManager::Instance().ListArticles(ctx, items);
+        // Strip whites from start of lines
+        static const boost::regex re(R"((?m)^[ \t]+)");
+        co_return boost::regex_replace(html, re, "");
     }
 
     boost::asio::awaitable<void>

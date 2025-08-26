@@ -51,7 +51,10 @@ public:
 
     /*! Generate the site based on the managers options */
     virtual void ProcessSite() = 0;
+    // Create HTML to list *n* articles
+    virtual std::string ListArticles(const RenderCtx& ctx, size_t num) = 0;
     static const Options& GetOptions();
+    static ContentManager& Instance();
 
 public:
     /*! Factory */
@@ -59,6 +62,7 @@ public:
 
 protected:
     static Options options_;
+    static ContentManager *self_;
 };
 
 }

@@ -42,7 +42,9 @@ namespace ba = boost::asio;
 
 namespace stbl {
 
-class ContentManagerImpl : public ContentManager
+ContentManager *ContentManager::self_ = nullptr;
+
+class ContentManagerImpl final : public ContentManager
 {
 public:
     struct ArticleInfo {
@@ -81,6 +83,8 @@ public:
             : static_cast<size_t>(std::max<int>(options.threads, 1))}
     {
         options_ = options;
+        assert(!self_);
+        self_ = this;
         if (auto chroma = options.options.get_optional<string>("chroma.enabled")) {
             auto command = options.options.get_optional<string>("chroma.path");
             if (!command) {
@@ -107,6 +111,7 @@ public:
 
     ~ContentManagerImpl() {
         CleanUp();
+        self_ = nullptr;
     }
 
     void ProcessSite() override
@@ -1368,6 +1373,39 @@ protected:
         vars["footer"] = footer;
     }
 
+    string ListArticles(const RenderCtx& ctx, size_t num) override {
+        auto articles = articles_for_frontpages_;
+        // remove anythin that is not n->GetType() == Node::Type::ARTICLE
+        articles.erase(remove_if(articles.begin(), articles.end(), [](const auto& a) {
+            return a->GetType() != Node::Type::ARTICLE;
+        }), articles.end());
+
+        sort(articles.begin(), articles.end(),
+             [](const auto& left, const auto& right) {
+                 auto res = left->GetMetadata()->latestDate() - right->GetMetadata()->latestDate();
+                 if (res) {
+                     return res > 0;
+                 }
+                 return left->GetMetadata()->title > right->GetMetadata()->title;
+             });
+
+        articles.resize(min(num, articles.size()));
+        map<string, string> vars;
+        AssignDefauls(vars, ctx);
+
+        for(const auto& n : articles) {
+            const auto meta = n->GetMetadata();
+            vars["article-type"] = boost::lexical_cast<string>(n->GetType());
+            Assign(*meta, vars, ctx);
+            string item = LoadTemplate("article-in-compact-list.html");
+            ProcessTemplate(item, vars);
+            vars["articles-in-list"] += item + "\n";
+        }
+
+        string section = LoadTemplate("compact-article-list.html");
+        return ProcessTemplate(section, vars);
+    }
+
     template <typename NodeListT>
     string RenderNodeList(const NodeListT& nodes,
                           const RenderCtx& ctx) {
@@ -1726,6 +1764,12 @@ protected:
 const Options &ContentManager::GetOptions()
 {
     return options_;
+}
+
+ContentManager &ContentManager::Instance()
+{
+    assert(self_);
+    return *self_;
 }
 
 std::shared_ptr<ContentManager> ContentManager::Create(const Options& options)
