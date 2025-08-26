@@ -74,13 +74,13 @@ bool parse_command_line(int argc, char * argv[], Options &options)
         ("help,h", "Print help and exit")
         ("log-to-console,C",
          po::value(&log_options.console_log_level)->default_value(log_options.console_log_level),
-         "Log-level to the console; one of 'error', 'warn', 'info', 'debug', 'trace'. Empty string to disable.")
+         "log level to the console; one of 'error', 'warn', 'info', 'debug', 'trace'. Empty string to disable.")
         ("log-level",
          po::value<string>(&log_options.log_level)->default_value(log_options.log_level),
-         "Log-level; one of one of 'error', 'warn', 'info', 'debug', 'trace'.")
+         "log level; one of 'error', 'warn', 'info', 'debug', 'trace'.")
         ("log-file",
          po::value<string>(&log_options.log_file),
-         "Log-file to write a log to. Default is to use only the console.")
+         "Log file to write a log to. Default is to use only the console.")
         ("truncate-log-file",
          po::bool_switch(&log_options.truncate_log_file),
          "Truncate the logfile if it already exists.")
@@ -122,8 +122,8 @@ bool parse_command_line(int argc, char * argv[], Options &options)
     if (vm.count("help")) {
         cout << "stbl [options]" << endl
             << cmdline_options << endl
-            << "Log-levels are:" << endl
-            << "   error warning info debug trace " << endl;
+             << "log levels are:" << endl
+             << " error warning info debug trace " << endl;
         return false;
     }
 
