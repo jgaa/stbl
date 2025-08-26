@@ -517,9 +517,12 @@ protected:
                 vars["plyr-js-load"] = format(R"(<script src="{}"></script>)", js);
                 vars["plyr-js-run"] = format(R"(<script>
   document.addEventListener('DOMContentLoaded', () => {{
-    const configs = {};
+    const configs = {{}};
     configs.forEach(cfg => {{
       new Plyr(cfg.selector, cfg.options);
+      if (cfg.portrait) {{
+        player.elements.container.classList.add('plyr--portrait');
+      }}
     }});
   }});
 </script>)", page.getVideOptions());
@@ -933,7 +936,7 @@ protected:
 
         ProcessTemplate(cmd, vars);
         LOG_INFO << "Executing shell command: \"" << cmd << "\"";
-        system(cmd.c_str());
+        (void) system(cmd.c_str());
     }
 
     void CleanUp()

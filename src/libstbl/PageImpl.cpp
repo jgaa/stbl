@@ -390,7 +390,10 @@ private:
             const auto rend = co_await generateRenditions(input_path, ctx.getRelativePrefix(), start_level);
             std::ostringstream tag;
             tag << format("<video id=\"videoplayer_{}\" controls preload=\"metadata\"", video_num)
-                << " poster=\"" << rend.posterUrl << "\">" << "\n";
+                << " poster=\"" << rend.posterUrl << "\""
+                << " playsinline"
+                << " style=\"max-width:100%; max-height:80vh; height:auto; width:auto; display:block;\""
+                << ">\n";
 
             for (auto& r : rend.sources) {
                 tag << "  <source media=\"" << r.mediaQuery
@@ -408,9 +411,9 @@ private:
             // advance scan_start past *this* match in the original buffer
             scan_start = m[0].second;
 
-            // Build options for Plyr
             int w0 = rend.dim.width, h0 = rend.dim.height;
-            int g  = std::gcd(w0, h0);
+            bool isPortrait = h0 > w0;
+            int g = std::gcd(w0, h0);
             int ratioW = w0 / g, ratioH = h0 / g;
 
             std::vector<int> quals;
@@ -433,7 +436,11 @@ private:
                 cfg["selector"] = format("#videoplayer_{}", + video_num);
 
                 json::object opts;
-                //opts["ratio"] = format("{}:{}", ratioW, ratioH);
+                opts["ratio"] = format("{}:{}", ratioW, ratioH);
+
+                if (!isPortrait) {
+                    opts["ratio"] = format("{}:{}", ratioW, ratioH);
+                }
 
                 json::object quality;
                 auto defult_q = ContentManager::GetOptions().options.get("plyr.default", 0);
@@ -448,6 +455,7 @@ private:
 
                 opts["quality"] = std::move(quality);
                 cfg["options"] = std::move(opts);
+                cfg["portrait"] = isPortrait;     // <-- add this flag
 
                 // 4) Append to the array
                 video_configs_.push_back(std::move(cfg));
