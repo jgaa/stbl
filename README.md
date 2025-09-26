@@ -66,7 +66,7 @@ Git submodules
 In order to build, clone the project. Then:
 
 ```sh
-    sudo apt install libjpeg-dev libboost-all-dev cmark-gfm
+    sudo apt install libjpeg-dev libboost-all-dev libcmark-gfm-dev
     git clone https://github.com/jgaa/stbl.git
     cd stbl
     git submodule update --init
