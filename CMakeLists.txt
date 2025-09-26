@@ -60,7 +60,6 @@ if (USE_STATIC_BOOST)
     set(Boost_USE_STATIC_LIBS ON)
 endif()
 find_package(Boost 1.75 REQUIRED COMPONENTS
-    system
     program_options
     date_time
     chrono

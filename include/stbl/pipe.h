@@ -6,7 +6,7 @@
 #include <boost/asio.hpp>
 #include <boost/asio/redirect_error.hpp>
 #include <boost/asio/experimental/awaitable_operators.hpp>
-#include <boost/process/v2.hpp>
+#include <boost/process/v2/popen.hpp>
 #include <boost/process.hpp>
 #include <boost/process/v1/search_path.hpp>
 #include "stbl/logging.h"
