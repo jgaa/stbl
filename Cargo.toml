@@ -1,0 +1,17 @@
+# Cargo.toml (root)
+[workspace]
+members = [
+    "crates/stbl_core",
+    "crates/stbl_cache",
+    "crates/stbl_cli",
+]
+resolver = "2"
+
+#
+# [package]
+# name = "stbl"
+# version = "0.1.0"
+# edition = "2024"
+#
+# [dependencies]
+#

@@ -1,0 +1,9 @@
+[package]
+name = "stbl_cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+stbl_core = { path = "../stbl_core" }
+stbl_cache = { path = "../stbl_cache" }
