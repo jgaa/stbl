@@ -7,3 +7,9 @@ edition = "2024"
 clap = { version = "4", features = ["derive"] }
 stbl_core = { path = "../stbl_core" }
 stbl_cache = { path = "../stbl_cache" }
+walkdir = "2"
+anyhow = "1"
+
+[dev-dependencies]
+tempfile = "3"
+

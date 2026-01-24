@@ -39,3 +39,7 @@ lib
 *.out
 *.app
 
+# Rust/argo
+target
+
+
