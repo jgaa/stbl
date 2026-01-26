@@ -68,14 +68,29 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
     let people = match parsed.people {
         None => None,
         Some(people_raw) => {
-            let default = required_string(people_raw.default, "people.default")?;
             let entries = match people_raw.entries {
                 Some(entries) => entries,
                 None => bail!("missing required field: people.entries"),
             };
-            if !entries.contains_key(&default) {
-                bail!("people.default '{}' is missing from people.entries", default);
+            if entries.is_empty() {
+                bail!("people.entries must not be empty");
             }
+            let default = match people_raw.default {
+                Some(value) if !value.trim().is_empty() => {
+                    if !entries.contains_key(&value) {
+                        bail!(
+                            "people.default '{}' is missing from people.entries",
+                            value
+                        );
+                    }
+                    value
+                }
+                _ => entries
+                    .keys()
+                    .next()
+                    .cloned()
+                    .expect("entries should not be empty"),
+            };
             Some(PeopleConfig { default, entries })
         }
     };
@@ -173,5 +188,15 @@ mod tests {
         );
         let err = load_site_config(&path).expect_err("expected error");
         assert!(err.to_string().contains("rss.ttl_days"));
+    }
+
+    #[test]
+    fn people_default_falls_back_to_first_entry() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\npeople:\n  entries:\n    alice:\n      name: \"Alice\"\n    bob:\n      name: \"Bob\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let people = config.people.expect("people should be present");
+        assert_eq!(people.default, "alice");
     }
 }

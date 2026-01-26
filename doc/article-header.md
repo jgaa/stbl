@@ -1,90 +1,207 @@
-## Magic header format
+## Article Header Specification
 
-stbl articles begin with an optional **magic header**: a compact key/value block that provides metadata for the article. The header is **the source of truth** for metadata (title, tags, publish date, etc.). stbl may **normalize** the header by filling in missing fields (for example `uuid`, `published`) and writing the updated header back to the file.
+Each content document may begin with a **header block** containing metadata.
+The header is the **source of truth** for content metadata.
 
-### Syntax
+### Header block format
 
-* The header consists of **lines** in the form:
-
-  ```
-  key: value
-  ```
-
-* `key` must match: `^[0-9a-zA-Z-]+$`
-
-* `value` is everything after the first `:` on the line (leading spaces are ignored).
-
-* Empty lines are ignored.
-
-* Unknown keys are ignored (future compatibility).
-
-### Comments with `#`
-
-You can comment out parts of the header using `#`:
-
-* **Full-line comment:** if the first non-whitespace character is `#`, the entire line is ignored.
-* **Inline comment:** if `#` is preceded by whitespace, everything from `#` to end-of-line is ignored.
-* `#` **inside tokens** (with no preceding whitespace) is preserved (e.g. URL fragments like `https://example.com/page#section`).
-
-Examples:
-
-```text
-# title: Disabled title
-title: Hello World        # temporary title
-banner: https://x/y#v2    # keeps the fragment
-```
-
-### Supported fields
-
-| Key                  | Type                     | Meaning                                                                                                 |
-| -------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `uuid`               | string                   | Unique identifier for the article. If missing/empty, stbl generates one.                                |
-| `title`              | string                   | Article title (displayed on pages and feeds).                                                           |
-| `abstract`           | string                   | Short summary used on index pages and RSS.                                                              |
-| `tags`               | list (comma-separated)   | Tags used for tag pages and filtering. Example: `tags: rust, web, tooling`                              |
-| `published`          | datetime or boolean-like | Publish time in `%Y-%m-%d %H:%M` (UTC). Special values `false` or `no` mark the article as unpublished. |
-| `updated`            | datetime                 | Last updated time in `%Y-%m-%d %H:%M` (UTC).                                                            |
-| `expires`            | datetime                 | Optional expiry time in `%Y-%m-%d %H:%M` (UTC).                                                         |
-| `authors`            | list (comma-separated)   | Author IDs/names.                                                                                       |
-| `author`             | string                   | Convenience field: if present, it is inserted at the front of `authors`.                                |
-| `template`           | string                   | Template name to use for the page (theme-defined).                                                      |
-| `type`               | string                   | Content type/category for theme logic.                                                                  |
-| `menu`               | string                   | Optional menu label/placement hint (theme-defined).                                                     |
-| `banner`             | string                   | Banner image path or URL.                                                                               |
-| `banner-credits`     | string                   | Attribution string for the banner.                                                                      |
-| `comments`           | string                   | Comment provider/mode (theme-defined).                                                                  |
-| `part`               | integer                  | Part number for multi-part articles/series navigation.                                         |
-
-| `sitemap-priority`   | integer                  | Optional sitemap priority (theme-defined semantics).                                                    |
-| `sitemap-changefreq` | string                   | Optional sitemap change frequency (e.g. `daily`, `weekly`).                                             |
-
-### Datetime format
-
-All datetimes use the format:
-
-```
-YYYY-MM-DD HH:MM
-```
+The header is a sequence of `key: value` lines at the top of the file, terminated by the first empty line.
 
 Example:
 
 ```
-published: 2026-01-23 11:30
+title: My Article
+author: jgaa, contributor2
+published: 2024-10-01 12:00
+tags: rust, stbl
+part: 2
+
+# Article body starts here
 ```
 
-Unless otherwise stated by configuration, timestamps are treated as **UTC**.
+---
 
-### Example header
+## General parsing rules
 
-```text
-uuid: 3f97f9c9-32b8-4e58-9d29-4c3b6f6bb2a1
-title: Rebuilding stbl in Rust
-abstract: Notes from a rewrite focused on maintainability and speed.
-tags: rust, static-sites, tooling
-published: 2026-01-23 11:30
-updated: 2026-01-23 12:05
-authors: jgaa
-banner: images/rewrite.jpg#v2  # fragment is preserved
-banner-credits: Photo by Example Person
-comments: off
+* Header keys are **case-sensitive**
+* **Unknown keys are errors by default**
+
+  * CLI option may downgrade unknown-key errors to warnings
+* Values are trimmed of surrounding whitespace
+* Empty values are treated as “unset”
+
+---
+
+## Supported fields
+
+### `title`
+
+* **Required**
+* Free text
+
+---
+
+### `author`
+
+* Optional
+* Comma-separated list of **author IDs**
+* IDs must exist in the `people` directory in `stbl.yaml`
+
+Example:
+
 ```
+author: jgaa, alice
+```
+
+---
+
+### `published`
+
+Controls whether and when a document is published.
+
+Accepted values:
+
+* `no` / `false`
+
+  * Document is **unpublished**
+  * Excluded from site generation by default
+* Date/time string
+* Empty or missing
+
+Behavior:
+
+* If `published` is **missing or empty**:
+
+  * A publish timestamp is generated during build
+  * The header is **written back** to the document
+* If `published` is `no|false`:
+
+  * Document is excluded unless:
+
+    * `--preview` **and**
+    * `--include-unpublished` are both set
+  * Publish/deploy must refuse when unpublished content is included
+
+Datetime rules:
+
+* **Flexible input**, strict output
+* Generated timestamps are written in **ANSI format**
+* Timezone:
+
+  * Use `site.timezone` from config if present
+  * Otherwise use **local timezone**
+
+---
+
+### `updated`
+
+* Optional
+* Date/time string
+* Represents the **last update time**
+* Overrides filesystem modification time
+
+Rules:
+
+* If present: use this value
+* If missing: use file modification time
+* **Never auto-generated**
+* **Never written back**
+
+---
+
+### `tags`
+
+* Optional
+* Comma-separated list of tag strings
+
+---
+
+### `type`
+
+* Optional
+* String
+* Semantics are template-defined (not enforced at header level)
+
+---
+
+### `part`
+
+Used for ordered series content.
+
+* Integer **≥ 1**
+* Required for series parts
+
+Behavior:
+
+* If missing or empty:
+
+  * Assigned during generation
+  * Assignment rules:
+
+    * Existing part numbers are **never changed**
+    * Missing parts are sorted by file modification time
+    * Numbers are assigned starting at the lowest free index
+  * Assigned values are **written back**
+* Diagnostics:
+
+  * Error if value `< 1` or not an integer
+  * Warning if sequence contains holes (e.g. `1,2,3,5`)
+
+---
+
+### `uuid`
+
+* Optional
+* Accepted for backward compatibility
+* Not required
+* Not generated
+* May be ignored internally
+
+---
+
+### Sitemap fields
+
+#### `sitemap-priority`
+
+* Optional
+* Must be a valid sitemap priority value
+
+#### `sitemap-changefreq`
+
+* Optional
+* Must be a valid sitemap change frequency value
+
+Invalid sitemap values are **errors**.
+
+---
+
+## Write-back behavior
+
+The following fields may be written back during build:
+
+* `published`
+* `part`
+
+Rules:
+
+* Write-back happens during **build**
+* Default: files are modified but **not committed**
+* An INFO message is printed **at the end of output**
+* CLI options:
+
+  * `--no-writeback`: allowed **only in preview mode**
+  * `--commit-writeback`: automatically commits changes
+
+---
+
+## Diagnostics severity
+
+| Condition                       | Severity |
+| ------------------------------- | -------- |
+| Unknown header key (default)    | Error    |
+| Unknown header key (downgraded) | Warning  |
+| Invalid `part` value            | Error    |
+| Missing `part` (series)         | Info     |
+| Holes in part sequence          | Warning  |
+| Invalid sitemap fields          | Error    |
+

@@ -1,0 +1,5 @@
+site:
+  id: "site1"
+  title: "Site One"
+  base_url: "https://example.com/"
+  language: "en"

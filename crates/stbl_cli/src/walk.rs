@@ -5,11 +5,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use stbl_core::header::parse_header;
+use stbl_core::header::{UnknownKeyPolicy, parse_header};
 use stbl_core::model::{DiscoveredDoc, DocKind, ParsedDoc, SourceDoc};
 use walkdir::WalkDir;
 
-pub fn walk_content(root: &Path, articles_dir: &Path) -> Result<Vec<DiscoveredDoc>> {
+pub fn walk_content(
+    root: &Path,
+    articles_dir: &Path,
+    unknown_key_policy: UnknownKeyPolicy,
+) -> Result<Vec<DiscoveredDoc>> {
     let articles_dir = if articles_dir.is_absolute() {
         articles_dir.to_path_buf()
     } else {
@@ -18,7 +22,10 @@ pub fn walk_content(root: &Path, articles_dir: &Path) -> Result<Vec<DiscoveredDo
     let mut markdown_files = Vec::new();
     let mut series_dirs = HashSet::new();
 
-    for entry in WalkDir::new(&articles_dir).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(&articles_dir)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -47,19 +54,24 @@ pub fn walk_content(root: &Path, articles_dir: &Path) -> Result<Vec<DiscoveredDo
     for path in markdown_files {
         let raw = fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
+        let mtime = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
         let (header_opt, body_slice) = extract_header_body(&raw);
+        let header_present = header_opt.is_some();
+        let header_text = header_opt.map(str::to_string);
         let body_markdown = body_slice.to_string();
-        let header = match header_opt {
-            Some(text) => parse_header(text)
-                .with_context(|| format!("failed to parse header in {}", path.display()))?,
+        let header = match header_text.as_deref() {
+            Some(text) => {
+                parse_header(text, unknown_key_policy)
+                    .with_context(|| format!("failed to parse header in {}", path.display()))?
+                    .header
+            }
             None => stbl_core::header::Header::default(),
         };
 
         let source_path = to_relative_path(root, &path);
-        let dir_path = to_relative_path(
-            root,
-            path.parent().unwrap_or_else(|| Path::new("")),
-        );
+        let dir_path = to_relative_path(root, path.parent().unwrap_or_else(|| Path::new("")));
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -75,6 +87,8 @@ pub fn walk_content(root: &Path, articles_dir: &Path) -> Result<Vec<DiscoveredDo
             },
             header,
             body_markdown,
+            header_present,
+            mtime,
         };
 
         let (kind, series_dir) = classify_doc(root, &path, &articles_dir, &series_dirs);
@@ -152,7 +166,10 @@ fn looks_like_header_line(line: &str) -> bool {
         None => return false,
     };
     let key = key.trim_end();
-    !key.is_empty() && key.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
 }
 
 fn to_relative_path(root: &Path, path: &Path) -> String {
@@ -183,11 +200,15 @@ mod tests {
         write_file(&articles.join("series/index.md"), "title: Series\n\nIntro");
         write_file(&articles.join("series/part1.md"), "title: Part 1\n\nBody");
         write_file(&articles.join("series/part2.md"), "title: Part 2\n\nBody");
-        write_file(&articles.join("_grouped/index.md"), "title: Grouped\n\nBody");
+        write_file(
+            &articles.join("_grouped/index.md"),
+            "title: Grouped\n\nBody",
+        );
         write_file(&articles.join("_grouped/part.md"), "title: Part\n\nBody");
         write_file(&articles.join("_ignored.md"), "title: Ignore\n\nBody");
 
-        let docs = walk_content(root, &articles).expect("walk should succeed");
+        let docs =
+            walk_content(root, &articles, UnknownKeyPolicy::Error).expect("walk should succeed");
         assert_eq!(docs.len(), 6);
 
         let mut by_path = docs
@@ -209,6 +230,9 @@ mod tests {
 
         let grouped_index = by_path.remove("articles/_grouped/index.md").unwrap();
         assert!(matches!(grouped_index.kind, DocKind::SeriesIndex));
-        assert_eq!(grouped_index.series_dir.as_deref(), Some("articles/_grouped"));
+        assert_eq!(
+            grouped_index.series_dir.as_deref(),
+            Some("articles/_grouped")
+        );
     }
 }

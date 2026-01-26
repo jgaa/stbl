@@ -1,0 +1,68 @@
+site:
+  id: "bootstrap"
+  title: "The Blog you Write"
+  abstract: "Just a simple example site."
+  base_url: "https://lastviking.eu/"
+  language: "en"
+
+banner:
+  widths: [94, 128, 248, 360, 480, 640, 720, 950]
+  quality: 95
+  align: 0
+
+menu:
+  - title: "Home"
+    href: "./"
+  - title: "Linkedin"
+    href: "https://www.linkedin.com/in/jgaa-from-north"
+  - title: "Github"
+    href: "https://www.github.com/jgaa"
+  - title: "About"
+    href: "./about.html"
+
+people:
+  entries:
+    jgaa:
+      name: "you"
+      links:
+        - id: "e-mail"
+          name: "anonymous"
+          url: "mailto:anonymous@example.com"
+          icon: "{{rel}}artifacts/mail.svg"
+        - id: "github"
+          name: "you"
+          url: "https://github.com/you"
+          icon: "{{rel}}artifacts/github.svg"
+        - id: "twitter"
+          name: "@you"
+          url: "https://twitter.com/jgaa_from_north"
+          icon: "{{rel}}artifacts/twitter.svg"
+        - id: "linkedin"
+          name: "Unnamed Blogger"
+          url: "https://www.linkedin.com/in/anonymous"
+          icon: "{{rel}}artifacts/linkedin.svg"
+
+system:
+  date:
+    format: "%A %B %e, %Y"
+    roundup_seconds: 1800
+
+publish:
+  command: "rsync -a --delete {{local-site}}/ {{destination}}/"
+
+rss:
+  enabled: true
+  max_items: 16
+
+seo:
+  sitemap:
+    priority:
+      frontpage: 100
+      article: 90
+      series: 95
+      tag: 40
+      tags: 40
+
+chroma:
+  enabled: "auto"
+  style: "friendly"
