@@ -169,6 +169,7 @@ pub struct SiteMeta {
     pub base_url: String,
     pub language: String,
     pub timezone: Option<String>,
+    pub url_style: UrlStyle,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -246,6 +247,20 @@ pub struct SeoPriorityConfig {
     pub series: i32,
     pub tag: i32,
     pub tags: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UrlStyle {
+    Html,
+    Pretty,
+    PrettyWithFallback,
+}
+
+impl Default for UrlStyle {
+    fn default() -> Self {
+        UrlStyle::Html
+    }
 }
 
 // ----------------------------

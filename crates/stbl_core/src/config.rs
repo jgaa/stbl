@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::model::{
     BannerConfig, MenuItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig,
-    SiteConfig, SiteMeta, SystemConfig,
+    SiteConfig, SiteMeta, SystemConfig, UrlStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -35,6 +35,7 @@ struct SiteMetaRaw {
     base_url: Option<String>,
     language: Option<String>,
     timezone: Option<String>,
+    url_style: Option<UrlStyle>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,6 +64,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         base_url: required_string(parsed.site.base_url, "site.base_url")?,
         language: required_string(parsed.site.language, "site.language")?,
         timezone: parsed.site.timezone,
+        url_style: parsed.site.url_style.unwrap_or_default(),
     };
 
     let people = match parsed.people {
