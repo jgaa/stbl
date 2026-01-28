@@ -18,7 +18,24 @@ site:
 
 Missing required fields are **errors**.
 
----
+### site.url_style
+
+Controls how URLs and output paths are generated.
+
+Allowed values:
+
+- `html` (default)
+  - Pages are generated as `/path/name.html`
+
+- `pretty`
+  - Pages are generated as `/path/name/index.html`
+  - Links use `/path/name/`
+
+- `pretty_with_fallback`
+  - Same as `pretty`
+  - Additionally generates `/path/name.html` as a redirect page
+  - Intended for migrating existing sites without breaking links
+
 
 ## Full schema (MVP)
 
@@ -30,6 +47,7 @@ site:
   base_url: string
   language: string
   timezone: string   # optional
+  url_style: html   # default, safe for existing sites
 
 banner:
   widths: [int]

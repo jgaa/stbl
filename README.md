@@ -1,3 +1,8 @@
+> ⚠️ Note: This repository contains **stbl2**, a Rust rewrite of stbl.
+> The current implementation is under active development.
+> Some documentation below describes the original C++ version and is being updated incrementally.
+
+
 # Introduction to stbl
 
 stbl is an acronym for "Static Blog".
