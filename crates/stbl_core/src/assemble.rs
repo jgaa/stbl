@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::SystemTime;
 
+use crate::header::{Header, TemplateId};
 use crate::model::{
     Diagnostic, DiagnosticLevel, DiscoveredDoc, DocId, DocKind, Page, Series, SeriesId, SeriesPart,
     SiteContent, WriteBackEdit, WriteBackPlan,
@@ -18,7 +19,20 @@ struct SeriesPartCandidate {
     header_present: bool,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TemplatePolicy {
+    Warn,
+    Error,
+}
+
 pub fn assemble_site(docs: Vec<DiscoveredDoc>) -> Result<SiteContent, Vec<Diagnostic>> {
+    assemble_site_with_template_policy(docs, TemplatePolicy::Warn)
+}
+
+pub fn assemble_site_with_template_policy(
+    docs: Vec<DiscoveredDoc>,
+    template_policy: TemplatePolicy,
+) -> Result<SiteContent, Vec<Diagnostic>> {
     let mut diagnostics = Vec::new();
     let mut pages = Vec::new();
     let mut series_index_by_dir: HashMap<String, Page> = HashMap::new();
@@ -33,10 +47,17 @@ pub fn assemble_site(docs: Vec<DiscoveredDoc>) -> Result<SiteContent, Vec<Diagno
             }
         }
         let content_hash = blake3::hash(doc.parsed.src.source_path.as_bytes());
+        let mut header = doc.parsed.header.clone();
+        normalize_template(
+            &mut header,
+            template_policy,
+            &mut diagnostics,
+            &doc.parsed.src.source_path,
+        );
         let page_doc = Page {
             id: DocId(content_hash),
             source_path: doc.parsed.src.source_path.clone(),
-            header: doc.parsed.header.clone(),
+            header,
             body_markdown: doc.parsed.body_markdown.clone(),
             url_path: String::new(),
             content_hash,
@@ -207,6 +228,54 @@ pub fn assemble_site(docs: Vec<DiscoveredDoc>) -> Result<SiteContent, Vec<Diagno
     }
 }
 
+fn normalize_template(
+    header: &mut Header,
+    policy: TemplatePolicy,
+    diagnostics: &mut Vec<Diagnostic>,
+    source_path: &str,
+) {
+    let Some(raw) = header.template_raw.take() else {
+        return;
+    };
+    let value = raw.trim();
+    if value.is_empty() {
+        return;
+    }
+    if value.contains('/') {
+        diagnostics.push(Diagnostic {
+            level: template_level(policy),
+            source_path: Some(source_path.to_string()),
+            message: format!("template must be a filename without '/': {value}"),
+        });
+        return;
+    }
+    let normalized = match value {
+        "landingpage.html" => TemplateId::Landing,
+        "frontpage.html" => TemplateId::BlogIndex,
+        "info.html" => TemplateId::Info,
+        "landing" => TemplateId::Landing,
+        "blog_index" => TemplateId::BlogIndex,
+        "page" => TemplateId::Page,
+        "info" => TemplateId::Info,
+        _ => {
+            diagnostics.push(Diagnostic {
+                level: template_level(policy),
+                source_path: Some(source_path.to_string()),
+                message: format!("unknown template: {value}"),
+            });
+            return;
+        }
+    };
+    header.template = Some(normalized);
+}
+
+fn template_level(policy: TemplatePolicy) -> DiagnosticLevel {
+    match policy {
+        TemplatePolicy::Warn => DiagnosticLevel::Warning,
+        TemplatePolicy::Error => DiagnosticLevel::Error,
+    }
+}
+
 fn build_writeback_published_edit(doc: &DiscoveredDoc) -> Option<WriteBackEdit> {
     let published_text = Local::now().format("%Y-%m-%d %H:%M").to_string();
     let (new_header_text, new_body) =
@@ -359,6 +428,13 @@ mod tests {
         header
     }
 
+    fn header_with_template(template: &str) -> Header {
+        let mut header = Header::default();
+        header.uuid = Some(Uuid::new_v4());
+        header.template_raw = Some(template.to_string());
+        header
+    }
+
     #[test]
     fn series_with_index_and_parts_sorts() {
         let index = DiscoveredDoc {
@@ -438,6 +514,114 @@ mod tests {
         };
         let err = assemble_site(vec![index, part1a, part1b]).expect_err("expected error");
         assert!(err.iter().any(|diag| diag.level == DiagnosticLevel::Error));
+    }
+
+    #[test]
+    fn template_frontpage_html_normalizes() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/page.md",
+                "articles",
+                "page.md",
+                header_with_template("frontpage.html"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::BlogIndex));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn template_normalized_id_passes_through() {
+        let docs = vec![
+            DiscoveredDoc {
+                parsed: parsed(
+                    "articles/page.md",
+                    "articles",
+                    "page.md",
+                    header_with_template("blog_index"),
+                ),
+                kind: DocKind::Page,
+                series_dir: None,
+            },
+            DiscoveredDoc {
+                parsed: parsed(
+                    "articles/info.md",
+                    "articles",
+                    "info.md",
+                    header_with_template("info"),
+                ),
+                kind: DocKind::Page,
+                series_dir: None,
+            },
+        ];
+        let site =
+            assemble_site_with_template_policy(docs, TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 2);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::BlogIndex));
+        assert_eq!(site.pages[1].header.template, Some(TemplateId::Info));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn template_info_html_normalizes() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/info.md",
+                "articles",
+                "info.md",
+                header_with_template("info.html"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::Info));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn template_with_path_emits_warning() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/page.md",
+                "articles",
+                "page.md",
+                header_with_template("templates/frontpage.html"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, None);
+        assert_eq!(site.diagnostics.len(), 1);
+        assert_eq!(site.diagnostics[0].level, DiagnosticLevel::Warning);
+    }
+
+    #[test]
+    fn template_with_path_errors_in_strict_mode() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/page.md",
+                "articles",
+                "page.md",
+                header_with_template("templates/frontpage.html"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let err =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Error).expect_err("err");
+        assert_eq!(err.len(), 1);
+        assert_eq!(err[0].level, DiagnosticLevel::Error);
     }
 
     #[test]

@@ -1,0 +1,370 @@
+use std::fs;
+use std::path::PathBuf;
+
+use anyhow::{Context, Result, anyhow};
+use stbl_core::blog_index::{FeedItem, blog_page_size, collect_blog_feed};
+use stbl_core::feeds::{render_rss, render_sitemap};
+use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
+use stbl_core::render::render_markdown_to_html;
+use stbl_core::templates::{
+    BlogIndexItem, BlogIndexPart, format_timestamp_rfc3339, render_blog_index,
+    render_markdown_page, render_page,
+};
+use stbl_core::url::{UrlMapper, logical_key_from_source_path};
+
+#[derive(Debug, Default)]
+#[allow(dead_code)]
+pub struct ExecReport {
+    pub executed: usize,
+    pub skipped: usize,
+}
+
+pub fn execute_plan(project: &Project, plan: &BuildPlan, out_dir: &PathBuf) -> Result<ExecReport> {
+    let mut report = ExecReport::default();
+    let mapper = UrlMapper::new(&project.config);
+    for task in &plan.tasks {
+        if matches!(task.kind, TaskKind::GenerateRss)
+            && !project.config.rss.as_ref().is_some_and(|rss| rss.enabled)
+        {
+            continue;
+        }
+        for output in &task.outputs {
+            let out_path = out_dir.join(&output.path);
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            let contents = render_output(project, &mapper, &task.kind, &output.path)
+                .with_context(|| format!("failed to render {}", out_path.display()))?;
+            fs::write(&out_path, contents)
+                .with_context(|| format!("failed to write {}", out_path.display()))?;
+            report.executed += 1;
+        }
+    }
+    Ok(report)
+}
+
+fn render_output(
+    project: &Project,
+    mapper: &UrlMapper,
+    kind: &TaskKind,
+    output_path: &PathBuf,
+) -> Result<String> {
+    match output_path.extension().and_then(|ext| ext.to_str()) {
+        Some("html") => render_html_output(project, mapper, kind, output_path),
+        Some("xml") => render_xml_output(project, mapper, kind),
+        _ => Ok(String::new()),
+    }
+}
+
+fn render_html_output(
+    project: &Project,
+    mapper: &UrlMapper,
+    kind: &TaskKind,
+    output_path: &PathBuf,
+) -> Result<String> {
+    if let Some(mapping) = mapping_for_task(project, mapper, kind)? {
+        if output_path == &mapping.primary_output {
+            return render_primary_html(project, kind);
+        }
+        if mapping
+            .fallback
+            .as_ref()
+            .is_some_and(|redirect| output_path == &redirect.from)
+        {
+            return Ok(render_redirect_stub(&mapping.href));
+        }
+    }
+
+    render_primary_html(project, kind)
+}
+
+fn render_xml_output(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> Result<String> {
+    match kind {
+        TaskKind::GenerateRss => Ok(render_rss(project, mapper)),
+        TaskKind::GenerateSitemap => Ok(render_sitemap(project, mapper)),
+        _ => Ok(String::new()),
+    }
+}
+
+fn render_primary_html(project: &Project, kind: &TaskKind) -> Result<String> {
+    match kind {
+        TaskKind::RenderPage { page } => render_page_by_id(project, *page),
+        TaskKind::RenderBlogIndex {
+            source_page,
+            page_no,
+        } => render_blog_index_page(project, source_page, *page_no),
+        TaskKind::RenderSeries { series } => render_series(project, *series),
+        TaskKind::RenderTagIndex { tag } => {
+            let title = format!("Tag: {}", tag);
+            render_markdown_page(project, Some(&title), "*Not implemented.*\n")
+        }
+        TaskKind::RenderTagsIndex => {
+            render_markdown_page(project, Some("Tags"), "*Not implemented.*\n")
+        }
+        TaskKind::RenderFrontPage => {
+            let title = project.config.site.title.clone();
+            render_markdown_page(project, Some(&title), "*Not implemented.*\n")
+        }
+        _ => render_markdown_page(project, Some("Not implemented"), "*Not implemented.*\n"),
+    }
+}
+
+fn render_page_by_id(project: &Project, page_id: DocId) -> Result<String> {
+    let page =
+        find_page(project, page_id).ok_or_else(|| anyhow!("page not found for render task"))?;
+    render_page(project, page)
+}
+
+fn render_series(project: &Project, series_id: stbl_core::model::SeriesId) -> Result<String> {
+    let series = find_series(project, series_id)
+        .ok_or_else(|| anyhow!("series not found for render task"))?;
+    render_page(project, &series.index)
+}
+
+fn find_page(project: &Project, page_id: DocId) -> Option<&Page> {
+    if let Some(page) = project.content.pages.iter().find(|page| page.id == page_id) {
+        return Some(page);
+    }
+    for series in &project.content.series {
+        if series.index.id == page_id {
+            return Some(&series.index);
+        }
+        if let Some(page) = series
+            .parts
+            .iter()
+            .find(|part| part.page.id == page_id)
+            .map(|part| &part.page)
+        {
+            return Some(page);
+        }
+    }
+    None
+}
+
+fn find_series(project: &Project, series_id: stbl_core::model::SeriesId) -> Option<&Series> {
+    project
+        .content
+        .series
+        .iter()
+        .find(|series| series.id == series_id)
+}
+
+fn mapping_for_task(
+    project: &Project,
+    mapper: &UrlMapper,
+    kind: &TaskKind,
+) -> Result<Option<stbl_core::url::UrlMapping>> {
+    let logical_key = match kind {
+        TaskKind::RenderPage { page } => {
+            let page = find_page(project, *page)
+                .ok_or_else(|| anyhow!("page not found for render task"))?;
+            logical_key_from_source_path(&page.source_path)
+        }
+        TaskKind::RenderBlogIndex {
+            source_page,
+            page_no,
+        } => {
+            let page = find_page(project, *source_page)
+                .ok_or_else(|| anyhow!("blog index page not found"))?;
+            if *page_no == 1 {
+                logical_key_from_source_path(&page.source_path)
+            } else {
+                format!("page/{}", page_no)
+            }
+        }
+        TaskKind::RenderSeries { series } => {
+            let series = find_series(project, *series)
+                .ok_or_else(|| anyhow!("series not found for render task"))?;
+            logical_key_from_source_path(&series.dir_path)
+        }
+        TaskKind::RenderTagIndex { tag } => format!("tags/{tag}"),
+        TaskKind::RenderTagsIndex => "tags".to_string(),
+        TaskKind::RenderFrontPage => "index".to_string(),
+        _ => return Ok(None),
+    };
+    Ok(Some(mapper.map(&logical_key)))
+}
+
+fn render_redirect_stub(href: &str) -> String {
+    let target = format!("/{}", href.trim_start_matches('/'));
+    format!(
+        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta http-equiv=\"refresh\" content=\"0; url={target}\">\n</head>\n<body>\n  <a href=\"{target}\">{target}</a>\n</body>\n</html>\n"
+    )
+}
+
+fn render_blog_index_page(
+    project: &Project,
+    source_page_id: &DocId,
+    page_no: u32,
+) -> Result<String> {
+    let mapper = UrlMapper::new(&project.config);
+    let source_page =
+        find_page(project, *source_page_id).ok_or_else(|| anyhow!("blog index page not found"))?;
+
+    let feed_items = collect_blog_feed(project, source_page.id);
+    let page_size = blog_page_size(project);
+    let total_pages = total_pages(feed_items.len(), page_size);
+    let (start, end) = page_slice_bounds(page_no, page_size, feed_items.len());
+    let items = feed_items[start..end]
+        .iter()
+        .map(|item| map_feed_item(item, &mapper))
+        .collect::<Vec<_>>();
+
+    let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
+        Some(render_markdown_to_html(&source_page.body_markdown))
+    } else {
+        None
+    };
+
+    let title = source_page.header.title.clone();
+    let prev_href = if page_no > 1 {
+        let prev_key = if page_no == 2 {
+            logical_key_from_source_path(&source_page.source_path)
+        } else {
+            format!("page/{}", page_no - 1)
+        };
+        Some(mapper.map(&prev_key).href)
+    } else {
+        None
+    };
+    let next_href = if page_no < total_pages {
+        let next_key = format!("page/{}", page_no + 1);
+        Some(mapper.map(&next_key).href)
+    } else {
+        None
+    };
+
+    render_blog_index(project, title, intro_html, items, prev_href, next_href)
+}
+
+fn total_pages(total_items: usize, page_size: usize) -> u32 {
+    let size = page_size.max(1);
+    let pages = if total_items == 0 {
+        1
+    } else {
+        (total_items + size - 1) / size
+    };
+    pages as u32
+}
+
+fn page_slice_bounds(page_no: u32, page_size: usize, total_items: usize) -> (usize, usize) {
+    if total_items == 0 {
+        return (0, 0);
+    }
+    let size = page_size.max(1);
+    let start = ((page_no.saturating_sub(1)) as usize).saturating_mul(size);
+    let end = usize::min(start + size, total_items);
+    if start >= total_items {
+        return (total_items, total_items);
+    }
+    (start, end)
+}
+
+fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
+    match item {
+        FeedItem::Post(post) => BlogIndexItem {
+            title: post.title.clone(),
+            href: mapper.map(&post.logical_key).href,
+            published: format_timestamp_rfc3339(post.published).unwrap_or_default(),
+            kind_label: String::new(),
+            summary_html: String::new(),
+            latest_parts: Vec::new(),
+        },
+        FeedItem::Series(series) => BlogIndexItem {
+            title: series.title.clone(),
+            href: mapper.map(&series.logical_key).href,
+            published: format_timestamp_rfc3339(series.published).unwrap_or_default(),
+            kind_label: "Series".to_string(),
+            summary_html: series.abstract_html.clone(),
+            latest_parts: series
+                .latest_parts
+                .iter()
+                .map(|part| BlogIndexPart {
+                    title: part.title.clone(),
+                    href: mapper.map(&part.logical_key).href,
+                    published: format_timestamp_rfc3339(part.published).unwrap_or_default(),
+                })
+                .collect(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stbl_core::assemble::assemble_site;
+    use stbl_core::config::load_site_config;
+    use stbl_core::header::UnknownKeyPolicy;
+    use stbl_core::model::{Project, UrlStyle};
+    use tempfile::TempDir;
+
+    fn fixture_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("stbl_core")
+            .join("tests")
+            .join("fixtures")
+            .join("site1")
+    }
+
+    fn build_project(url_style: UrlStyle) -> Project {
+        let root = fixture_root();
+        let config_path = root.join("stbl.yaml");
+        let mut config = load_site_config(&config_path).expect("load config");
+        config.site.url_style = url_style;
+        let docs =
+            crate::walk::walk_content(&root, &root.join("articles"), UnknownKeyPolicy::Error)
+                .expect("walk content");
+        let content = assemble_site(docs).expect("assemble site");
+        Project {
+            root,
+            config,
+            content,
+        }
+    }
+
+    fn build_into_temp(url_style: UrlStyle) -> (TempDir, PathBuf) {
+        let project = build_project(url_style);
+        let plan = stbl_core::plan::build_plan(&project);
+        let temp = TempDir::new().expect("tempdir");
+        let out_dir = temp.path().join("out");
+        execute_plan(&project, &plan, &out_dir).expect("execute plan");
+        (temp, out_dir)
+    }
+
+    #[test]
+    fn html_style_writes_flat_html() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
+        assert!(out_dir.join("page1.html").exists());
+        assert!(!out_dir.join("page1").join("index.html").exists());
+    }
+
+    #[test]
+    fn blog_index_lists_pages() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
+        let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
+        assert!(index_html.contains("page1.html"));
+        assert!(index_html.contains("page2.html"));
+        assert!(!index_html.contains("info.html"));
+    }
+
+    #[test]
+    fn pretty_style_writes_index_html() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::Pretty);
+        assert!(out_dir.join("page1").join("index.html").exists());
+        assert!(!out_dir.join("page1.html").exists());
+    }
+
+    #[test]
+    fn pretty_with_fallback_writes_redirect_stub() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::PrettyWithFallback);
+        let index_path = out_dir.join("page1").join("index.html");
+        let fallback_path = out_dir.join("page1.html");
+        assert!(index_path.exists());
+        assert!(fallback_path.exists());
+        let contents = fs::read_to_string(fallback_path).expect("read fallback");
+        assert!(contents.contains("http-equiv=\"refresh\""));
+        assert!(contents.contains("href=\"/page1/\""));
+    }
+}

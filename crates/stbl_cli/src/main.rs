@@ -1,3 +1,4 @@
+mod exec;
 mod walk;
 
 use std::path::PathBuf;
@@ -13,7 +14,7 @@ use std::process::Command as ProcessCommand;
 #[derive(Debug, Parser)]
 #[command(name = "stbl_cli")]
 struct Cli {
-    #[arg(long = "source-dir", short = 's')]
+    #[arg(long = "source-dir", short = 's', global = true)]
     source_dir: Option<PathBuf>,
     #[arg(long)]
     preview: bool,
@@ -44,11 +45,21 @@ enum UnknownHeaderKeys {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    Scan { articles_dir: PathBuf },
+    Scan {
+        #[arg(default_value = "articles")]
+        articles_dir: PathBuf,
+    },
     Plan {
+        #[arg(default_value = "articles")]
         articles_dir: PathBuf,
         #[arg(long, value_name = "PATH", num_args = 0..=1, default_missing_value = "stbl.dot")]
         dot: Option<PathBuf>,
+    },
+    Build {
+        #[arg(default_value = "articles")]
+        articles_dir: PathBuf,
+        #[arg(long, value_name = "PATH", default_value = "out")]
+        out: PathBuf,
     },
 }
 
@@ -58,6 +69,7 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Scan { articles_dir } => run_scan(&cli, articles_dir),
         Command::Plan { articles_dir, dot } => run_plan(&cli, articles_dir, dot.as_ref()),
+        Command::Build { articles_dir, out } => run_build(&cli, articles_dir, out),
     }
 }
 
@@ -142,6 +154,54 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
             println!("edge: {} -> {}", from.0.to_hex(), to.0.to_hex());
         }
     }
+    let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
+    println!("{summary}");
+    Ok(())
+}
+
+fn run_build(cli: &Cli, articles_dir: &PathBuf, out: &PathBuf) -> Result<()> {
+    let root = root_dir(cli)?;
+    let config_path = root.join("stbl.yaml");
+    let config = load_site_config(&config_path)
+        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let docs = walk::walk_content(&root, articles_dir, cli.unknown_header_keys.into())?;
+    let content = match assemble_site(docs) {
+        Ok(site) => site,
+        Err(diagnostics) => {
+            for diag in diagnostics {
+                let label = match diag.level {
+                    DiagnosticLevel::Warning => "warning",
+                    DiagnosticLevel::Error => "error",
+                };
+                if let Some(path) = diag.source_path {
+                    eprintln!("{label}: {path}: {}", diag.message);
+                } else {
+                    eprintln!("{label}: {}", diag.message);
+                }
+            }
+            std::process::exit(1);
+        }
+    };
+    let project = stbl_core::model::Project {
+        root: root.clone(),
+        config,
+        content,
+    };
+    let plan = stbl_core::plan::build_plan(&project);
+
+    let out_dir = if out.is_absolute() {
+        out.clone()
+    } else {
+        root.join(out)
+    };
+
+    let output_count: usize = plan.tasks.iter().map(|task| task.outputs.len()).sum();
+    exec::execute_plan(&project, &plan, &out_dir)?;
+    println!("tasks: {}", plan.tasks.len());
+    println!("edges: {}", plan.edges.len());
+    println!("outputs: {}", output_count);
+    println!("out: {}", out_dir.display());
+
     let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
     println!("{summary}");
     Ok(())
@@ -283,6 +343,7 @@ fn commit_writeback(root: &PathBuf, touched: &[&str]) -> Result<()> {
 fn kind_label(kind: &stbl_core::model::TaskKind) -> &'static str {
     match kind {
         stbl_core::model::TaskKind::RenderPage { .. } => "RenderPage",
+        stbl_core::model::TaskKind::RenderBlogIndex { .. } => "RenderBlogIndex",
         stbl_core::model::TaskKind::RenderSeries { .. } => "RenderSeries",
         stbl_core::model::TaskKind::RenderTagIndex { .. } => "RenderTagIndex",
         stbl_core::model::TaskKind::RenderTagsIndex => "RenderTagsIndex",
@@ -415,11 +476,8 @@ mod tests {
             "site:\n  id: \"fixture\"\n  title: \"Fixture\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
         )
         .expect("write config");
-        fs::write(
-            root.join("articles/page1.md"),
-            "title: Page One\n\nBody\n",
-        )
-        .expect("write page1");
+        fs::write(root.join("articles/page1.md"), "title: Page One\n\nBody\n")
+            .expect("write page1");
         fs::write(
             root.join("articles/series/index.md"),
             "title: Series Index\npublished: 2024-01-01 10:00\n\nSeries\n",

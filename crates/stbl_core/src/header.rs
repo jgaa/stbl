@@ -11,7 +11,8 @@ pub struct Header {
     pub tags: Vec<String>,
     pub updated: Option<i64>,
     pub abstract_text: Option<String>,
-    pub template: Option<String>,
+    pub template: Option<TemplateId>,
+    pub template_raw: Option<String>,
     pub content_type: Option<String>,
     pub menu: Option<String>,
     pub banner: Option<String>,
@@ -25,6 +26,7 @@ pub struct Header {
     pub published_needs_writeback: bool,
     pub expires: Option<i64>,
     pub authors: Option<Vec<String>>,
+    pub exclude_from_blog: bool,
 }
 
 impl Default for Header {
@@ -36,6 +38,7 @@ impl Default for Header {
             updated: None,
             abstract_text: None,
             template: None,
+            template_raw: None,
             content_type: None,
             menu: None,
             banner: None,
@@ -49,6 +52,7 @@ impl Default for Header {
             published_needs_writeback: false,
             expires: None,
             authors: None,
+            exclude_from_blog: false,
         }
     }
 }
@@ -62,6 +66,14 @@ pub enum UnknownKeyPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HeaderWarning {
     UnknownKey(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TemplateId {
+    Landing,
+    BlogIndex,
+    Page,
+    Info,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,6 +98,8 @@ pub enum HeaderError {
     InvalidSitemapPriority(String),
     #[error("invalid sitemap changefreq: {0}")]
     InvalidSitemapChangefreq(String),
+    #[error("invalid boolean for {key}: {value}")]
+    InvalidBool { key: String, value: String },
 }
 
 pub fn parse_header(
@@ -115,7 +129,7 @@ pub fn parse_header(
         if key.is_empty()
             || !key
                 .chars()
-                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+                .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
         {
             return Err(HeaderError::InvalidKey(key.to_string()));
         }
@@ -130,7 +144,7 @@ pub fn parse_header(
             "tags" => header.tags = split_list(value),
             "updated" => header.updated = parse_datetime(value, key)?,
             "abstract" => header.abstract_text = non_empty(value),
-            "template" => header.template = non_empty(value),
+            "template" => header.template_raw = non_empty(value),
             "type" => header.content_type = non_empty(value),
             "menu" => header.menu = non_empty(value),
             "banner" => header.banner = non_empty(value),
@@ -163,6 +177,9 @@ pub fn parse_header(
                 } else {
                     Some(authors)
                 };
+            }
+            "exclude_from_blog" => {
+                header.exclude_from_blog = parse_bool(value, key)?;
             }
             _ => {
                 if unknown_key_policy == UnknownKeyPolicy::Warn {
@@ -274,6 +291,19 @@ fn parse_sitemap_changefreq(value: &str) -> Result<Option<String>, HeaderError> 
     Ok(Some(trimmed.to_string()))
 }
 
+fn parse_bool(value: &str, key: &str) -> Result<bool, HeaderError> {
+    let trimmed = value.trim();
+    match trimmed {
+        "" => Ok(false),
+        "true" | "yes" | "1" => Ok(true),
+        "false" | "no" | "0" => Ok(false),
+        _ => Err(HeaderError::InvalidBool {
+            key: key.to_string(),
+            value: trimmed.to_string(),
+        }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +328,7 @@ sitemap-changefreq: weekly
 published: 2024-01-03 04:05
 expires: 2024-02-03 04:05
 author: Alice, Bob
+exclude_from_blog: true
 ";
         let parsed = parse_header(input, UnknownKeyPolicy::Error).expect("parse should succeed");
         let header = parsed.header;
@@ -308,7 +339,7 @@ author: Alice, Bob
         assert_eq!(header.title.as_deref(), Some("My Title"));
         assert_eq!(header.tags, vec!["rust".to_string(), "yaml".to_string()]);
         assert_eq!(header.abstract_text.as_deref(), Some("Summary"));
-        assert_eq!(header.template.as_deref(), Some("post"));
+        assert_eq!(header.template_raw.as_deref(), Some("post"));
         assert_eq!(header.content_type.as_deref(), Some("article"));
         assert_eq!(header.menu.as_deref(), Some("main"));
         assert_eq!(header.banner.as_deref(), Some("hero.png"));
@@ -325,6 +356,7 @@ author: Alice, Bob
         assert!(header.published.is_some());
         assert!(header.updated.is_some());
         assert!(header.expires.is_some());
+        assert!(header.exclude_from_blog);
     }
 
     #[test]
@@ -432,5 +464,16 @@ banner: https://example.com/#frag
         let err = parse_header("sitemap-changefreq: often\n", UnknownKeyPolicy::Error)
             .expect_err("expected error");
         assert!(err.to_string().contains("sitemap"));
+    }
+
+    #[test]
+    fn exclude_from_blog_parses_bool() {
+        let parsed =
+            parse_header("exclude_from_blog: no\n", UnknownKeyPolicy::Error).expect("parse");
+        assert!(!parsed.header.exclude_from_blog);
+
+        let parsed =
+            parse_header("exclude_from_blog: yes\n", UnknownKeyPolicy::Error).expect("parse");
+        assert!(parsed.header.exclude_from_blog);
     }
 }

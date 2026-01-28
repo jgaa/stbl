@@ -125,6 +125,50 @@ fn classify_doc(
 }
 
 fn extract_header_body(raw: &str) -> (Option<&str>, &str) {
+    if let Some((header, body)) = extract_frontmatter(raw) {
+        return (Some(header), body);
+    }
+    extract_plain_header(raw)
+}
+
+fn is_full_line_comment(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
+fn looks_like_header_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let (key, _) = match trimmed.split_once(':') {
+        Some(value) => value,
+        None => return false,
+    };
+    let key = key.trim_end();
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+}
+
+fn extract_frontmatter(raw: &str) -> Option<(&str, &str)> {
+    let mut offset = 0;
+    let mut iter = raw.split_inclusive('\n');
+    let first = iter.next()?;
+    if first.trim() != "---" {
+        return None;
+    }
+    offset += first.len();
+    let header_start = offset;
+    for line in iter {
+        if line.trim() == "---" {
+            let header_end = offset;
+            let body_start = offset + line.len();
+            return Some((&raw[header_start..header_end], &raw[body_start..]));
+        }
+        offset += line.len();
+    }
+    None
+}
+
+fn extract_plain_header(raw: &str) -> (Option<&str>, &str) {
     let mut offset = 0;
     let mut saw_header_line = false;
     let mut header_end = 0;
@@ -153,23 +197,6 @@ fn extract_header_body(raw: &str) -> (Option<&str>, &str) {
         header_end = raw.len();
     }
     (Some(&raw[..header_end]), &raw[header_end..])
-}
-
-fn is_full_line_comment(line: &str) -> bool {
-    line.trim_start().starts_with('#')
-}
-
-fn looks_like_header_line(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let (key, _) = match trimmed.split_once(':') {
-        Some(value) => value,
-        None => return false,
-    };
-    let key = key.trim_end();
-    !key.is_empty()
-        && key
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
 }
 
 fn to_relative_path(root: &Path, path: &Path) -> String {

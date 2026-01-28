@@ -1,7 +1,11 @@
 pub mod assemble;
+pub mod blog_index;
 pub mod config;
+pub mod feeds;
 pub mod header;
 pub mod model;
-pub mod url;
 pub mod plan;
 pub mod project;
+pub mod render;
+pub mod templates;
+pub mod url;

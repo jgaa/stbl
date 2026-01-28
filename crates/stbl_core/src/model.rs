@@ -151,6 +151,7 @@ pub struct SiteConfig {
     pub banner: Option<BannerConfig>,
     pub menu: Vec<MenuItem>,
     pub people: Option<PeopleConfig>,
+    pub blog: Option<BlogConfig>,
     pub system: Option<SystemConfig>,
     pub publish: Option<PublishConfig>,
     pub rss: Option<RssConfig>,
@@ -170,6 +171,17 @@ pub struct SiteMeta {
     pub language: String,
     pub timezone: Option<String>,
     pub url_style: UrlStyle,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlogConfig {
+    pub page_size: usize,
+    pub series: BlogSeriesConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlogSeriesConfig {
+    pub latest_parts: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -282,6 +294,7 @@ pub struct Project {
 #[derive(Debug, Clone)]
 pub enum TaskKind {
     RenderPage { page: DocId },
+    RenderBlogIndex { source_page: DocId, page_no: u32 },
     RenderSeries { series: SeriesId },
     RenderTagIndex { tag: String },
     RenderTagsIndex,

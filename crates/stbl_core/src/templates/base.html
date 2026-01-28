@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>
+    {% if page_title %}{{ page_title }} - {{ site_title }}{% else %}{{ site_title }}{% endif %}
+  </title>
+</head>
+<body>
+  <header>
+    <nav>
+      <ul>
+        {% for item in menu %}
+        <li><a href="{{ item.href }}">{{ item.title }}</a></li>
+        {% endfor %}
+      </ul>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <p>{{ site_title }}</p>
+  </footer>
+</body>
+</html>

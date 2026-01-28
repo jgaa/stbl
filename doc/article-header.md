@@ -173,6 +173,24 @@ Behavior:
 
 Invalid sitemap values are **errors**.
 
+
+### exclude_from_blog
+
+* Optional
+* Defaults to false
+
+If true, the page must not appear in the blog feed regardless of template or location.
+
+Example
+
+```
+---
+title: About
+template: info
+exclude_from_blog: true
+---
+```
+
 ---
 
 ## Write-back behavior

@@ -50,3 +50,23 @@ impl UrlMapper {
         }
     }
 }
+
+pub fn logical_key_from_source_path(source_path: &str) -> String {
+    let normalized = source_path.replace('\\', "/");
+    let without_prefix = normalized
+        .strip_prefix("articles/")
+        .unwrap_or(normalized.as_str());
+    without_extension(without_prefix)
+}
+
+fn without_extension(path: &str) -> String {
+    let path = std::path::Path::new(path);
+    if let Some(stem) = path.file_stem().and_then(|value| value.to_str()) {
+        match path.parent().and_then(|value| value.to_str()) {
+            Some(parent) if !parent.is_empty() => format!("{parent}/{stem}"),
+            _ => stem.to_string(),
+        }
+    } else {
+        path.to_string_lossy().to_string()
+    }
+}

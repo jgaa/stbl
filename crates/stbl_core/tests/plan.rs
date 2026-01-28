@@ -5,7 +5,7 @@ use std::time::SystemTime;
 
 use stbl_core::assemble::assemble_site;
 use stbl_core::config::load_site_config;
-use stbl_core::header::{parse_header, Header, UnknownKeyPolicy};
+use stbl_core::header::{Header, UnknownKeyPolicy, parse_header};
 use stbl_core::model::{DiscoveredDoc, DocKind, ParsedDoc, Project, SourceDoc, TaskKind};
 use stbl_core::plan::build_plan;
 
@@ -34,26 +34,34 @@ fn build_plan_is_deterministic_and_complete() {
     for task in &plan.tasks {
         *kind_counts.entry(kind_label(&task.kind)).or_default() += 1;
     }
-    assert_eq!(kind_counts.get("RenderPage"), Some(&2));
+    assert_eq!(kind_counts.get("RenderPage"), Some(&4));
+    assert_eq!(kind_counts.get("RenderBlogIndex"), Some(&1));
     assert_eq!(kind_counts.get("RenderSeries"), Some(&1));
     assert_eq!(kind_counts.get("RenderTagIndex"), Some(&2));
     assert_eq!(kind_counts.get("RenderTagsIndex"), Some(&1));
-    assert_eq!(kind_counts.get("RenderFrontPage"), Some(&1));
-    assert_eq!(kind_counts.get("GenerateRss"), Some(&1));
+    assert_eq!(kind_counts.get("RenderFrontPage"), None);
+    let rss_enabled = project.config.rss.as_ref().is_some_and(|rss| rss.enabled);
+    if rss_enabled {
+        assert_eq!(kind_counts.get("GenerateRss"), Some(&1));
+    } else {
+        assert_eq!(kind_counts.get("GenerateRss"), None);
+    }
     assert_eq!(kind_counts.get("GenerateSitemap"), Some(&1));
 
-    let rss_id = find_task_id(&plan.tasks, "GenerateRss").expect("rss task");
-    let page_ids = plan
-        .tasks
-        .iter()
-        .filter(|task| matches!(task.kind, TaskKind::RenderPage { .. }))
-        .map(|task| task.id)
-        .collect::<Vec<_>>();
-    for page_id in page_ids {
-        assert!(
-            plan.edges.contains(&(page_id, rss_id)),
-            "rss should depend on page render"
-        );
+    let rss_id = find_task_id(&plan.tasks, "GenerateRss");
+    if let Some(rss_id) = rss_id {
+        let page_ids = plan
+            .tasks
+            .iter()
+            .filter(|task| matches!(task.kind, TaskKind::RenderPage { .. }))
+            .map(|task| task.id)
+            .collect::<Vec<_>>();
+        for page_id in page_ids {
+            assert!(
+                plan.edges.contains(&(page_id, rss_id)),
+                "rss should depend on page render"
+            );
+        }
     }
 }
 
@@ -68,11 +76,15 @@ fn scan_fixture(root: &Path) -> anyhow::Result<Vec<DiscoveredDoc>> {
     let mut docs = Vec::new();
     let articles = root.join("articles");
     let entries = [
+        articles.join("index.md"),
+        articles.join("excluded.md"),
+        articles.join("info.md"),
         articles.join("page1.md"),
         articles.join("page2.md"),
         articles.join("series/index.md"),
         articles.join("series/part1.md"),
         articles.join("series/part2.md"),
+        articles.join("series/part3.md"),
     ];
 
     for path in entries {
@@ -90,10 +102,7 @@ fn scan_fixture(root: &Path) -> anyhow::Result<Vec<DiscoveredDoc>> {
         };
 
         let rel_path = to_relative_path(root, &path);
-        let dir_path = to_relative_path(
-            root,
-            path.parent().unwrap_or_else(|| Path::new("")),
-        );
+        let dir_path = to_relative_path(root, path.parent().unwrap_or_else(|| Path::new("")));
         let file_name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -138,6 +147,50 @@ fn classify_doc(root: &Path, path: &Path, articles_dir: &Path) -> (DocKind, Opti
 }
 
 fn extract_header_body(raw: &str) -> (Option<&str>, &str) {
+    if let Some((header, body)) = extract_frontmatter(raw) {
+        return (Some(header), body);
+    }
+    extract_plain_header(raw)
+}
+
+fn is_full_line_comment(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
+fn looks_like_header_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let (key, _) = match trimmed.split_once(':') {
+        Some(value) => value,
+        None => return false,
+    };
+    let key = key.trim_end();
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+}
+
+fn extract_frontmatter(raw: &str) -> Option<(&str, &str)> {
+    let mut offset = 0;
+    let mut iter = raw.split_inclusive('\n');
+    let first = iter.next()?;
+    if first.trim() != "---" {
+        return None;
+    }
+    offset += first.len();
+    let header_start = offset;
+    for line in iter {
+        if line.trim() == "---" {
+            let header_end = offset;
+            let body_start = offset + line.len();
+            return Some((&raw[header_start..header_end], &raw[body_start..]));
+        }
+        offset += line.len();
+    }
+    None
+}
+
+fn extract_plain_header(raw: &str) -> (Option<&str>, &str) {
     let mut offset = 0;
     let mut saw_header_line = false;
     let mut header_end = 0;
@@ -168,20 +221,6 @@ fn extract_header_body(raw: &str) -> (Option<&str>, &str) {
     (Some(&raw[..header_end]), &raw[header_end..])
 }
 
-fn is_full_line_comment(line: &str) -> bool {
-    line.trim_start().starts_with('#')
-}
-
-fn looks_like_header_line(line: &str) -> bool {
-    let trimmed = line.trim_start();
-    let (key, _) = match trimmed.split_once(':') {
-        Some(value) => value,
-        None => return false,
-    };
-    let key = key.trim_end();
-    !key.is_empty() && key.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
-}
-
 fn to_relative_path(root: &Path, path: &Path) -> String {
     let rel = path.strip_prefix(root).unwrap_or(path);
     rel.to_string_lossy().replace('\\', "/")
@@ -190,6 +229,7 @@ fn to_relative_path(root: &Path, path: &Path) -> String {
 fn kind_label(kind: &TaskKind) -> &'static str {
     match kind {
         TaskKind::RenderPage { .. } => "RenderPage",
+        TaskKind::RenderBlogIndex { .. } => "RenderBlogIndex",
         TaskKind::RenderSeries { .. } => "RenderSeries",
         TaskKind::RenderTagIndex { .. } => "RenderTagIndex",
         TaskKind::RenderTagsIndex => "RenderTagsIndex",
@@ -200,7 +240,10 @@ fn kind_label(kind: &TaskKind) -> &'static str {
     }
 }
 
-fn find_task_id(tasks: &[stbl_core::model::BuildTask], label: &'static str) -> Option<stbl_core::model::TaskId> {
+fn find_task_id(
+    tasks: &[stbl_core::model::BuildTask],
+    label: &'static str,
+) -> Option<stbl_core::model::TaskId> {
     tasks
         .iter()
         .find(|task| kind_label(&task.kind) == label)

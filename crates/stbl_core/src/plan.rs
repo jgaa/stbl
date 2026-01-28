@@ -1,25 +1,36 @@
 //! Deterministic build plan construction (no execution).
 
-use crate::model::{BuildPlan, BuildTask, ContentId, Project, TaskId, TaskKind};
+use crate::blog_index::{blog_page_size, collect_blog_feed};
+use crate::header::TemplateId;
+use crate::model::{BuildPlan, BuildTask, ContentId, OutputArtifact, Project, TaskId, TaskKind};
+use crate::url::{UrlMapper, logical_key_from_source_path};
 use blake3::{Hash, Hasher};
 use std::collections::{BTreeMap, HashMap};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn build_plan(_project: &Project) -> BuildPlan {
     let config_hash = hash_config(_project);
+    let mapper = UrlMapper::new(&_project.config);
     let mut tasks = Vec::new();
     let mut edges = Vec::new();
 
     let published_pages = published_pages_by_path(_project);
     let mut page_tasks: HashMap<_, _> = HashMap::new();
+    let mut blog_index_pages = Vec::new();
     for page in &published_pages {
+        if page.header.template == Some(TemplateId::BlogIndex) {
+            blog_index_pages.push(*page);
+            continue;
+        }
         let kind = TaskKind::RenderPage { page: page.id };
         let id = task_id(&kind, &[page.content_hash], config_hash);
+        let outputs =
+            outputs_for_logical_key(&mapper, &logical_key_from_source_path(&page.source_path));
         let task = BuildTask {
             id,
             kind,
             inputs: vec![ContentId::Doc(page.id)],
-            outputs: Vec::new(),
+            outputs,
         };
         tasks.push(task);
         page_tasks.insert(page.id, id);
@@ -50,11 +61,13 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
                 inputs.push(ContentId::Doc(part.page.id));
             }
         }
+        let outputs =
+            outputs_for_logical_key(&mapper, &logical_key_from_source_path(&series.dir_path));
         tasks.push(BuildTask {
             id,
             kind,
             inputs,
-            outputs: Vec::new(),
+            outputs,
         });
         series_tasks.insert(series.id, id);
 
@@ -75,15 +88,13 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         let mut input_hashes: Vec<Hash> = pages.iter().map(|page| page.content_hash).collect();
         input_hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
         let id = task_id(&kind, &input_hashes, config_hash);
-        let inputs = pages
-            .iter()
-            .map(|page| ContentId::Doc(page.id))
-            .collect();
+        let inputs = pages.iter().map(|page| ContentId::Doc(page.id)).collect();
+        let outputs = outputs_for_logical_key(&mapper, &format!("tags/{}", tag));
         tasks.push(BuildTask {
             id,
             kind,
             inputs,
-            outputs: Vec::new(),
+            outputs,
         });
         tag_tasks.insert(tag.clone(), id);
 
@@ -94,7 +105,10 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         }
     }
 
-    let mut tag_hashes: Vec<Hash> = tag_map.keys().map(|tag| blake3::hash(tag.as_bytes())).collect();
+    let mut tag_hashes: Vec<Hash> = tag_map
+        .keys()
+        .map(|tag| blake3::hash(tag.as_bytes()))
+        .collect();
     tag_hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
     let tags_index_kind = TaskKind::RenderTagsIndex;
     let tags_index_id = task_id(&tags_index_kind, &tag_hashes, config_hash);
@@ -105,46 +119,57 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
             .keys()
             .map(|tag| ContentId::Tag(tag.clone()))
             .collect(),
-        outputs: Vec::new(),
+        outputs: outputs_for_logical_key(&mapper, "tags"),
     });
     for tag_task in tag_tasks.values() {
         edges.push((*tag_task, tags_index_id));
     }
 
-    let mut frontpage_hashes: Vec<Hash> =
-        published_pages.iter().map(|page| page.content_hash).collect();
+    let mut frontpage_hashes: Vec<Hash> = published_pages
+        .iter()
+        .map(|page| page.content_hash)
+        .collect();
     frontpage_hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
-    let front_kind = TaskKind::RenderFrontPage;
-    let front_id = task_id(&front_kind, &frontpage_hashes, config_hash);
-    tasks.push(BuildTask {
-        id: front_id,
-        kind: front_kind,
-        inputs: published_pages
-            .iter()
-            .map(|page| ContentId::Doc(page.id))
-            .collect(),
-        outputs: Vec::new(),
-    });
-    for page in &published_pages {
-        if let Some(page_task) = page_tasks.get(&page.id).copied() {
-            edges.push((page_task, front_id));
+    let has_blog_frontpage = blog_index_pages
+        .iter()
+        .any(|page| logical_key_from_source_path(&page.source_path).as_str() == "index");
+    if !has_blog_frontpage {
+        let front_kind = TaskKind::RenderFrontPage;
+        let front_id = task_id(&front_kind, &frontpage_hashes, config_hash);
+        tasks.push(BuildTask {
+            id: front_id,
+            kind: front_kind,
+            inputs: published_pages
+                .iter()
+                .map(|page| ContentId::Doc(page.id))
+                .collect(),
+            outputs: outputs_for_logical_key(&mapper, "index"),
+        });
+        for page in &published_pages {
+            if let Some(page_task) = page_tasks.get(&page.id).copied() {
+                edges.push((page_task, front_id));
+            }
         }
     }
 
-    let rss_kind = TaskKind::GenerateRss;
-    let rss_id = task_id(&rss_kind, &frontpage_hashes, config_hash);
-    tasks.push(BuildTask {
-        id: rss_id,
-        kind: rss_kind,
-        inputs: published_pages
-            .iter()
-            .map(|page| ContentId::Doc(page.id))
-            .collect(),
-        outputs: Vec::new(),
-    });
-    for page in &published_pages {
-        if let Some(page_task) = page_tasks.get(&page.id).copied() {
-            edges.push((page_task, rss_id));
+    if rss_enabled(_project) {
+        let rss_kind = TaskKind::GenerateRss;
+        let rss_id = task_id(&rss_kind, &frontpage_hashes, config_hash);
+        tasks.push(BuildTask {
+            id: rss_id,
+            kind: rss_kind,
+            inputs: published_pages
+                .iter()
+                .map(|page| ContentId::Doc(page.id))
+                .collect(),
+            outputs: vec![OutputArtifact {
+                path: PathBuf::from("rss.xml"),
+            }],
+        });
+        for page in &published_pages {
+            if let Some(page_task) = page_tasks.get(&page.id).copied() {
+                edges.push((page_task, rss_id));
+            }
         }
     }
 
@@ -164,10 +189,16 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         inputs: published_pages
             .iter()
             .map(|page| ContentId::Doc(page.id))
-            .chain(series_sorted.iter().map(|series| ContentId::Series(series.id)))
+            .chain(
+                series_sorted
+                    .iter()
+                    .map(|series| ContentId::Series(series.id)),
+            )
             .chain(tag_map.keys().map(|tag| ContentId::Tag(tag.clone())))
             .collect(),
-        outputs: Vec::new(),
+        outputs: vec![OutputArtifact {
+            path: PathBuf::from("sitemap.xml"),
+        }],
     });
     for page in &published_pages {
         if let Some(page_task) = page_tasks.get(&page.id).copied() {
@@ -181,7 +212,46 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         edges.push((*tag_task, sitemap_id));
     }
     edges.push((tags_index_id, sitemap_id));
-    edges.push((front_id, sitemap_id));
+    if !has_blog_frontpage {
+        let front_kind = TaskKind::RenderFrontPage;
+        let front_id = task_id(&front_kind, &frontpage_hashes, config_hash);
+        edges.push((front_id, sitemap_id));
+    }
+
+    for page in &blog_index_pages {
+        let feed_items = collect_blog_feed(_project, page.id);
+        let total_pages = total_pages(feed_items.len(), blog_page_size(_project));
+        for page_no in 1..=total_pages {
+            let kind = TaskKind::RenderBlogIndex {
+                source_page: page.id,
+                page_no,
+            };
+            let mut input_hashes: Vec<Hash> = feed_items
+                .iter()
+                .flat_map(|item| item.input_hashes())
+                .collect();
+            input_hashes.push(page.content_hash);
+            input_hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
+            let id = task_id(&kind, &input_hashes, config_hash);
+            let mut inputs: Vec<ContentId> = feed_items
+                .iter()
+                .flat_map(|item| item.input_doc_ids())
+                .map(ContentId::Doc)
+                .collect();
+            inputs.push(ContentId::Doc(page.id));
+            let outputs = if page_no == 1 {
+                outputs_for_logical_key(&mapper, &logical_key_from_source_path(&page.source_path))
+            } else {
+                outputs_for_logical_key(&mapper, &format!("page/{}", page_no))
+            };
+            tasks.push(BuildTask {
+                id,
+                kind,
+                inputs,
+                outputs,
+            });
+        }
+    }
 
     tasks.sort_by_key(|task| task.id.0.as_bytes().to_vec());
     edges.sort_by_key(|(from, to)| (from.0.as_bytes().to_vec(), to.0.as_bytes().to_vec()));
@@ -200,8 +270,7 @@ pub fn task_id(kind: &TaskKind, input_hashes: &[Hash], config_hash: Hash) -> Tas
 }
 
 fn hash_config(project: &Project) -> Hash {
-    let encoded = serde_json::to_vec(&project.config)
-        .expect("site config should serialize");
+    let encoded = serde_json::to_vec(&project.config).expect("site config should serialize");
     blake3::hash(&encoded)
 }
 
@@ -234,6 +303,7 @@ fn collect_tags<'a>(
 fn kind_key(kind: &TaskKind) -> &'static str {
     match kind {
         TaskKind::RenderPage { .. } => "RenderPage",
+        TaskKind::RenderBlogIndex { .. } => "RenderBlogIndex",
         TaskKind::RenderSeries { .. } => "RenderSeries",
         TaskKind::RenderTagIndex { .. } => "RenderTagIndex",
         TaskKind::RenderTagsIndex => "RenderTagsIndex",
@@ -247,6 +317,13 @@ fn kind_key(kind: &TaskKind) -> &'static str {
 fn add_kind_fields(hasher: &mut Hasher, kind: &TaskKind) {
     match kind {
         TaskKind::RenderPage { page } => add_hash(hasher, &page.0),
+        TaskKind::RenderBlogIndex {
+            source_page,
+            page_no,
+        } => {
+            add_hash(hasher, &source_page.0);
+            add_u64(hasher, *page_no as u64);
+        }
         TaskKind::RenderSeries { series } => add_hash(hasher, &series.0),
         TaskKind::RenderTagIndex { tag } => add_str(hasher, tag),
         TaskKind::RenderTagsIndex => {}
@@ -280,4 +357,31 @@ fn add_path(hasher: &mut Hasher, path: &Path) {
 
 fn add_u64(hasher: &mut Hasher, value: u64) {
     hasher.update(&value.to_le_bytes());
+}
+
+fn outputs_for_logical_key(mapper: &UrlMapper, logical_key: &str) -> Vec<OutputArtifact> {
+    let mapping = mapper.map(logical_key);
+    let mut outputs = vec![OutputArtifact {
+        path: mapping.primary_output,
+    }];
+    if let Some(fallback) = mapping.fallback {
+        outputs.push(OutputArtifact {
+            path: fallback.from,
+        });
+    }
+    outputs
+}
+
+fn rss_enabled(project: &Project) -> bool {
+    project.config.rss.as_ref().is_some_and(|rss| rss.enabled)
+}
+
+fn total_pages(total_items: usize, page_size: usize) -> u32 {
+    let size = page_size.max(1);
+    let pages = if total_items == 0 {
+        1
+    } else {
+        (total_items + size - 1) / size
+    };
+    pages as u32
 }

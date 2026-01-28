@@ -15,6 +15,7 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         banner: None,
         menu: Vec::new(),
         people: None,
+        blog: None,
         system: None,
         publish: None,
         rss: None,

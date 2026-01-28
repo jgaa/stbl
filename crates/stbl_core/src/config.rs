@@ -17,6 +17,7 @@ struct SiteConfigRaw {
     #[serde(default)]
     menu: Vec<MenuItem>,
     people: Option<PeopleConfigRaw>,
+    blog: Option<BlogConfigRaw>,
     system: Option<SystemConfig>,
     publish: Option<PublishConfig>,
     rss: Option<RssConfigRaw>,
@@ -42,6 +43,17 @@ struct SiteMetaRaw {
 struct PeopleConfigRaw {
     default: Option<String>,
     entries: Option<BTreeMap<String, PersonEntry>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogConfigRaw {
+    page_size: Option<usize>,
+    series: Option<BlogSeriesConfigRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogSeriesConfigRaw {
+    latest_parts: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,10 +92,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
             let default = match people_raw.default {
                 Some(value) if !value.trim().is_empty() => {
                     if !entries.contains_key(&value) {
-                        bail!(
-                            "people.default '{}' is missing from people.entries",
-                            value
-                        );
+                        bail!("people.default '{}' is missing from people.entries", value);
                     }
                     value
                 }
@@ -96,6 +105,16 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
             Some(PeopleConfig { default, entries })
         }
     };
+
+    let blog = parsed.blog.map(|blog_raw| crate::model::BlogConfig {
+        page_size: blog_raw.page_size.unwrap_or(10),
+        series: crate::model::BlogSeriesConfig {
+            latest_parts: blog_raw
+                .series
+                .and_then(|series| series.latest_parts)
+                .unwrap_or(3),
+        },
+    });
 
     let rss = match parsed.rss {
         None => None,
@@ -126,6 +145,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         banner: parsed.banner,
         menu: parsed.menu,
         people,
+        blog,
         system: parsed.system,
         publish: parsed.publish,
         rss,
@@ -200,5 +220,16 @@ mod tests {
         let config = load_site_config(&path).expect("config should load");
         let people = config.people.expect("people should be present");
         assert_eq!(people.default, "alice");
+    }
+
+    #[test]
+    fn blog_defaults_apply() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nblog: {}\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let blog = config.blog.expect("blog should be present");
+        assert_eq!(blog.page_size, 10);
+        assert_eq!(blog.series.latest_parts, 3);
     }
 }
