@@ -11,9 +11,10 @@ use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::render_markdown_to_html;
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, TagListingPage, format_timestamp_ymd, render_blog_index,
-    render_markdown_page, render_page, render_tag_index,
+    render_markdown_page, render_page, render_redirect_page, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Default)]
 #[allow(dead_code)]
@@ -25,6 +26,7 @@ pub struct ExecReport {
 pub fn execute_plan(project: &Project, plan: &BuildPlan, out_dir: &PathBuf) -> Result<ExecReport> {
     let mut report = ExecReport::default();
     let mapper = UrlMapper::new(&project.config);
+    let build_date_ymd = build_date_ymd_now();
     for task in &plan.tasks {
         if matches!(task.kind, TaskKind::GenerateRss)
             && !project.config.rss.as_ref().is_some_and(|rss| rss.enabled)
@@ -37,8 +39,9 @@ pub fn execute_plan(project: &Project, plan: &BuildPlan, out_dir: &PathBuf) -> R
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
             }
-            let contents = render_output(project, &mapper, &task.kind, &output.path)
-                .with_context(|| format!("failed to render {}", out_path.display()))?;
+            let contents =
+                render_output(project, &mapper, &task.kind, &output.path, &build_date_ymd)
+                    .with_context(|| format!("failed to render {}", out_path.display()))?;
             fs::write(&out_path, contents)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
             report.executed += 1;
@@ -52,9 +55,10 @@ fn render_output(
     mapper: &UrlMapper,
     kind: &TaskKind,
     output_path: &PathBuf,
+    build_date_ymd: &str,
 ) -> Result<String> {
     match output_path.extension().and_then(|ext| ext.to_str()) {
-        Some("html") => render_html_output(project, mapper, kind, output_path),
+        Some("html") => render_html_output(project, mapper, kind, output_path, build_date_ymd),
         Some("xml") => render_xml_output(project, mapper, kind),
         _ => Ok(String::new()),
     }
@@ -65,21 +69,22 @@ fn render_html_output(
     mapper: &UrlMapper,
     kind: &TaskKind,
     output_path: &PathBuf,
+    build_date_ymd: &str,
 ) -> Result<String> {
     if let Some(mapping) = mapping_for_task(project, mapper, kind)? {
         if output_path == &mapping.primary_output {
-            return render_primary_html(project, kind);
+            return render_primary_html(project, mapper, kind, build_date_ymd);
         }
         if mapping
             .fallback
             .as_ref()
             .is_some_and(|redirect| output_path == &redirect.from)
         {
-            return Ok(render_redirect_stub(&mapping.href));
+            return render_redirect_stub(project, &mapping.href, build_date_ymd);
         }
     }
 
-    render_primary_html(project, kind)
+    render_primary_html(project, mapper, kind, build_date_ymd)
 }
 
 fn render_xml_output(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> Result<String> {
@@ -90,36 +95,83 @@ fn render_xml_output(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> 
     }
 }
 
-fn render_primary_html(project: &Project, kind: &TaskKind) -> Result<String> {
+fn render_primary_html(
+    project: &Project,
+    mapper: &UrlMapper,
+    kind: &TaskKind,
+    build_date_ymd: &str,
+) -> Result<String> {
+    let current_href = current_href_for_task(project, mapper, kind)?;
     match kind {
-        TaskKind::RenderPage { page } => render_page_by_id(project, *page),
+        TaskKind::RenderPage { page } => {
+            render_page_by_id(project, *page, &current_href, build_date_ymd)
+        }
         TaskKind::RenderBlogIndex {
             source_page,
             page_no,
-        } => render_blog_index_page(project, source_page, *page_no),
-        TaskKind::RenderSeries { series } => render_series(project, *series),
-        TaskKind::RenderTagIndex { tag } => render_tag_index_page(project, tag),
-        TaskKind::RenderTagsIndex => {
-            render_markdown_page(project, Some("Tags"), "*Not implemented.*\n")
+        } => render_blog_index_page(
+            project,
+            source_page,
+            *page_no,
+            &current_href,
+            build_date_ymd,
+        ),
+        TaskKind::RenderSeries { series } => {
+            render_series(project, *series, &current_href, build_date_ymd)
         }
+        TaskKind::RenderTagIndex { tag } => {
+            render_tag_index_page(project, tag, &current_href, build_date_ymd)
+        }
+        TaskKind::RenderTagsIndex => render_markdown_page(
+            project,
+            "Tags",
+            "*Not implemented.*\n",
+            &current_href,
+            build_date_ymd,
+            None,
+        ),
         TaskKind::RenderFrontPage => {
             let title = project.config.site.title.clone();
-            render_markdown_page(project, Some(&title), "*Not implemented.*\n")
+            render_markdown_page(
+                project,
+                &title,
+                "*Not implemented.*\n",
+                &current_href,
+                build_date_ymd,
+                None,
+            )
         }
-        _ => render_markdown_page(project, Some("Not implemented"), "*Not implemented.*\n"),
+        _ => render_markdown_page(
+            project,
+            "Not implemented",
+            "*Not implemented.*\n",
+            &current_href,
+            build_date_ymd,
+            None,
+        ),
     }
 }
 
-fn render_page_by_id(project: &Project, page_id: DocId) -> Result<String> {
+fn render_page_by_id(
+    project: &Project,
+    page_id: DocId,
+    current_href: &str,
+    build_date_ymd: &str,
+) -> Result<String> {
     let page =
         find_page(project, page_id).ok_or_else(|| anyhow!("page not found for render task"))?;
-    render_page(project, page)
+    render_page(project, page, current_href, build_date_ymd)
 }
 
-fn render_series(project: &Project, series_id: stbl_core::model::SeriesId) -> Result<String> {
+fn render_series(
+    project: &Project,
+    series_id: stbl_core::model::SeriesId,
+    current_href: &str,
+    build_date_ymd: &str,
+) -> Result<String> {
     let series = find_series(project, series_id)
         .ok_or_else(|| anyhow!("series not found for render task"))?;
-    render_page(project, &series.index)
+    render_page(project, &series.index, current_href, build_date_ymd)
 }
 
 fn find_page(project: &Project, page_id: DocId) -> Option<&Page> {
@@ -183,17 +235,17 @@ fn mapping_for_task(
     Ok(Some(mapper.map(&logical_key)))
 }
 
-fn render_redirect_stub(href: &str) -> String {
+fn render_redirect_stub(project: &Project, href: &str, build_date_ymd: &str) -> Result<String> {
     let target = format!("/{}", href.trim_start_matches('/'));
-    format!(
-        "<!DOCTYPE html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta http-equiv=\"refresh\" content=\"0; url={target}\">\n</head>\n<body>\n  <a href=\"{target}\">{target}</a>\n</body>\n</html>\n"
-    )
+    render_redirect_page(project, &target, &target, build_date_ymd)
 }
 
 fn render_blog_index_page(
     project: &Project,
     source_page_id: &DocId,
     page_no: u32,
+    current_href: &str,
+    build_date_ymd: &str,
 ) -> Result<String> {
     let mapper = UrlMapper::new(&project.config);
     let source_page =
@@ -219,7 +271,11 @@ fn render_blog_index_page(
         None
     };
 
-    let title = source_page.header.title.clone();
+    let title = source_page
+        .header
+        .title
+        .clone()
+        .unwrap_or_else(|| "Untitled".to_string());
     let prev_href = page_range.prev_key.as_ref().map(|key| mapper.map(key).href);
     let next_href = page_range.next_key.as_ref().map(|key| mapper.map(key).href);
 
@@ -232,10 +288,17 @@ fn render_blog_index_page(
         next_href,
         page_range.page_no,
         page_range.total_pages,
+        current_href,
+        build_date_ymd,
     )
 }
 
-fn render_tag_index_page(project: &Project, tag: &str) -> Result<String> {
+fn render_tag_index_page(
+    project: &Project,
+    tag: &str,
+    current_href: &str,
+    build_date_ymd: &str,
+) -> Result<String> {
     let mapper = UrlMapper::new(&project.config);
     let feed_items = collect_tag_feed(project, tag);
     let items = feed_items
@@ -246,7 +309,20 @@ fn render_tag_index_page(project: &Project, tag: &str) -> Result<String> {
         tag: tag.to_string(),
         items,
     };
-    render_tag_index(project, listing)
+    render_tag_index(project, listing, current_href, build_date_ymd)
+}
+
+fn current_href_for_task(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> Result<String> {
+    let mapping = mapping_for_task(project, mapper, kind)?;
+    Ok(mapping.map(|value| value.href).unwrap_or_default())
+}
+
+fn build_date_ymd_now() -> String {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    format_timestamp_ymd(Some(timestamp)).unwrap_or_else(|| "1970-01-01".to_string())
 }
 
 fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
@@ -407,5 +483,53 @@ mod tests {
             fs::read_to_string(out_dir.join("tags/series-only.html")).expect("series tag");
         assert!(series_tag_html.contains("Pagination Series"));
         assert!(!series_tag_html.contains("Page 1"));
+    }
+
+    #[test]
+    fn base_layout_contract_is_applied() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
+        let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
+        let page_html = fs::read_to_string(out_dir.join("page1.html")).expect("read page1");
+
+        assert!(index_html.contains("<header>"));
+        assert!(index_html.contains("<main>"));
+        assert!(index_html.contains("<footer>"));
+        assert!(page_html.contains("<header>"));
+        assert!(page_html.contains("<main>"));
+        assert!(page_html.contains("<footer>"));
+
+        assert_eq!(count_h1(&index_html), 1);
+        assert_eq!(count_h1(&page_html), 1);
+
+        assert!(index_html.contains("<title>Home · Site One</title>"));
+        assert!(page_html.contains("<title>Page One · Site One</title>"));
+
+        assert_footer_stamp(&index_html);
+        assert_footer_stamp(&page_html);
+    }
+
+    fn count_h1(contents: &str) -> usize {
+        contents.match_indices("<h1").count()
+    }
+
+    fn assert_footer_stamp(contents: &str) {
+        let marker = "Generated by stbl on ";
+        let pos = contents.find(marker).expect("footer stamp");
+        let date = &contents[pos + marker.len()..];
+        let date = date.get(0..10).expect("date");
+        assert!(is_ymd(date), "footer date format");
+    }
+
+    fn is_ymd(value: &str) -> bool {
+        if value.len() != 10 {
+            return false;
+        }
+        let bytes = value.as_bytes();
+        bytes[4] == b'-'
+            && bytes[7] == b'-'
+            && bytes.iter().enumerate().all(|(idx, byte)| match idx {
+                4 | 7 => *byte == b'-',
+                _ => byte.is_ascii_digit(),
+            })
     }
 }
