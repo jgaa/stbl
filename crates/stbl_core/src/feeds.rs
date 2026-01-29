@@ -534,4 +534,22 @@ mod tests {
         let tag_loc = base_url_join(&project.config.site.base_url, &tag_href);
         assert!(sitemap.contains(&tag_loc));
     }
+
+    #[test]
+    fn render_sitemap_excludes_unpublished_pages() {
+        let mut project = build_project(UrlStyle::Html, true);
+        let mapper = UrlMapper::new(&project.config);
+        let page = project
+            .content
+            .pages
+            .iter_mut()
+            .find(|page| logical_key_from_source_path(&page.source_path) == "page1")
+            .expect("page1");
+        page.header.is_published = false;
+
+        let sitemap = render_sitemap(&project, &mapper);
+        let href = mapper.map("page1").href;
+        let loc = base_url_join(&project.config.site.base_url, &href);
+        assert!(!sitemap.contains(&loc));
+    }
 }

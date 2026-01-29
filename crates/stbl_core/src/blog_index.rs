@@ -881,6 +881,12 @@ mod tests {
     }
 
     #[test]
+    fn pagination_keeps_page1_key_canonical() {
+        assert_eq!(blog_index_page_logical_key("index", 1), "index");
+        assert_eq!(blog_index_page_logical_key("blog", 1), "blog");
+    }
+
+    #[test]
     fn pagination_href_respects_url_style() {
         let mut config = base_config();
         config.site.url_style = UrlStyle::Html;
@@ -1186,5 +1192,21 @@ mod tests {
         let tag_map = collect_tag_map(&project);
         assert!(!tag_map.contains_key("hidden-info"));
         assert!(!tag_map.contains_key("hidden-excluded"));
+    }
+
+    #[test]
+    fn tag_feed_orders_by_sort_date_then_logical_key() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.tags = vec!["rust".to_string()];
+        header.published = Some(10);
+        let page_b = make_page("page-b", "articles/b.md", header.clone());
+        let page_a = make_page("page-a", "articles/a.md", header);
+
+        let project = project_with_pages(vec![page_b, page_a]);
+        let items = collect_tag_feed(&project, "rust");
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].tie_key(), "a");
+        assert_eq!(items[1].tie_key(), "b");
     }
 }

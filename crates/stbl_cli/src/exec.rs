@@ -394,5 +394,18 @@ mod tests {
         assert!(page4_html.contains("Custom abstract for page 1"));
         assert!(page4_html.contains("First paragraph for auto-abstract."));
         assert!(!page4_html.contains("Series"));
+
+        let rust_tag_html = fs::read_to_string(out_dir.join("tags/rust.html")).expect("rust tag");
+        assert!(rust_tag_html.contains("Custom abstract for page 1"));
+        assert!(rust_tag_html.contains("First paragraph for auto-abstract."));
+        assert!(rust_tag_html.contains("Series abstract override."));
+        assert!(rust_tag_html.contains("2024-01-04"));
+        assert!(!rust_tag_html.contains("<span class=\"meta\"></span>"));
+        assert!(rust_tag_html.contains("Pagination Series"));
+
+        let series_tag_html =
+            fs::read_to_string(out_dir.join("tags/series-only.html")).expect("series tag");
+        assert!(series_tag_html.contains("Pagination Series"));
+        assert!(!series_tag_html.contains("Page 1"));
     }
 }
