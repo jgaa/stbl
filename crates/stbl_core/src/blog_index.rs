@@ -733,4 +733,149 @@ mod tests {
         assert_eq!(first, "a");
         assert_eq!(second, "b");
     }
+
+    #[test]
+    fn series_rollup_latest_parts_not_affected_by_pagination() {
+        let mut config = base_config();
+        config.blog = Some(BlogConfig {
+            pagination: BlogPaginationConfig {
+                enabled: true,
+                page_size: 1,
+            },
+            series: crate::model::BlogSeriesConfig { latest_parts: 3 },
+        });
+
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+
+        let mut index_header = header.clone();
+        index_header.title = Some("Series".to_string());
+        let index = make_page("series-index", "articles/series/index.md", index_header);
+
+        let mut parts = Vec::new();
+        for part_no in 1..=5 {
+            let mut part_header = header.clone();
+            part_header.title = Some(format!("Part {}", part_no));
+            part_header.published = Some(10 + part_no as i64);
+            let part = make_page(
+                &format!("series-part-{part_no}"),
+                &format!("articles/series/part{part_no}.md"),
+                part_header,
+            );
+            parts.push(crate::model::SeriesPart {
+                part_no,
+                page: part,
+            });
+        }
+
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts,
+        };
+
+        let mut post_header = header.clone();
+        post_header.published = Some(100);
+        let post = make_page("post", "articles/post.md", post_header);
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config,
+            content: SiteContent {
+                pages: vec![post],
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        let pages = paginate_blog_index(blog_pagination_settings(&project), "index", feed.len());
+        let mut series_count = 0;
+        for page in &pages {
+            for item in &feed[page.start..page.end] {
+                if matches!(item, FeedItem::Series(_)) {
+                    series_count += 1;
+                }
+            }
+        }
+        assert_eq!(series_count, 1);
+
+        let series_item = feed
+            .iter()
+            .find_map(|item| match item {
+                FeedItem::Series(series) => Some(series),
+                _ => None,
+            })
+            .expect("expected series item");
+        assert_eq!(series_item.latest_parts.len(), 3);
+        assert_eq!(series_item.latest_parts[0].logical_key, "series/part5");
+        assert_eq!(series_item.latest_parts[1].logical_key, "series/part4");
+        assert_eq!(series_item.latest_parts[2].logical_key, "series/part3");
+        assert_eq!(series_item.sort_date, 15);
+    }
+
+    #[test]
+    fn series_latest_parts_tie_breaker_is_logical_key() {
+        let mut config = base_config();
+        config.blog = Some(BlogConfig {
+            pagination: BlogPaginationConfig {
+                enabled: true,
+                page_size: 2,
+            },
+            series: crate::model::BlogSeriesConfig { latest_parts: 2 },
+        });
+
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+
+        let index = make_page("series-index", "articles/series/index.md", header.clone());
+
+        let mut part_a_header = header.clone();
+        part_a_header.published = Some(20);
+        let part_a = make_page("part-a", "articles/series/a.md", part_a_header);
+        let mut part_b_header = header.clone();
+        part_b_header.published = Some(20);
+        let part_b = make_page("part-b", "articles/series/b.md", part_b_header);
+
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts: vec![
+                crate::model::SeriesPart {
+                    part_no: 1,
+                    page: part_b,
+                },
+                crate::model::SeriesPart {
+                    part_no: 2,
+                    page: part_a,
+                },
+            ],
+        };
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config,
+            content: SiteContent {
+                pages: Vec::new(),
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        let series_item = feed
+            .iter()
+            .find_map(|item| match item {
+                FeedItem::Series(series) => Some(series),
+                _ => None,
+            })
+            .expect("expected series item");
+        assert_eq!(series_item.latest_parts.len(), 2);
+        assert_eq!(series_item.latest_parts[0].logical_key, "series/a");
+        assert_eq!(series_item.latest_parts[1].logical_key, "series/b");
+    }
 }

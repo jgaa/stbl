@@ -361,8 +361,17 @@ mod tests {
         assert!(out_dir.join("page/3.html").exists());
         assert!(out_dir.join("page/4.html").exists());
 
+        let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
+        assert!(index_html.contains("series.html"));
+        assert!(index_html.contains("series&#x2f;part5.html"));
+        assert!(index_html.contains("Part 5"));
+        assert!(index_html.contains("Part 4"));
+        assert!(index_html.contains("Part 3"));
+        assert!(!index_html.contains("Part 2"));
+
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
         assert!(page2_html.contains("page&#x2f;3.html"));
         assert!(page2_html.contains("index.html"));
+        assert!(!page2_html.contains("series.html"));
     }
 }
