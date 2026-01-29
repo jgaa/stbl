@@ -28,4 +28,16 @@
   {% endif %}
 
   {{ body_html | safe }}
+
+  {% if series_nav %}
+  <nav class="series-nav">
+    {% if series_nav.prev %}
+    <a href="{{ series_nav.prev.href }}">{{ series_nav.prev.title }}</a>
+    {% endif %}
+    <a href="{{ series_nav.index.href }}">{{ series_nav.index.title }}</a>
+    {% if series_nav.next %}
+    <a href="{{ series_nav.next.href }}">{{ series_nav.next.title }}</a>
+    {% endif %}
+  </nav>
+  {% endif %}
 {% endblock %}

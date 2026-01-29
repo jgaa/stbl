@@ -1,0 +1,42 @@
+<li class="list-item">
+  <a class="item-title" href="{{ item.href }}">{{ item.title }}</a>
+
+  {% if item.published_display or item.updated_display or item.kind_label %}
+  <div class="meta">
+    {% if item.published_display %}
+    <span class="meta">{{ item.published_display }}</span>
+    {% endif %}
+    {% if item.updated_display %}
+    <span class="meta">Updated {{ item.updated_display }}</span>
+    {% endif %}
+    {% if item.kind_label %}
+    <span class="meta">{{ item.kind_label }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if item.abstract_text %}
+  <p class="abstract">{{ item.abstract_text }}</p>
+  {% endif %}
+
+  {% if item.tags and item.tags | length > 0 %}
+  <ul class="tags">
+    {% for tag in item.tags %}
+    <li>{{ tag }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if item.latest_parts and item.latest_parts | length > 0 %}
+  <ul class="series-parts">
+    {% for part in item.latest_parts %}
+    <li>
+      <a href="{{ part.href }}">{{ part.title }}</a>
+      {% if part.published_display %}
+      <span class="meta">{{ part.published_display }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</li>

@@ -10,8 +10,9 @@ use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::render_markdown_to_html;
 use stbl_core::templates::{
-    BlogIndexItem, BlogIndexPart, TagListingPage, format_timestamp_ymd, render_blog_index,
-    render_markdown_page, render_page, render_redirect_page, render_tag_index,
+    BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
+    format_timestamp_ymd, render_blog_index, render_markdown_page, render_page,
+    render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -160,7 +161,13 @@ fn render_page_by_id(
 ) -> Result<String> {
     let page =
         find_page(project, page_id).ok_or_else(|| anyhow!("page not found for render task"))?;
-    render_page(project, page, current_href, build_date_ymd)
+    let mapper = UrlMapper::new(&project.config);
+    let series_nav = series_nav_for_page(project, page_id, &mapper);
+    if series_nav.is_some() {
+        render_page_with_series_nav(project, page, series_nav, current_href, build_date_ymd)
+    } else {
+        render_page(project, page, current_href, build_date_ymd)
+    }
 }
 
 fn render_series(
@@ -171,7 +178,24 @@ fn render_series(
 ) -> Result<String> {
     let series = find_series(project, series_id)
         .ok_or_else(|| anyhow!("series not found for render task"))?;
-    render_page(project, &series.index, current_href, build_date_ymd)
+    let mapper = UrlMapper::new(&project.config);
+    let parts = series
+        .parts
+        .iter()
+        .map(|part| SeriesIndexPart {
+            title: part
+                .page
+                .header
+                .title
+                .clone()
+                .unwrap_or_else(|| "Untitled".to_string()),
+            href: mapper
+                .map(&logical_key_from_source_path(&part.page.source_path))
+                .href,
+            published_display: format_timestamp_ymd(part.page.header.published),
+        })
+        .collect::<Vec<_>>();
+    render_series_index(project, &series.index, parts, current_href, build_date_ymd)
 }
 
 fn find_page(project: &Project, page_id: DocId) -> Option<&Page> {
@@ -200,6 +224,57 @@ fn find_series(project: &Project, series_id: stbl_core::model::SeriesId) -> Opti
         .series
         .iter()
         .find(|series| series.id == series_id)
+}
+
+fn series_nav_for_page(
+    project: &Project,
+    page_id: DocId,
+    mapper: &UrlMapper,
+) -> Option<SeriesNavView> {
+    for series in &project.content.series {
+        for (idx, part) in series.parts.iter().enumerate() {
+            if part.page.id == page_id {
+                let prev = if idx > 0 {
+                    Some(nav_link_for_page(&series.parts[idx - 1].page, mapper))
+                } else {
+                    None
+                };
+                let next = if idx + 1 < series.parts.len() {
+                    Some(nav_link_for_page(&series.parts[idx + 1].page, mapper))
+                } else {
+                    None
+                };
+                let index_title = series
+                    .index
+                    .header
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "Series".to_string());
+                let index_href = mapper
+                    .map(&logical_key_from_source_path(&series.dir_path))
+                    .href;
+                let index = SeriesNavLink {
+                    title: index_title,
+                    href: index_href,
+                };
+                return Some(SeriesNavView { prev, index, next });
+            }
+        }
+    }
+    None
+}
+
+fn nav_link_for_page(page: &Page, mapper: &UrlMapper) -> SeriesNavLink {
+    SeriesNavLink {
+        title: page
+            .header
+            .title
+            .clone()
+            .unwrap_or_else(|| "Untitled".to_string()),
+        href: mapper
+            .map(&logical_key_from_source_path(&page.source_path))
+            .href,
+    }
 }
 
 fn mapping_for_task(
@@ -327,16 +402,20 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
             title: post.title.clone(),
             href: mapper.map(&post.logical_key).href,
             published_display: format_timestamp_ymd(post.published),
+            updated_display: format_timestamp_ymd(post.updated),
             kind_label: None,
             abstract_text: post.abstract_text.clone(),
+            tags: post.tags.clone(),
             latest_parts: Vec::new(),
         },
         FeedItem::Series(series) => BlogIndexItem {
             title: series.title.clone(),
             href: mapper.map(&series.logical_key).href,
             published_display: format_timestamp_ymd(series.published),
+            updated_display: format_timestamp_ymd(series.updated),
             kind_label: Some("Series".to_string()),
             abstract_text: series.abstract_text.clone(),
+            tags: series.tags.clone(),
             latest_parts: series
                 .latest_parts
                 .iter()

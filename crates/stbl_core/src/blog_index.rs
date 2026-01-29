@@ -16,6 +16,7 @@ pub struct FeedPost {
     pub logical_key: String,
     pub title: String,
     pub published: Option<i64>,
+    pub updated: Option<i64>,
     pub sort_date: i64,
     pub content_hash: blake3::Hash,
     pub abstract_text: Option<String>,
@@ -28,6 +29,7 @@ pub struct FeedSeries {
     pub logical_key: String,
     pub title: String,
     pub published: Option<i64>,
+    pub updated: Option<i64>,
     pub sort_date: i64,
     pub abstract_text: Option<String>,
     pub tags: Vec<String>,
@@ -308,6 +310,7 @@ fn feed_post(project: &Project, page: &Page) -> FeedPost {
             .clone()
             .unwrap_or_else(|| "Untitled".to_string()),
         published: timestamp_option(sort_date),
+        updated: page.header.updated,
         sort_date,
         content_hash: page.content_hash,
         abstract_text,
@@ -393,6 +396,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
             .clone()
             .unwrap_or_else(|| "Untitled".to_string()),
         published,
+        updated: series.index.header.updated,
         sort_date,
         abstract_text,
         tags,

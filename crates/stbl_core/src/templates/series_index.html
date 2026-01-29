@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>{{ page_title }}</h1>
+
+  {% if intro_html %}
+  {{ intro_html | safe }}
+  {% endif %}
+
+  {% if parts and parts | length > 0 %}
+  <ol class="series-parts">
+    {% for part in parts %}
+    <li>
+      <a href="{{ part.href }}">{{ part.title }}</a>
+      {% if part.published_display %}
+      <span class="meta">{{ part.published_display }}</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+{% endblock %}

@@ -11,10 +11,22 @@ const BASE_TEMPLATE: &str = include_str!("templates/base.html");
 const PAGE_TEMPLATE: &str = include_str!("templates/page.html");
 const BLOG_INDEX_TEMPLATE: &str = include_str!("templates/blog_index.html");
 const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
+const SERIES_INDEX_TEMPLATE: &str = include_str!("templates/series_index.html");
+const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html");
 
 pub fn render_page(
     project: &Project,
     page: &Page,
+    current_href: &str,
+    build_date_ymd: &str,
+) -> Result<String> {
+    render_page_with_series_nav(project, page, None, current_href, build_date_ymd)
+}
+
+pub fn render_page_with_series_nav(
+    project: &Project,
+    page: &Page,
+    series_nav: Option<SeriesNavView>,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -39,6 +51,7 @@ pub fn render_page(
         body_html,
         current_href,
         build_date_ymd,
+        series_nav,
         None,
     )
 }
@@ -62,6 +75,7 @@ pub fn render_markdown_page(
         body_html,
         current_href,
         build_date_ymd,
+        None,
         redirect_href.map(|value| value.to_string()),
     )
 }
@@ -78,9 +92,31 @@ pub struct BlogIndexItem {
     pub title: String,
     pub href: String,
     pub published_display: Option<String>,
+    pub updated_display: Option<String>,
     pub kind_label: Option<String>,
     pub abstract_text: Option<String>,
+    pub tags: Vec<String>,
     pub latest_parts: Vec<BlogIndexPart>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SeriesIndexPart {
+    pub title: String,
+    pub href: String,
+    pub published_display: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SeriesNavLink {
+    pub title: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SeriesNavView {
+    pub prev: Option<SeriesNavLink>,
+    pub index: SeriesNavLink,
+    pub next: Option<SeriesNavLink>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -164,6 +200,49 @@ pub fn render_tag_index(
         .context("failed to render tag index template")
 }
 
+pub fn render_series_index(
+    project: &Project,
+    index: &Page,
+    parts: Vec<SeriesIndexPart>,
+    current_href: &str,
+    build_date_ymd: &str,
+) -> Result<String> {
+    let env = template_env().context("failed to initialize templates")?;
+    let template = env
+        .get_template("series_index.html")
+        .context("missing series_index template")?;
+
+    let nav_items = build_nav_view(project, current_href);
+    let footer_show_stbl = project.config.footer.show_stbl;
+    let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let page_title = index
+        .header
+        .title
+        .clone()
+        .unwrap_or_else(|| "Untitled".to_string());
+    let intro_html = if index.body_markdown.trim().is_empty() {
+        None
+    } else {
+        Some(render_markdown_to_html(&index.body_markdown))
+    };
+
+    template
+        .render(context! {
+            site_title => project.config.site.title.clone(),
+            site_language => project.config.site.language.clone(),
+            home_href => UrlMapper::new(&project.config).map("index").href,
+            nav_items => nav_items,
+            page_title => page_title,
+            intro_html => intro_html,
+            parts => parts,
+            build_date_ymd => build_date_ymd,
+            footer_show_stbl => footer_show_stbl,
+            footer_copyright => footer_copyright,
+            redirect_href => Option::<String>::None,
+        })
+        .context("failed to render series index template")
+}
+
 pub fn render_redirect_page(
     project: &Project,
     target_href: &str,
@@ -194,6 +273,8 @@ fn template_env() -> Result<Environment<'static>> {
     env.add_template("page.html", PAGE_TEMPLATE)?;
     env.add_template("blog_index.html", BLOG_INDEX_TEMPLATE)?;
     env.add_template("tag_index.html", TAG_INDEX_TEMPLATE)?;
+    env.add_template("series_index.html", SERIES_INDEX_TEMPLATE)?;
+    env.add_template("partials/list_item.html", LIST_ITEM_TEMPLATE)?;
     Ok(env)
 }
 
@@ -207,6 +288,7 @@ fn render_with_context(
     body_html: String,
     current_href: &str,
     build_date_ymd: &str,
+    series_nav: Option<SeriesNavView>,
     redirect_href: Option<String>,
 ) -> Result<String> {
     let env = template_env().context("failed to initialize templates")?;
@@ -230,6 +312,7 @@ fn render_with_context(
             updated => updated,
             tags => tags,
             body_html => body_html,
+            series_nav => series_nav,
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
@@ -343,7 +426,11 @@ pub fn format_timestamp_ymd(value: Option<i64>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NavItemView, build_nav_view, format_timestamp_ymd, render_page};
+    use super::{
+        BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
+        build_nav_view, format_timestamp_ymd, render_blog_index, render_page,
+        render_page_with_series_nav, render_series_index, render_tag_index,
+    };
     use crate::config::load_site_config;
     use crate::header::Header;
     use crate::model::{DocId, Page, Project, SiteContent};
@@ -491,6 +578,101 @@ mod tests {
         assert!(html.contains("Copyright ACME"));
         assert!(!html.contains("Copyright 2026 by Demo"));
         assert!(!html.contains("Generated by stbl on"));
+    }
+
+    #[test]
+    fn listing_pages_use_shared_list_item_partial() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let item = BlogIndexItem {
+            title: "Item".to_string(),
+            href: "item.html".to_string(),
+            published_display: Some("2024-01-01".to_string()),
+            updated_display: None,
+            kind_label: None,
+            abstract_text: None,
+            tags: Vec::new(),
+            latest_parts: Vec::new(),
+        };
+        let html = render_blog_index(
+            &project,
+            "Blog".to_string(),
+            None,
+            vec![item.clone()],
+            None,
+            None,
+            1,
+            1,
+            "index.html",
+            "2026-01-29",
+        )
+        .expect("render blog");
+        assert!(html.contains("class=\"list-item\""));
+
+        let listing = TagListingPage {
+            tag: "rust".to_string(),
+            items: vec![item],
+        };
+        let html = render_tag_index(&project, listing, "tags/rust.html", "2026-01-29")
+            .expect("render tag");
+        assert!(html.contains("class=\"list-item\""));
+    }
+
+    #[test]
+    fn series_nav_block_renders_only_when_present() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let page = simple_page("Series Part", "articles/series/part1.md");
+        let html = render_page(&project, &page, "part1.html", "2026-01-29").expect("render page");
+        assert!(!html.contains("class=\"series-nav\""));
+
+        let nav = SeriesNavView {
+            prev: None,
+            index: SeriesNavLink {
+                title: "Series".to_string(),
+                href: "series.html".to_string(),
+            },
+            next: Some(SeriesNavLink {
+                title: "Part 2".to_string(),
+                href: "part2.html".to_string(),
+            }),
+        };
+        let html =
+            render_page_with_series_nav(&project, &page, Some(nav), "part1.html", "2026-01-29")
+                .expect("render page");
+        assert!(html.contains("class=\"series-nav\""));
+        assert!(html.contains("series.html"));
+        assert!(html.contains("part2.html"));
+    }
+
+    #[test]
+    fn series_index_parts_render_in_order() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let index = simple_page("Series", "articles/series/index.md");
+        let parts = vec![
+            SeriesIndexPart {
+                title: "Part 1".to_string(),
+                href: "part1.html".to_string(),
+                published_display: Some("2024-01-01".to_string()),
+            },
+            SeriesIndexPart {
+                title: "Part 2".to_string(),
+                href: "part2.html".to_string(),
+                published_display: Some("2024-01-02".to_string()),
+            },
+        ];
+        let html = render_series_index(&project, &index, parts, "series.html", "2026-01-29")
+            .expect("render series");
+        let part1 = html.find("Part 1").expect("part1");
+        let part2 = html.find("Part 2").expect("part2");
+        assert!(part1 < part2);
     }
 
     fn project_with_config(config: &str, content: SiteContent) -> Project {
