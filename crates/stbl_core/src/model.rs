@@ -150,6 +150,7 @@ pub struct SiteConfig {
     pub site: SiteMeta,
     pub banner: Option<BannerConfig>,
     pub menu: Vec<MenuItem>,
+    pub nav: Vec<NavItem>,
     pub people: Option<PeopleConfig>,
     pub blog: Option<BlogConfig>,
     pub system: Option<SystemConfig>,
@@ -207,6 +208,12 @@ pub struct BannerConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct MenuItem {
     pub title: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct NavItem {
+    pub label: String,
     pub href: String,
 }
 

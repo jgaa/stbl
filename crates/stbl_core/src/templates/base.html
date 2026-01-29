@@ -11,12 +11,12 @@
 <body>
   <header>
     <a href="{{ home_href }}">{{ site_title }}</a>
-    <nav>
+    <nav aria-label="Primary">
       <ul>
-        {% for item in menu %}
+        {% for item in nav_items %}
         <li>
           <a href="{{ item.href }}"{% if item.is_active %} aria-current="page"{% endif %}>
-            {{ item.title }}
+            {{ item.label }}
           </a>
         </li>
         {% endfor %}

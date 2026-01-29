@@ -484,6 +484,7 @@ mod tests {
             },
             banner: None,
             menu: Vec::new(),
+            nav: Vec::new(),
             people: None,
             blog: None,
             system: None,

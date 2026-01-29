@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use minijinja::{AutoEscape, Environment, context};
 
-use crate::model::{MenuItem, Page, Project};
+use crate::model::{NavItem, Page, Project};
 use crate::render::render_markdown_to_html;
 use crate::url::UrlMapper;
 use serde::Serialize;
@@ -106,15 +106,14 @@ pub fn render_blog_index(
         .get_template("blog_index.html")
         .context("missing blog_index template")?;
 
-    let home_href = UrlMapper::new(&project.config).map("index").href;
-    let menu = build_menu_view(&project.config.menu, current_href, &home_href);
+    let nav_items = build_nav_view(project, current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
-            home_href => home_href,
-            menu => menu,
+            home_href => UrlMapper::new(&project.config).map("index").href,
+            nav_items => nav_items,
             page_title => title,
             intro_html => intro_html,
             items => items,
@@ -140,15 +139,14 @@ pub fn render_tag_index(
         .context("missing tag_index template")?;
 
     let page_title = format!("Tag: {}", listing.tag);
-    let home_href = UrlMapper::new(&project.config).map("index").href;
-    let menu = build_menu_view(&project.config.menu, current_href, &home_href);
+    let nav_items = build_nav_view(project, current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
-            home_href => home_href,
-            menu => menu,
+            home_href => UrlMapper::new(&project.config).map("index").href,
+            nav_items => nav_items,
             page_title => page_title,
             tag => listing.tag,
             items => listing.items,
@@ -208,15 +206,14 @@ fn render_with_context(
         .get_template("page.html")
         .context("missing page template")?;
 
-    let home_href = UrlMapper::new(&project.config).map("index").href;
-    let menu = build_menu_view(&project.config.menu, current_href, &home_href);
+    let nav_items = build_nav_view(project, current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
-            home_href => home_href,
-            menu => menu,
+            home_href => UrlMapper::new(&project.config).map("index").href,
+            nav_items => nav_items,
             page_title => page_title,
             authors => authors,
             published => published,
@@ -230,29 +227,74 @@ fn render_with_context(
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct MenuItemView {
-    pub title: String,
+pub struct NavItemView {
+    pub label: String,
     pub href: String,
     pub is_active: bool,
 }
 
-fn build_menu_view(menu: &[MenuItem], current_href: &str, home_href: &str) -> Vec<MenuItemView> {
-    menu.iter()
-        .map(|item| MenuItemView {
-            title: item.title.clone(),
-            href: item.href.clone(),
-            is_active: menu_item_active(&item.href, current_href, home_href),
+fn build_nav_view(project: &Project, current_href: &str) -> Vec<NavItemView> {
+    let mapper = UrlMapper::new(&project.config);
+    let nav = resolved_nav_items(project);
+    let mut active_taken = false;
+    nav.iter()
+        .map(|item| {
+            let href = nav_item_href(item, &mapper);
+            let is_active = !active_taken && href_matches(&href, current_href);
+            if is_active {
+                active_taken = true;
+            }
+            NavItemView {
+                label: item.label.clone(),
+                href,
+                is_active,
+            }
         })
         .collect()
 }
 
-fn menu_item_active(menu_href: &str, current_href: &str, home_href: &str) -> bool {
-    let mut menu_norm = normalize_href(menu_href);
-    let current_norm = normalize_href(current_href);
-    if menu_norm.is_empty() {
-        menu_norm = normalize_href(home_href);
+fn resolved_nav_items(project: &Project) -> Vec<NavItem> {
+    if !project.config.nav.is_empty() {
+        return project.config.nav.clone();
     }
-    menu_norm == current_norm
+    vec![
+        NavItem {
+            label: "Home".to_string(),
+            href: "index".to_string(),
+        },
+        NavItem {
+            label: "Blog".to_string(),
+            href: "index".to_string(),
+        },
+        NavItem {
+            label: "Tags".to_string(),
+            href: "tags".to_string(),
+        },
+    ]
+}
+
+fn nav_item_href(item: &NavItem, mapper: &UrlMapper) -> String {
+    if is_external_href(&item.href) || is_absolute_or_fragment_href(&item.href) {
+        return item.href.clone();
+    }
+    mapper.map(&item.href).href
+}
+
+fn href_matches(nav_href: &str, current_href: &str) -> bool {
+    normalize_href(nav_href) == normalize_href(current_href)
+}
+
+fn is_external_href(href: &str) -> bool {
+    let href = href.trim();
+    href.starts_with("http://")
+        || href.starts_with("https://")
+        || href.starts_with("mailto:")
+        || href.starts_with("tel:")
+}
+
+fn is_absolute_or_fragment_href(href: &str) -> bool {
+    let href = href.trim();
+    href.starts_with('/') || href.starts_with('#') || href.starts_with('?')
 }
 
 fn normalize_href(value: &str) -> String {
@@ -277,11 +319,141 @@ pub fn format_timestamp_ymd(value: Option<i64>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::format_timestamp_ymd;
+    use super::{NavItemView, build_nav_view, format_timestamp_ymd};
+    use crate::config::load_site_config;
+    use crate::header::Header;
+    use crate::model::{DocId, Page, Project, SiteContent};
+    use std::fs;
+    use std::path::PathBuf;
+    use uuid::Uuid;
 
     #[test]
     fn format_timestamp_ymd_outputs_date_only() {
         let value = format_timestamp_ymd(Some(1_704_153_600)).expect("date");
         assert_eq!(value, "2024-01-02");
+    }
+
+    #[test]
+    fn nav_ordering_preserves_config() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Blog\"\n      href: \"blog\"\n",
+            SiteContent::default(),
+        );
+        let items = build_nav_view(&project, "blog.html");
+        assert_nav_labels(&items, &["Home", "Blog"]);
+        assert_eq!(items[0].href, "index.html");
+        assert_eq!(items[1].href, "blog.html");
+    }
+
+    #[test]
+    fn nav_defaults_do_not_scan_content() {
+        let mut content = SiteContent::default();
+        content
+            .pages
+            .push(fake_page("articles/blog/index.md", None, "Blog"));
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            content,
+        );
+        let items = build_nav_view(&project, "index.html");
+        assert_nav_labels(&items, &["Home", "Blog", "Tags"]);
+        assert_eq!(items[0].href, "index.html");
+        assert_eq!(items[1].href, "index.html");
+        assert_eq!(items[2].href, "tags.html");
+    }
+
+    #[test]
+    fn nav_active_is_exact_match_only() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Blog\"\n      href: \"blog\"\n",
+            SiteContent::default(),
+        );
+        let items = build_nav_view(&project, "blog/page1.html");
+        assert_eq!(active_count(&items), 0);
+
+        let items = build_nav_view(&project, "blog.html");
+        assert_eq!(active_count(&items), 1);
+        assert!(items[1].is_active);
+    }
+
+    #[test]
+    fn nav_active_is_first_match_only() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Home Duplicate\"\n      href: \"index\"\n",
+            SiteContent::default(),
+        );
+        let items = build_nav_view(&project, "index.html");
+        assert_eq!(active_count(&items), 1);
+        assert!(items[0].is_active);
+        assert!(!items[1].is_active);
+    }
+
+    #[test]
+    fn nav_default_is_deterministic_when_missing() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let items = build_nav_view(&project, "index.html");
+        assert_nav_labels(&items, &["Home", "Blog", "Tags"]);
+        assert_eq!(items[0].href, "index.html");
+        assert_eq!(items[1].href, "index.html");
+        assert_eq!(items[2].href, "tags.html");
+    }
+
+    #[test]
+    fn nav_href_mapping_rules() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"About\"\n      href: \"about\"\n    - label: \"Absolute\"\n      href: \"/about.html\"\n    - label: \"External\"\n      href: \"https://example.com/\"\n    - label: \"Top\"\n      href: \"#top\"\n",
+            SiteContent::default(),
+        );
+        let items = build_nav_view(&project, "index.html");
+        assert_eq!(items[0].href, "about.html");
+        assert_eq!(items[1].href, "/about.html");
+        assert_eq!(items[2].href, "https://example.com/");
+        assert_eq!(items[3].href, "#top");
+    }
+
+    fn project_with_config(config: &str, content: SiteContent) -> Project {
+        let path = write_temp_config(config);
+        let config = load_site_config(&path).expect("config");
+        Project {
+            root: PathBuf::from("."),
+            config,
+            content,
+        }
+    }
+
+    fn write_temp_config(contents: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("stbl-nav-{}.yaml", Uuid::new_v4()));
+        fs::write(&path, contents).expect("write config");
+        path
+    }
+
+    fn fake_page(
+        source_path: &str,
+        template: Option<crate::header::TemplateId>,
+        title: &str,
+    ) -> Page {
+        let mut header = Header::default();
+        header.title = Some(title.to_string());
+        header.template = template;
+        Page {
+            id: DocId(blake3::hash(source_path.as_bytes())),
+            source_path: source_path.to_string(),
+            header,
+            body_markdown: String::new(),
+            url_path: String::new(),
+            content_hash: blake3::hash(source_path.as_bytes()),
+        }
+    }
+
+    fn assert_nav_labels(items: &[NavItemView], expected: &[&str]) {
+        let labels: Vec<&str> = items.iter().map(|item| item.label.as_str()).collect();
+        assert_eq!(labels, expected);
+    }
+
+    fn active_count(items: &[NavItemView]) -> usize {
+        items.iter().filter(|item| item.is_active).count()
     }
 }

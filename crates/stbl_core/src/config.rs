@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::model::{
-    BannerConfig, MenuItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig,
-    SiteConfig, SiteMeta, SystemConfig, UrlStyle,
+    BannerConfig, MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig,
+    SeoConfig, SiteConfig, SiteMeta, SystemConfig, UrlStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +37,13 @@ struct SiteMetaRaw {
     language: Option<String>,
     timezone: Option<String>,
     url_style: Option<UrlStyle>,
+    nav: Option<Vec<NavItemRaw>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct NavItemRaw {
+    label: Option<String>,
+    href: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +99,19 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         language: required_string(parsed.site.language, "site.language")?,
         timezone: parsed.site.timezone,
         url_style: parsed.site.url_style.unwrap_or_default(),
+    };
+
+    let nav = match parsed.site.nav {
+        Some(items) => parse_nav_items(items)?,
+        None if !parsed.menu.is_empty() => parsed
+            .menu
+            .iter()
+            .map(|item| NavItem {
+                label: item.title.clone(),
+                href: item.href.clone(),
+            })
+            .collect(),
+        None => Vec::new(),
     };
 
     let people = match parsed.people {
@@ -191,6 +211,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         site,
         banner: parsed.banner,
         menu: parsed.menu,
+        nav,
         people,
         blog,
         system: parsed.system,
@@ -208,6 +229,16 @@ fn required_string(value: Option<String>, field: &str) -> Result<String> {
         Some(text) if !text.trim().is_empty() => Ok(text),
         _ => bail!("missing required field: {}", field),
     }
+}
+
+fn parse_nav_items(items: Vec<NavItemRaw>) -> Result<Vec<NavItem>> {
+    let mut out = Vec::with_capacity(items.len());
+    for (idx, item) in items.into_iter().enumerate() {
+        let label = required_string(item.label, &format!("site.nav[{idx}].label"))?;
+        let href = required_string(item.href, &format!("site.nav[{idx}].href"))?;
+        out.push(NavItem { label, href });
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
