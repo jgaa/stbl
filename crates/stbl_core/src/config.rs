@@ -6,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::model::{
-    BannerConfig, MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig,
-    SeoConfig, SiteConfig, SiteMeta, SystemConfig, UrlStyle,
+    BannerConfig, FooterConfig, MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig,
+    RssConfig, SeoConfig, SiteConfig, SiteMeta, SystemConfig, UrlStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -16,6 +16,7 @@ struct SiteConfigRaw {
     banner: Option<BannerConfig>,
     #[serde(default)]
     menu: Vec<MenuItem>,
+    footer: Option<FooterConfigRaw>,
     people: Option<PeopleConfigRaw>,
     blog: Option<BlogConfigRaw>,
     system: Option<SystemConfig>,
@@ -33,11 +34,17 @@ struct SiteMetaRaw {
     title: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
+    copyright: Option<String>,
     base_url: Option<String>,
     language: Option<String>,
     timezone: Option<String>,
     url_style: Option<UrlStyle>,
     nav: Option<Vec<NavItemRaw>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FooterConfigRaw {
+    show_stbl: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -95,6 +102,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         id: required_string(parsed.site.id, "site.id")?,
         title: required_string(parsed.site.title, "site.title")?,
         abstract_text: parsed.site.abstract_text,
+        copyright: parsed.site.copyright,
         base_url: required_string(parsed.site.base_url, "site.base_url")?,
         language: required_string(parsed.site.language, "site.language")?,
         timezone: parsed.site.timezone,
@@ -212,6 +220,12 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         banner: parsed.banner,
         menu: parsed.menu,
         nav,
+        footer: FooterConfig {
+            show_stbl: parsed
+                .footer
+                .and_then(|footer| footer.show_stbl)
+                .unwrap_or(true),
+        },
         people,
         blog,
         system: parsed.system,

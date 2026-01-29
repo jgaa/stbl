@@ -222,4 +222,3 @@ Rules:
 | Missing `part` (series)         | Info     |
 | Holes in part sequence          | Warning  |
 | Invalid sitemap fields          | Error    |
-

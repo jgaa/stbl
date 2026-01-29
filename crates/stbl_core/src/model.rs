@@ -151,6 +151,7 @@ pub struct SiteConfig {
     pub banner: Option<BannerConfig>,
     pub menu: Vec<MenuItem>,
     pub nav: Vec<NavItem>,
+    pub footer: FooterConfig,
     pub people: Option<PeopleConfig>,
     pub blog: Option<BlogConfig>,
     pub system: Option<SystemConfig>,
@@ -168,6 +169,7 @@ pub struct SiteMeta {
     pub id: String,
     pub title: String,
     pub abstract_text: Option<String>,
+    pub copyright: Option<String>,
     pub base_url: String,
     pub language: String,
     pub timezone: Option<String>,
@@ -215,6 +217,11 @@ pub struct MenuItem {
 pub struct NavItem {
     pub label: String,
     pub href: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct FooterConfig {
+    pub show_stbl: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
