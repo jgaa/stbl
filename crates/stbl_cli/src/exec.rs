@@ -2,7 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, anyhow};
-use stbl_core::blog_index::{FeedItem, blog_page_size, collect_blog_feed};
+use stbl_core::blog_index::{
+    FeedItem, blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed,
+    paginate_blog_index,
+};
 use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::render_markdown_to_html;
@@ -167,11 +170,8 @@ fn mapping_for_task(
         } => {
             let page = find_page(project, *source_page)
                 .ok_or_else(|| anyhow!("blog index page not found"))?;
-            if *page_no == 1 {
-                logical_key_from_source_path(&page.source_path)
-            } else {
-                format!("page/{}", page_no)
-            }
+            let base_key = logical_key_from_source_path(&page.source_path);
+            blog_index_page_logical_key(&base_key, *page_no)
         }
         TaskKind::RenderSeries { series } => {
             let series = find_series(project, *series)
@@ -203,9 +203,14 @@ fn render_blog_index_page(
         find_page(project, *source_page_id).ok_or_else(|| anyhow!("blog index page not found"))?;
 
     let feed_items = collect_blog_feed(project, source_page.id);
-    let page_size = blog_page_size(project);
-    let total_pages = total_pages(feed_items.len(), page_size);
-    let (start, end) = page_slice_bounds(page_no, page_size, feed_items.len());
+    let base_key = logical_key_from_source_path(&source_page.source_path);
+    let pagination = blog_pagination_settings(project);
+    let page_ranges = paginate_blog_index(pagination, &base_key, feed_items.len());
+    let page_range = page_ranges
+        .iter()
+        .find(|page| page.page_no == page_no)
+        .ok_or_else(|| anyhow!("blog index page out of range"))?;
+    let (start, end) = (page_range.start, page_range.end);
     let items = feed_items[start..end]
         .iter()
         .map(|item| map_feed_item(item, &mapper))
@@ -218,47 +223,19 @@ fn render_blog_index_page(
     };
 
     let title = source_page.header.title.clone();
-    let prev_href = if page_no > 1 {
-        let prev_key = if page_no == 2 {
-            logical_key_from_source_path(&source_page.source_path)
-        } else {
-            format!("page/{}", page_no - 1)
-        };
-        Some(mapper.map(&prev_key).href)
-    } else {
-        None
-    };
-    let next_href = if page_no < total_pages {
-        let next_key = format!("page/{}", page_no + 1);
-        Some(mapper.map(&next_key).href)
-    } else {
-        None
-    };
+    let prev_href = page_range.prev_key.as_ref().map(|key| mapper.map(key).href);
+    let next_href = page_range.next_key.as_ref().map(|key| mapper.map(key).href);
 
-    render_blog_index(project, title, intro_html, items, prev_href, next_href)
-}
-
-fn total_pages(total_items: usize, page_size: usize) -> u32 {
-    let size = page_size.max(1);
-    let pages = if total_items == 0 {
-        1
-    } else {
-        (total_items + size - 1) / size
-    };
-    pages as u32
-}
-
-fn page_slice_bounds(page_no: u32, page_size: usize, total_items: usize) -> (usize, usize) {
-    if total_items == 0 {
-        return (0, 0);
-    }
-    let size = page_size.max(1);
-    let start = ((page_no.saturating_sub(1)) as usize).saturating_mul(size);
-    let end = usize::min(start + size, total_items);
-    if start >= total_items {
-        return (total_items, total_items);
-    }
-    (start, end)
+    render_blog_index(
+        project,
+        title,
+        intro_html,
+        items,
+        prev_href,
+        next_href,
+        page_range.page_no,
+        page_range.total_pages,
+    )
 }
 
 fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
@@ -299,17 +276,16 @@ mod tests {
     use stbl_core::model::{Project, UrlStyle};
     use tempfile::TempDir;
 
-    fn fixture_root() -> PathBuf {
+    fn fixture_root(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("stbl_core")
             .join("tests")
             .join("fixtures")
-            .join("site1")
+            .join(name)
     }
 
-    fn build_project(url_style: UrlStyle) -> Project {
-        let root = fixture_root();
+    fn build_project_at(root: PathBuf, url_style: UrlStyle) -> Project {
         let config_path = root.join("stbl.yaml");
         let mut config = load_site_config(&config_path).expect("load config");
         config.site.url_style = url_style;
@@ -322,6 +298,10 @@ mod tests {
             config,
             content,
         }
+    }
+
+    fn build_project(url_style: UrlStyle) -> Project {
+        build_project_at(fixture_root("site1"), url_style)
     }
 
     fn build_into_temp(url_style: UrlStyle) -> (TempDir, PathBuf) {
@@ -366,5 +346,23 @@ mod tests {
         let contents = fs::read_to_string(fallback_path).expect("read fallback");
         assert!(contents.contains("http-equiv=\"refresh\""));
         assert!(contents.contains("href=\"/page1/\""));
+    }
+
+    #[test]
+    fn pagination_fixture_generates_multiple_blog_pages() {
+        let project = build_project_at(fixture_root("site-pagination"), UrlStyle::Html);
+        let plan = stbl_core::plan::build_plan(&project);
+        let temp = TempDir::new().expect("tempdir");
+        let out_dir = temp.path().join("out");
+        execute_plan(&project, &plan, &out_dir).expect("execute plan");
+
+        assert!(out_dir.join("index.html").exists());
+        assert!(out_dir.join("page/2.html").exists());
+        assert!(out_dir.join("page/3.html").exists());
+        assert!(out_dir.join("page/4.html").exists());
+
+        let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
+        assert!(page2_html.contains("page&#x2f;3.html"));
+        assert!(page2_html.contains("index.html"));
     }
 }

@@ -42,14 +42,44 @@ pub struct FeedSeriesPart {
     pub sort_date: i64,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BlogPaginationSettings {
+    pub enabled: bool,
+    pub page_size: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlogIndexPageRange {
+    pub page_no: u32,
+    pub total_pages: u32,
+    pub start: usize,
+    pub end: usize,
+    pub prev_key: Option<String>,
+    pub next_key: Option<String>,
+}
+
+pub fn blog_pagination_settings(project: &Project) -> BlogPaginationSettings {
+    BlogPaginationSettings {
+        enabled: blog_pagination_enabled(project),
+        page_size: blog_page_size(project),
+    }
+}
+
+pub fn blog_pagination_enabled(project: &Project) -> bool {
+    project
+        .config
+        .blog
+        .as_ref()
+        .is_some_and(|blog| blog.pagination.enabled)
+}
+
 pub fn blog_page_size(project: &Project) -> usize {
     project
         .config
         .blog
         .as_ref()
-        .map(|blog| blog.page_size)
+        .map(|blog| blog.pagination.page_size)
         .unwrap_or(10)
-        .max(1)
 }
 
 pub fn blog_latest_parts(project: &Project) -> usize {
@@ -86,6 +116,61 @@ pub fn collect_blog_feed(project: &Project, source_page_id: DocId) -> Vec<FeedIt
             .then_with(|| a.tie_key().cmp(b.tie_key()))
     });
     items
+}
+
+pub fn blog_index_page_logical_key(base_logical_key: &str, page_no: u32) -> String {
+    if page_no <= 1 {
+        return base_logical_key.to_string();
+    }
+    let base = base_logical_key.trim_matches('/');
+    let suffix = format!("page/{}", page_no);
+    if base.is_empty() || base == "index" {
+        suffix
+    } else {
+        format!("{base}/{suffix}")
+    }
+}
+
+pub fn paginate_blog_index(
+    pagination: BlogPaginationSettings,
+    base_logical_key: &str,
+    total_items: usize,
+) -> Vec<BlogIndexPageRange> {
+    if !pagination.enabled {
+        return vec![BlogIndexPageRange {
+            page_no: 1,
+            total_pages: 1,
+            start: 0,
+            end: total_items,
+            prev_key: None,
+            next_key: None,
+        }];
+    }
+
+    let total_pages = total_pages(total_items, pagination.page_size);
+    let mut pages = Vec::with_capacity(total_pages as usize);
+    for page_no in 1..=total_pages {
+        let (start, end) = page_slice_bounds(page_no, pagination.page_size, total_items);
+        let prev_key = if page_no > 1 {
+            Some(blog_index_page_logical_key(base_logical_key, page_no - 1))
+        } else {
+            None
+        };
+        let next_key = if page_no < total_pages {
+            Some(blog_index_page_logical_key(base_logical_key, page_no + 1))
+        } else {
+            None
+        };
+        pages.push(BlogIndexPageRange {
+            page_no,
+            total_pages,
+            start,
+            end,
+            prev_key,
+            next_key,
+        });
+    }
+    pages
 }
 
 impl FeedItem {
@@ -261,6 +346,29 @@ fn extract_abstract_html(markdown: &str) -> String {
     }
 }
 
+fn total_pages(total_items: usize, page_size: usize) -> u32 {
+    let size = page_size.max(1);
+    let pages = if total_items == 0 {
+        1
+    } else {
+        (total_items + size - 1) / size
+    };
+    pages as u32
+}
+
+fn page_slice_bounds(page_no: u32, page_size: usize, total_items: usize) -> (usize, usize) {
+    if total_items == 0 {
+        return (0, 0);
+    }
+    let size = page_size.max(1);
+    let start = ((page_no.saturating_sub(1)) as usize).saturating_mul(size);
+    let end = usize::min(start + size, total_items);
+    if start >= total_items {
+        return (total_items, total_items);
+    }
+    (start, end)
+}
+
 #[derive(Debug)]
 struct SeriesPartCandidate<'a> {
     part_no: i32,
@@ -273,7 +381,10 @@ struct SeriesPartCandidate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{BlogConfig, SiteConfig, SiteContent, SiteMeta, UrlStyle};
+    use crate::model::{
+        BlogConfig, BlogPaginationConfig, SiteConfig, SiteContent, SiteMeta, UrlStyle,
+    };
+    use crate::url::UrlMapper;
     use std::path::PathBuf;
 
     fn base_config() -> SiteConfig {
@@ -474,7 +585,10 @@ mod tests {
         }
 
         config.blog = Some(BlogConfig {
-            page_size: 10,
+            pagination: BlogPaginationConfig {
+                enabled: false,
+                page_size: 10,
+            },
             series: crate::model::BlogSeriesConfig { latest_parts: 1 },
         });
         let project = Project {
@@ -508,6 +622,114 @@ mod tests {
         assert_eq!(items.len(), 2);
         let first = items[0].tie_key().to_string();
         let second = items[1].tie_key().to_string();
+        assert_eq!(first, "a");
+        assert_eq!(second, "b");
+    }
+
+    #[test]
+    fn pagination_disabled_returns_single_page() {
+        let project = project_with_pages(Vec::new());
+        let pagination = blog_pagination_settings(&project);
+        assert!(!pagination.enabled);
+        let pages = paginate_blog_index(pagination, "index", 5);
+        assert_eq!(pages.len(), 1);
+        let page = &pages[0];
+        assert_eq!(page.page_no, 1);
+        assert_eq!(page.total_pages, 1);
+        assert_eq!(page.start, 0);
+        assert_eq!(page.end, 5);
+        assert!(page.prev_key.is_none());
+        assert!(page.next_key.is_none());
+    }
+
+    #[test]
+    fn pagination_enabled_slices_and_links() {
+        let mut config = base_config();
+        config.blog = Some(BlogConfig {
+            pagination: BlogPaginationConfig {
+                enabled: true,
+                page_size: 2,
+            },
+            series: crate::model::BlogSeriesConfig { latest_parts: 3 },
+        });
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config,
+            content: SiteContent {
+                pages: Vec::new(),
+                series: Vec::new(),
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+        let pages = paginate_blog_index(blog_pagination_settings(&project), "blog", 5);
+        assert_eq!(pages.len(), 3);
+        assert_eq!(pages[0].start, 0);
+        assert_eq!(pages[0].end, 2);
+        assert_eq!(pages[0].prev_key, None);
+        assert_eq!(pages[0].next_key.as_deref(), Some("blog/page/2"));
+        assert_eq!(pages[1].start, 2);
+        assert_eq!(pages[1].end, 4);
+        assert_eq!(pages[1].prev_key.as_deref(), Some("blog"));
+        assert_eq!(pages[1].next_key.as_deref(), Some("blog/page/3"));
+        assert_eq!(pages[2].start, 4);
+        assert_eq!(pages[2].end, 5);
+        assert_eq!(pages[2].prev_key.as_deref(), Some("blog/page/2"));
+        assert_eq!(pages[2].next_key, None);
+    }
+
+    #[test]
+    fn pagination_key_for_root_index_avoids_double_slashes() {
+        assert_eq!(blog_index_page_logical_key("index", 2), "page/2");
+        assert_eq!(blog_index_page_logical_key("", 2), "page/2");
+        assert_eq!(blog_index_page_logical_key("blog", 2), "blog/page/2");
+    }
+
+    #[test]
+    fn pagination_href_respects_url_style() {
+        let mut config = base_config();
+        config.site.url_style = UrlStyle::Html;
+        let mapper = UrlMapper::new(&config);
+        let key = blog_index_page_logical_key("index", 2);
+        let mapping = mapper.map(&key);
+        assert_eq!(mapping.href, "page/2.html");
+
+        let mut config = base_config();
+        config.site.url_style = UrlStyle::Pretty;
+        let mapper = UrlMapper::new(&config);
+        let mapping = mapper.map(&key);
+        assert_eq!(mapping.href, "page/2/");
+    }
+
+    #[test]
+    fn pagination_preserves_feed_order_across_pages() {
+        let mut config = base_config();
+        config.blog = Some(BlogConfig {
+            pagination: BlogPaginationConfig {
+                enabled: true,
+                page_size: 1,
+            },
+            series: crate::model::BlogSeriesConfig { latest_parts: 3 },
+        });
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.published = Some(10);
+        let page_b = make_page("page-b", "articles/b.md", header.clone());
+        let page_a = make_page("page-a", "articles/a.md", header.clone());
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config,
+            content: SiteContent {
+                pages: vec![page_b, page_a],
+                series: Vec::new(),
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+        let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        let pages = paginate_blog_index(blog_pagination_settings(&project), "index", feed.len());
+        let first = feed[pages[0].start].tie_key().to_string();
+        let second = feed[pages[1].start].tie_key().to_string();
         assert_eq!(first, "a");
         assert_eq!(second, "b");
     }

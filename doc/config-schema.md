@@ -79,7 +79,9 @@ publish:
   command: string
 
 blog:
-  page_size: int       # default 10
+  pagination:
+    enabled: bool      # default false
+    page_size: int     # default 10
   series:
     latest_parts: int  # default 3
 
@@ -176,7 +178,9 @@ publish:
   command: "rsync -a --delete {{local-site}}/ {{destination}}/"
 
 blog:
-  page_size: 10
+  pagination:
+    enabled: false
+    page_size: 10
   series:
     latest_parts: 3
 

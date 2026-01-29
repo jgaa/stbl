@@ -9,6 +9,10 @@
   {{ intro_html | safe }}
   {% endif %}
 
+  {% if total_pages > 1 %}
+  <div class="pager-meta">Page {{ page_no }} of {{ total_pages }}</div>
+  {% endif %}
+
   <ul class="post-list">
   {% for item in items %}
     <li>

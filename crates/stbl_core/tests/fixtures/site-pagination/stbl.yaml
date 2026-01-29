@@ -1,0 +1,9 @@
+site:
+  id: "site-pagination"
+  title: "Site Pagination"
+  base_url: "https://example.com/"
+  language: "en"
+blog:
+  pagination:
+    enabled: true
+    page_size: 3

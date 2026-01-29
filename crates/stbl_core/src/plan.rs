@@ -1,6 +1,8 @@
 //! Deterministic build plan construction (no execution).
 
-use crate::blog_index::{blog_page_size, collect_blog_feed};
+use crate::blog_index::{
+    blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed, paginate_blog_index,
+};
 use crate::header::TemplateId;
 use crate::model::{BuildPlan, BuildTask, ContentId, OutputArtifact, Project, TaskId, TaskKind};
 use crate::url::{UrlMapper, logical_key_from_source_path};
@@ -220,11 +222,13 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
 
     for page in &blog_index_pages {
         let feed_items = collect_blog_feed(_project, page.id);
-        let total_pages = total_pages(feed_items.len(), blog_page_size(_project));
-        for page_no in 1..=total_pages {
+        let base_key = logical_key_from_source_path(&page.source_path);
+        let pagination = blog_pagination_settings(_project);
+        let page_ranges = paginate_blog_index(pagination, &base_key, feed_items.len());
+        for page_range in page_ranges {
             let kind = TaskKind::RenderBlogIndex {
                 source_page: page.id,
-                page_no,
+                page_no: page_range.page_no,
             };
             let mut input_hashes: Vec<Hash> = feed_items
                 .iter()
@@ -239,11 +243,8 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
                 .map(ContentId::Doc)
                 .collect();
             inputs.push(ContentId::Doc(page.id));
-            let outputs = if page_no == 1 {
-                outputs_for_logical_key(&mapper, &logical_key_from_source_path(&page.source_path))
-            } else {
-                outputs_for_logical_key(&mapper, &format!("page/{}", page_no))
-            };
+            let page_key = blog_index_page_logical_key(&base_key, page_range.page_no);
+            let outputs = outputs_for_logical_key(&mapper, &page_key);
             tasks.push(BuildTask {
                 id,
                 kind,
@@ -374,14 +375,4 @@ fn outputs_for_logical_key(mapper: &UrlMapper, logical_key: &str) -> Vec<OutputA
 
 fn rss_enabled(project: &Project) -> bool {
     project.config.rss.as_ref().is_some_and(|rss| rss.enabled)
-}
-
-fn total_pages(total_items: usize, page_size: usize) -> u32 {
-    let size = page_size.max(1);
-    let pages = if total_items == 0 {
-        1
-    } else {
-        (total_items + size - 1) / size
-    };
-    pages as u32
 }

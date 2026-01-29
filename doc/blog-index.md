@@ -2,7 +2,7 @@
 
 ## Overview
 
-Pages using template `blog_index` render a blog listing with pagination.
+Pages using template `blog_index` render a blog listing with optional pagination.
 The listing is built from a deterministic feed generated in `stbl_core`.
 
 ## Exclusion rules
@@ -30,7 +30,10 @@ Series content is represented as a single roll-up entry:
 `blog.series.latest_parts` controls how many parts are listed per series.
 Default: 3.
 
-`blog.page_size` controls pagination size.
+`blog.pagination.enabled` toggles pagination.
+Default: false.
+
+`blog.pagination.page_size` controls pagination size.
 Default: 10.
 
 ## Sorting

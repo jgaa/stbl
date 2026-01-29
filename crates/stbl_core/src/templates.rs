@@ -68,6 +68,8 @@ pub fn render_blog_index(
     items: Vec<BlogIndexItem>,
     prev_href: Option<String>,
     next_href: Option<String>,
+    page_no: u32,
+    total_pages: u32,
 ) -> Result<String> {
     let menu: Vec<MenuItem> = project.config.menu.clone();
     let env = template_env().context("failed to initialize templates")?;
@@ -84,6 +86,8 @@ pub fn render_blog_index(
             items => items,
             prev_href => prev_href,
             next_href => next_href,
+            page_no => page_no,
+            total_pages => total_pages,
         })
         .context("failed to render blog index template")
 }

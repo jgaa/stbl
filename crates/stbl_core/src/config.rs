@@ -48,7 +48,14 @@ struct PeopleConfigRaw {
 #[derive(Debug, Deserialize)]
 struct BlogConfigRaw {
     page_size: Option<usize>,
+    pagination: Option<BlogPaginationConfigRaw>,
     series: Option<BlogSeriesConfigRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogPaginationConfigRaw {
+    enabled: Option<bool>,
+    page_size: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,15 +113,33 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         }
     };
 
-    let blog = parsed.blog.map(|blog_raw| crate::model::BlogConfig {
-        page_size: blog_raw.page_size.unwrap_or(10),
-        series: crate::model::BlogSeriesConfig {
-            latest_parts: blog_raw
-                .series
-                .and_then(|series| series.latest_parts)
-                .unwrap_or(3),
-        },
-    });
+    let blog = match parsed.blog {
+        None => None,
+        Some(blog_raw) => {
+            let (enabled, page_size) = match blog_raw.pagination {
+                Some(pagination_raw) => (
+                    pagination_raw.enabled.unwrap_or(false),
+                    pagination_raw.page_size.unwrap_or(10),
+                ),
+                None => (
+                    blog_raw.page_size.is_some(),
+                    blog_raw.page_size.unwrap_or(10),
+                ),
+            };
+            if enabled && page_size == 0 {
+                bail!("blog.pagination.page_size must be > 0 when pagination is enabled");
+            }
+            Some(crate::model::BlogConfig {
+                pagination: crate::model::BlogPaginationConfig { enabled, page_size },
+                series: crate::model::BlogSeriesConfig {
+                    latest_parts: blog_raw
+                        .series
+                        .and_then(|series| series.latest_parts)
+                        .unwrap_or(3),
+                },
+            })
+        }
+    };
 
     let rss = match parsed.rss {
         None => None,
@@ -229,7 +254,31 @@ mod tests {
         );
         let config = load_site_config(&path).expect("config should load");
         let blog = config.blog.expect("blog should be present");
-        assert_eq!(blog.page_size, 10);
+        assert!(!blog.pagination.enabled);
+        assert_eq!(blog.pagination.page_size, 10);
         assert_eq!(blog.series.latest_parts, 3);
+    }
+
+    #[test]
+    fn blog_pagination_requires_page_size_when_enabled() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nblog:\n  pagination:\n    enabled: true\n    page_size: 0\n",
+        );
+        let err = load_site_config(&path).expect_err("expected error");
+        assert!(
+            err.to_string()
+                .contains("blog.pagination.page_size must be > 0")
+        );
+    }
+
+    #[test]
+    fn blog_page_size_enables_pagination_for_legacy_config() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nblog:\n  page_size: 5\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let blog = config.blog.expect("blog should be present");
+        assert!(blog.pagination.enabled);
+        assert_eq!(blog.pagination.page_size, 5);
     }
 }
