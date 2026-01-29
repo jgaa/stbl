@@ -319,7 +319,7 @@ pub fn format_timestamp_ymd(value: Option<i64>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{NavItemView, build_nav_view, format_timestamp_ymd};
+    use super::{NavItemView, build_nav_view, format_timestamp_ymd, render_page};
     use crate::config::load_site_config;
     use crate::header::Header;
     use crate::model::{DocId, Page, Project, SiteContent};
@@ -412,6 +412,40 @@ mod tests {
         assert_eq!(items[1].href, "/about.html");
         assert_eq!(items[2].href, "https://example.com/");
         assert_eq!(items[3].href, "#top");
+    }
+
+    #[test]
+    fn meta_blocks_render_only_when_present() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let mut header = Header::default();
+        header.title = Some("Meta Test".to_string());
+        let page = Page {
+            id: DocId(blake3::hash(b"meta-test")),
+            source_path: "articles/meta-test.md".to_string(),
+            header: header.clone(),
+            body_markdown: "Body".to_string(),
+            url_path: "meta-test".to_string(),
+            content_hash: blake3::hash(b"meta-test"),
+        };
+        let html = render_page(&project, &page, "meta-test.html", "2026-01-29").expect("render");
+        assert!(!html.contains("<div class=\"meta\">"));
+        assert!(!html.contains("Tags:"));
+        assert!(!html.contains("class=\"tags\""));
+
+        let mut header_with_tags = header;
+        header_with_tags.tags = vec!["rust".to_string(), "stbl".to_string()];
+        let page_with_tags = Page {
+            header: header_with_tags,
+            ..page
+        };
+        let html =
+            render_page(&project, &page_with_tags, "meta-test.html", "2026-01-29").expect("render");
+        assert!(html.contains("<div class=\"meta\">"));
+        assert!(html.contains("Tags:"));
+        assert!(html.contains("class=\"tags\""));
     }
 
     fn project_with_config(config: &str, content: SiteContent) -> Project {

@@ -3,19 +3,28 @@
 {% block content %}
   <h1>{{ page_title }}</h1>
 
-  {% if authors %}
-  <p class="meta">By {{ authors | join(", ") }}</p>
-  {% endif %}
+  {% if authors or published or updated or (tags and tags | length > 0) %}
+  <div class="meta">
+    {% if authors %}
+    <p>By {{ authors | join(", ") }}</p>
+    {% endif %}
 
-  {% if published or updated %}
-  <p class="meta">
-    {% if published %}Published {{ published }}{% endif %}
-    {% if updated %}{% if published %} · {% endif %}Updated {{ updated }}{% endif %}
-  </p>
-  {% endif %}
+    {% if published or updated %}
+    <p>
+      {% if published %}Published {{ published }}{% endif %}
+      {% if updated %}{% if published %} · {% endif %}Updated {{ updated }}{% endif %}
+    </p>
+    {% endif %}
 
-  {% if tags and tags | length > 0 %}
-  <p class="meta">Tags: {{ tags | join(", ") }}</p>
+    {% if tags and tags | length > 0 %}
+    <p>Tags:</p>
+    <ul class="tags">
+      {% for tag in tags %}
+      <li>{{ tag }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
   {% endif %}
 
   {{ body_html | safe }}

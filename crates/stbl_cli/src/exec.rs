@@ -271,11 +271,7 @@ fn render_blog_index_page(
         None
     };
 
-    let title = source_page
-        .header
-        .title
-        .clone()
-        .unwrap_or_else(|| "Untitled".to_string());
+    let title = "Blog".to_string();
     let prev_href = page_range.prev_key.as_ref().map(|key| mapper.map(key).href);
     let next_href = page_range.next_key.as_ref().map(|key| mapper.map(key).href);
 
@@ -501,7 +497,7 @@ mod tests {
         assert_eq!(count_h1(&index_html), 1);
         assert_eq!(count_h1(&page_html), 1);
 
-        assert!(index_html.contains("<title>Home · Site One</title>"));
+        assert!(index_html.contains("<title>Blog · Site One</title>"));
         assert!(page_html.contains("<title>Page One · Site One</title>"));
 
         assert_footer_stamp(&index_html);
