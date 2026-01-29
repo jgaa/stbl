@@ -57,7 +57,7 @@ pub struct BlogIndexItem {
     pub href: String,
     pub published: String,
     pub kind_label: String,
-    pub summary_html: String,
+    pub abstract_text: Option<String>,
     pub latest_parts: Vec<BlogIndexPart>,
 }
 

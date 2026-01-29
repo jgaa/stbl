@@ -1,3 +1,4 @@
+pub mod abstracts;
 pub mod assemble;
 pub mod blog_index;
 pub mod config;

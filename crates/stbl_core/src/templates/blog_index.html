@@ -19,7 +19,9 @@
       <a href="{{ item.href }}">{{ item.title }}</a>
       <span class="meta">{{ item.published }}</span>
       <span class="meta">{{ item.kind_label }}</span>
-      {{ item.summary_html | safe }}
+      {% if item.abstract_text %}
+      <p class="abstract">{{ item.abstract_text }}</p>
+      {% endif %}
       <ul class="series-parts">
       {% for part in item.latest_parts %}
         <li>

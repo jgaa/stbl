@@ -175,8 +175,15 @@ pub struct SiteMeta {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct BlogConfig {
+    pub abstract_cfg: BlogAbstractConfig,
     pub pagination: BlogPaginationConfig,
     pub series: BlogSeriesConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BlogAbstractConfig {
+    pub enabled: bool,
+    pub max_chars: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

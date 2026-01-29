@@ -1,6 +1,6 @@
+use crate::abstracts::derive_abstract_from_markdown;
 use crate::header::TemplateId;
 use crate::model::{DocId, Page, Project, Series, SeriesId};
-use crate::render::render_markdown_to_html;
 use crate::url::logical_key_from_source_path;
 
 #[derive(Debug, Clone)]
@@ -17,6 +17,7 @@ pub struct FeedPost {
     pub published: Option<i64>,
     pub sort_date: i64,
     pub content_hash: blake3::Hash,
+    pub abstract_text: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,7 +27,7 @@ pub struct FeedSeries {
     pub title: String,
     pub published: Option<i64>,
     pub sort_date: i64,
-    pub abstract_html: String,
+    pub abstract_text: Option<String>,
     pub latest_parts: Vec<FeedSeriesPart>,
     pub index_id: DocId,
     pub index_hash: blake3::Hash,
@@ -48,6 +49,12 @@ pub struct BlogPaginationSettings {
     pub page_size: usize,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct BlogAbstractSettings {
+    pub enabled: bool,
+    pub max_chars: usize,
+}
+
 #[derive(Debug, Clone)]
 pub struct BlogIndexPageRange {
     pub page_no: u32,
@@ -62,6 +69,20 @@ pub fn blog_pagination_settings(project: &Project) -> BlogPaginationSettings {
     BlogPaginationSettings {
         enabled: blog_pagination_enabled(project),
         page_size: blog_page_size(project),
+    }
+}
+
+pub fn blog_abstract_settings(project: &Project) -> BlogAbstractSettings {
+    let default = BlogAbstractSettings {
+        enabled: true,
+        max_chars: 200,
+    };
+    let Some(blog) = project.config.blog.as_ref() else {
+        return default;
+    };
+    BlogAbstractSettings {
+        enabled: blog.abstract_cfg.enabled,
+        max_chars: blog.abstract_cfg.max_chars,
     }
 }
 
@@ -99,7 +120,7 @@ pub fn collect_blog_feed(project: &Project, source_page_id: DocId) -> Vec<FeedIt
         if !include_page(page, Some(source_page_id)) {
             continue;
         }
-        items.push(FeedItem::Post(feed_post(page)));
+        items.push(FeedItem::Post(feed_post(project, page)));
     }
 
     let mut series_refs: Vec<&Series> = project.content.series.iter().collect();
@@ -231,8 +252,13 @@ fn include_page(page: &Page, source_page_id: Option<DocId>) -> bool {
     )
 }
 
-fn feed_post(page: &Page) -> FeedPost {
+fn feed_post(project: &Project, page: &Page) -> FeedPost {
     let sort_date = page_sort_date(page);
+    let abstract_text = select_abstract_text(
+        project,
+        page.header.abstract_text.as_deref(),
+        &page.body_markdown,
+    );
     FeedPost {
         page_id: page.id,
         logical_key: logical_key_from_source_path(&page.source_path),
@@ -244,6 +270,7 @@ fn feed_post(page: &Page) -> FeedPost {
         published: timestamp_option(sort_date),
         sort_date,
         content_hash: page.content_hash,
+        abstract_text,
     }
 }
 
@@ -301,7 +328,11 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         .max()
         .unwrap_or(0);
     let published = timestamp_option(sort_date);
-    let abstract_html = extract_abstract_html(&series.index.body_markdown);
+    let abstract_text = select_abstract_text(
+        project,
+        series.index.header.abstract_text.as_deref(),
+        &series.index.body_markdown,
+    );
 
     Some(FeedSeries {
         series_id: series.id,
@@ -314,7 +345,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
             .unwrap_or_else(|| "Untitled".to_string()),
         published,
         sort_date,
-        abstract_html,
+        abstract_text,
         latest_parts,
         index_id: series.index.id,
         index_hash: series.index.content_hash,
@@ -331,19 +362,21 @@ fn timestamp_option(value: i64) -> Option<i64> {
     if value == 0 { None } else { Some(value) }
 }
 
-fn extract_abstract_html(markdown: &str) -> String {
-    let mut selected = None;
-    for chunk in markdown.split("\n\n") {
-        let trimmed = chunk.trim();
-        if !trimmed.is_empty() {
-            selected = Some(trimmed);
-            break;
+fn select_abstract_text(
+    project: &Project,
+    header_abstract: Option<&str>,
+    markdown: &str,
+) -> Option<String> {
+    let settings = blog_abstract_settings(project);
+    if !settings.enabled {
+        return None;
+    }
+    if let Some(value) = header_abstract {
+        if !value.trim().is_empty() {
+            return Some(value.to_string());
         }
     }
-    match selected {
-        Some(text) => render_markdown_to_html(text),
-        None => String::new(),
-    }
+    derive_abstract_from_markdown(markdown, settings.max_chars)
 }
 
 fn total_pages(total_items: usize, page_size: usize) -> u32 {
@@ -585,6 +618,10 @@ mod tests {
         }
 
         config.blog = Some(BlogConfig {
+            abstract_cfg: crate::model::BlogAbstractConfig {
+                enabled: true,
+                max_chars: 200,
+            },
             pagination: BlogPaginationConfig {
                 enabled: false,
                 page_size: 10,
@@ -627,6 +664,109 @@ mod tests {
     }
 
     #[test]
+    fn post_abstract_prefers_header_over_body() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.abstract_text = Some("Header abstract".to_string());
+        let mut page = make_page("page", "articles/page.md", header);
+        page.body_markdown = "Body paragraph.\n\nSecond paragraph.".to_string();
+
+        let project = project_with_pages(vec![page]);
+        let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        match &items[0] {
+            FeedItem::Post(post) => {
+                assert_eq!(post.abstract_text.as_deref(), Some("Header abstract"));
+            }
+            _ => panic!("expected post item"),
+        }
+    }
+
+    #[test]
+    fn series_abstract_uses_body_when_header_missing() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        let mut index = make_page("series-index", "articles/series/index.md", header.clone());
+        index.body_markdown = "Series first paragraph.\n\nSecond paragraph.".to_string();
+
+        let mut part = make_page("series-part", "articles/series/part1.md", header);
+        part.header.published = Some(10);
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts: vec![crate::model::SeriesPart {
+                part_no: 1,
+                page: part,
+            }],
+        };
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config: base_config(),
+            content: SiteContent {
+                pages: Vec::new(),
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        match &items[0] {
+            FeedItem::Series(series_item) => {
+                assert_eq!(
+                    series_item.abstract_text.as_deref(),
+                    Some("Series first paragraph.")
+                );
+            }
+            _ => panic!("expected series item"),
+        }
+    }
+
+    #[test]
+    fn series_abstract_prefers_header_override() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.abstract_text = Some("Series header abstract".to_string());
+        let mut index = make_page("series-index", "articles/series/index.md", header.clone());
+        index.body_markdown = "Series body text.".to_string();
+
+        let mut part = make_page("series-part", "articles/series/part1.md", header);
+        part.header.published = Some(10);
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts: vec![crate::model::SeriesPart {
+                part_no: 1,
+                page: part,
+            }],
+        };
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config: base_config(),
+            content: SiteContent {
+                pages: Vec::new(),
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
+        match &items[0] {
+            FeedItem::Series(series_item) => {
+                assert_eq!(
+                    series_item.abstract_text.as_deref(),
+                    Some("Series header abstract")
+                );
+            }
+            _ => panic!("expected series item"),
+        }
+    }
+
+    #[test]
     fn pagination_disabled_returns_single_page() {
         let project = project_with_pages(Vec::new());
         let pagination = blog_pagination_settings(&project);
@@ -646,6 +786,10 @@ mod tests {
     fn pagination_enabled_slices_and_links() {
         let mut config = base_config();
         config.blog = Some(BlogConfig {
+            abstract_cfg: crate::model::BlogAbstractConfig {
+                enabled: true,
+                max_chars: 200,
+            },
             pagination: BlogPaginationConfig {
                 enabled: true,
                 page_size: 2,
@@ -705,6 +849,10 @@ mod tests {
     fn pagination_preserves_feed_order_across_pages() {
         let mut config = base_config();
         config.blog = Some(BlogConfig {
+            abstract_cfg: crate::model::BlogAbstractConfig {
+                enabled: true,
+                max_chars: 200,
+            },
             pagination: BlogPaginationConfig {
                 enabled: true,
                 page_size: 1,
@@ -738,6 +886,10 @@ mod tests {
     fn series_rollup_latest_parts_not_affected_by_pagination() {
         let mut config = base_config();
         config.blog = Some(BlogConfig {
+            abstract_cfg: crate::model::BlogAbstractConfig {
+                enabled: true,
+                max_chars: 200,
+            },
             pagination: BlogPaginationConfig {
                 enabled: true,
                 page_size: 1,
@@ -820,6 +972,10 @@ mod tests {
     fn series_latest_parts_tie_breaker_is_logical_key() {
         let mut config = base_config();
         config.blog = Some(BlogConfig {
+            abstract_cfg: crate::model::BlogAbstractConfig {
+                enabled: true,
+                max_chars: 200,
+            },
             pagination: BlogPaginationConfig {
                 enabled: true,
                 page_size: 2,

@@ -79,6 +79,9 @@ publish:
   command: string
 
 blog:
+  abstract:
+    enabled: bool     # default true
+    max_chars: int    # default 200
   pagination:
     enabled: bool      # default false
     page_size: int     # default 10
@@ -178,6 +181,9 @@ publish:
   command: "rsync -a --delete {{local-site}}/ {{destination}}/"
 
 blog:
+  abstract:
+    enabled: true
+    max_chars: 200
   pagination:
     enabled: false
     page_size: 10

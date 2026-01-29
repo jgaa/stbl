@@ -245,7 +245,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
             href: mapper.map(&post.logical_key).href,
             published: format_timestamp_rfc3339(post.published).unwrap_or_default(),
             kind_label: String::new(),
-            summary_html: String::new(),
+            abstract_text: post.abstract_text.clone(),
             latest_parts: Vec::new(),
         },
         FeedItem::Series(series) => BlogIndexItem {
@@ -253,7 +253,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
             href: mapper.map(&series.logical_key).href,
             published: format_timestamp_rfc3339(series.published).unwrap_or_default(),
             kind_label: "Series".to_string(),
-            summary_html: series.abstract_html.clone(),
+            abstract_text: series.abstract_text.clone(),
             latest_parts: series
                 .latest_parts
                 .iter()
@@ -368,10 +368,15 @@ mod tests {
         assert!(index_html.contains("Part 4"));
         assert!(index_html.contains("Part 3"));
         assert!(!index_html.contains("Part 2"));
+        assert!(index_html.contains("Series abstract override."));
 
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
         assert!(page2_html.contains("page&#x2f;3.html"));
         assert!(page2_html.contains("index.html"));
         assert!(!page2_html.contains("series.html"));
+
+        let page4_html = fs::read_to_string(out_dir.join("page/4.html")).expect("read page4");
+        assert!(page4_html.contains("Custom abstract for page 1"));
+        assert!(page4_html.contains("First paragraph for auto-abstract."));
     }
 }

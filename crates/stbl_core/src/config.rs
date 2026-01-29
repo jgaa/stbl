@@ -47,9 +47,17 @@ struct PeopleConfigRaw {
 
 #[derive(Debug, Deserialize)]
 struct BlogConfigRaw {
+    #[serde(rename = "abstract")]
+    abstract_cfg: Option<BlogAbstractConfigRaw>,
     page_size: Option<usize>,
     pagination: Option<BlogPaginationConfigRaw>,
     series: Option<BlogSeriesConfigRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BlogAbstractConfigRaw {
+    enabled: Option<bool>,
+    max_chars: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -116,6 +124,16 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
     let blog = match parsed.blog {
         None => None,
         Some(blog_raw) => {
+            let (abstract_enabled, abstract_max_chars) = match blog_raw.abstract_cfg {
+                Some(abstract_raw) => (
+                    abstract_raw.enabled.unwrap_or(true),
+                    abstract_raw.max_chars.unwrap_or(200),
+                ),
+                None => (true, 200),
+            };
+            if abstract_enabled && abstract_max_chars == 0 {
+                bail!("blog.abstract.max_chars must be > 0 when abstract is enabled");
+            }
             let (enabled, page_size) = match blog_raw.pagination {
                 Some(pagination_raw) => (
                     pagination_raw.enabled.unwrap_or(false),
@@ -130,6 +148,10 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                 bail!("blog.pagination.page_size must be > 0 when pagination is enabled");
             }
             Some(crate::model::BlogConfig {
+                abstract_cfg: crate::model::BlogAbstractConfig {
+                    enabled: abstract_enabled,
+                    max_chars: abstract_max_chars,
+                },
                 pagination: crate::model::BlogPaginationConfig { enabled, page_size },
                 series: crate::model::BlogSeriesConfig {
                     latest_parts: blog_raw
@@ -254,6 +276,8 @@ mod tests {
         );
         let config = load_site_config(&path).expect("config should load");
         let blog = config.blog.expect("blog should be present");
+        assert!(blog.abstract_cfg.enabled);
+        assert_eq!(blog.abstract_cfg.max_chars, 200);
         assert!(!blog.pagination.enabled);
         assert_eq!(blog.pagination.page_size, 10);
         assert_eq!(blog.series.latest_parts, 3);
@@ -280,5 +304,28 @@ mod tests {
         let blog = config.blog.expect("blog should be present");
         assert!(blog.pagination.enabled);
         assert_eq!(blog.pagination.page_size, 5);
+    }
+
+    #[test]
+    fn blog_abstract_requires_max_chars_when_enabled() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nblog:\n  abstract:\n    enabled: true\n    max_chars: 0\n",
+        );
+        let err = load_site_config(&path).expect_err("expected error");
+        assert!(
+            err.to_string()
+                .contains("blog.abstract.max_chars must be > 0")
+        );
+    }
+
+    #[test]
+    fn blog_abstract_can_be_disabled() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nblog:\n  abstract:\n    enabled: false\n    max_chars: 10\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let blog = config.blog.expect("blog should be present");
+        assert!(!blog.abstract_cfg.enabled);
+        assert_eq!(blog.abstract_cfg.max_chars, 10);
     }
 }
