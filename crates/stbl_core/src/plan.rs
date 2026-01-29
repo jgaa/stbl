@@ -1,13 +1,14 @@
 //! Deterministic build plan construction (no execution).
 
 use crate::blog_index::{
-    blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed, paginate_blog_index,
+    blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed, collect_tag_map,
+    paginate_blog_index,
 };
 use crate::header::TemplateId;
 use crate::model::{BuildPlan, BuildTask, ContentId, OutputArtifact, Project, TaskId, TaskKind};
 use crate::url::{UrlMapper, logical_key_from_source_path};
 use blake3::{Hash, Hasher};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub fn build_plan(_project: &Project) -> BuildPlan {
@@ -83,14 +84,18 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         }
     }
 
-    let tag_map = collect_tags(&published_pages);
+    let tag_map = collect_tag_map(_project);
     let mut tag_tasks = HashMap::new();
-    for (tag, pages) in &tag_map {
+    for (tag, items) in &tag_map {
         let kind = TaskKind::RenderTagIndex { tag: tag.clone() };
-        let mut input_hashes: Vec<Hash> = pages.iter().map(|page| page.content_hash).collect();
+        let mut input_hashes: Vec<Hash> =
+            items.iter().flat_map(|item| item.input_hashes()).collect();
         input_hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
         let id = task_id(&kind, &input_hashes, config_hash);
-        let inputs = pages.iter().map(|page| ContentId::Doc(page.id)).collect();
+        let mut input_docs: Vec<_> = items.iter().flat_map(|item| item.input_doc_ids()).collect();
+        input_docs.sort_by_key(|doc_id| doc_id.0.as_bytes().to_vec());
+        input_docs.dedup_by(|a, b| a.0 == b.0);
+        let inputs = input_docs.into_iter().map(ContentId::Doc).collect();
         let outputs = outputs_for_logical_key(&mapper, &format!("tags/{}", tag));
         tasks.push(BuildTask {
             id,
@@ -100,8 +105,8 @@ pub fn build_plan(_project: &Project) -> BuildPlan {
         });
         tag_tasks.insert(tag.clone(), id);
 
-        for page in pages.iter().copied() {
-            if let Some(page_task) = page_tasks.get(&page.id).copied() {
+        for doc_id in items.iter().flat_map(|item| item.input_doc_ids()) {
+            if let Some(page_task) = page_tasks.get(&doc_id).copied() {
                 edges.push((page_task, id));
             }
         }
@@ -284,21 +289,6 @@ fn published_pages_by_path(project: &Project) -> Vec<&crate::model::Page> {
         .collect();
     pages.sort_by(|a, b| a.source_path.cmp(&b.source_path));
     pages
-}
-
-fn collect_tags<'a>(
-    pages: &[&'a crate::model::Page],
-) -> BTreeMap<String, Vec<&'a crate::model::Page>> {
-    let mut tag_map: BTreeMap<String, Vec<&crate::model::Page>> = BTreeMap::new();
-    for page in pages {
-        for tag in &page.header.tags {
-            tag_map.entry(tag.clone()).or_default().push(*page);
-        }
-    }
-    for pages in tag_map.values_mut() {
-        pages.sort_by(|a, b| a.source_path.cmp(&b.source_path));
-    }
-    tag_map
 }
 
 fn kind_key(kind: &TaskKind) -> &'static str {

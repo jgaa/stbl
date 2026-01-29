@@ -1,9 +1,8 @@
+use crate::blog_index::collect_tag_list;
 use crate::header::TemplateId;
 use crate::model::{Page, Project};
 use crate::url::{UrlMapper, logical_key_from_source_path};
 use chrono::{DateTime, Duration, Utc};
-use std::collections::BTreeSet;
-
 pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let rss_config = match project.config.rss.as_ref() {
         Some(config) if config.enabled => config,
@@ -84,13 +83,7 @@ pub fn render_sitemap(project: &Project, mapper: &UrlMapper) -> String {
         }
     }
 
-    let mut tags = BTreeSet::new();
-    for feed_page in collect_feed_pages(project) {
-        for tag in &feed_page.page.header.tags {
-            tags.insert(tag.clone());
-        }
-    }
-    for tag in tags {
+    for tag in collect_tag_list(project) {
         let key = format!("tags/{tag}");
         if let Some(entry) = sitemap_entry_for_key(project, mapper, &key, None) {
             entries.push(entry);

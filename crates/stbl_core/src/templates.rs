@@ -9,6 +9,7 @@ use serde::Serialize;
 const BASE_TEMPLATE: &str = include_str!("templates/base.html");
 const PAGE_TEMPLATE: &str = include_str!("templates/page.html");
 const BLOG_INDEX_TEMPLATE: &str = include_str!("templates/blog_index.html");
+const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
 
 pub fn render_page(project: &Project, page: &Page) -> Result<String> {
     let body_html = render_markdown_to_html(&page.body_markdown);
@@ -61,6 +62,12 @@ pub struct BlogIndexItem {
     pub latest_parts: Vec<BlogIndexPart>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TagListingPage {
+    pub tag: String,
+    pub items: Vec<BlogIndexItem>,
+}
+
 pub fn render_blog_index(
     project: &Project,
     title: Option<String>,
@@ -92,6 +99,26 @@ pub fn render_blog_index(
         .context("failed to render blog index template")
 }
 
+pub fn render_tag_index(project: &Project, listing: TagListingPage) -> Result<String> {
+    let menu: Vec<MenuItem> = project.config.menu.clone();
+    let env = template_env().context("failed to initialize templates")?;
+    let template = env
+        .get_template("tag_index.html")
+        .context("missing tag_index template")?;
+
+    let page_title = format!("Tag: {}", listing.tag);
+
+    template
+        .render(context! {
+            site_title => project.config.site.title.clone(),
+            menu => menu,
+            page_title => page_title,
+            tag => listing.tag,
+            items => listing.items,
+        })
+        .context("failed to render tag index template")
+}
+
 fn template_env() -> Result<Environment<'static>> {
     let mut env = Environment::new();
     env.set_auto_escape_callback(|name| {
@@ -104,6 +131,7 @@ fn template_env() -> Result<Environment<'static>> {
     env.add_template("base.html", BASE_TEMPLATE)?;
     env.add_template("page.html", PAGE_TEMPLATE)?;
     env.add_template("blog_index.html", BLOG_INDEX_TEMPLATE)?;
+    env.add_template("tag_index.html", TAG_INDEX_TEMPLATE)?;
     Ok(env)
 }
 

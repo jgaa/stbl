@@ -2,6 +2,7 @@ use crate::abstracts::derive_abstract_from_markdown;
 use crate::model::{DocId, Page, Project, Series, SeriesId};
 use crate::url::logical_key_from_source_path;
 use crate::visibility::is_blog_index_excluded;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
 pub enum FeedItem {
@@ -18,6 +19,7 @@ pub struct FeedPost {
     pub sort_date: i64,
     pub content_hash: blake3::Hash,
     pub abstract_text: Option<String>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +30,7 @@ pub struct FeedSeries {
     pub published: Option<i64>,
     pub sort_date: i64,
     pub abstract_text: Option<String>,
+    pub tags: Vec<String>,
     pub latest_parts: Vec<FeedSeriesPart>,
     pub index_id: DocId,
     pub index_hash: blake3::Hash,
@@ -114,10 +117,47 @@ pub fn blog_latest_parts(project: &Project) -> usize {
 }
 
 pub fn collect_blog_feed(project: &Project, source_page_id: DocId) -> Vec<FeedItem> {
+    collect_blog_feed_internal(project, Some(source_page_id))
+}
+
+pub fn collect_blog_feed_for_tags(project: &Project) -> Vec<FeedItem> {
+    collect_blog_feed_internal(project, None)
+}
+
+pub fn collect_tag_feed(project: &Project, tag: &str) -> Vec<FeedItem> {
+    collect_blog_feed_internal(project, None)
+        .into_iter()
+        .filter(|item| item.has_tag(tag))
+        .collect()
+}
+
+pub fn collect_tag_map(project: &Project) -> BTreeMap<String, Vec<FeedItem>> {
+    let items = collect_blog_feed_internal(project, None);
+    let mut tag_map: BTreeMap<String, Vec<FeedItem>> = BTreeMap::new();
+    for item in &items {
+        for tag in item.tags() {
+            tag_map.entry(tag.clone()).or_default().push(item.clone());
+        }
+    }
+    tag_map
+}
+
+pub fn collect_tag_list(project: &Project) -> Vec<String> {
+    let items = collect_blog_feed_internal(project, None);
+    let mut tags = BTreeSet::new();
+    for item in &items {
+        for tag in item.tags() {
+            tags.insert(tag.clone());
+        }
+    }
+    tags.into_iter().collect()
+}
+
+fn collect_blog_feed_internal(project: &Project, source_page_id: Option<DocId>) -> Vec<FeedItem> {
     let mut items = Vec::new();
 
     for page in &project.content.pages {
-        if !include_page(page, Some(source_page_id)) {
+        if !include_page(page, source_page_id) {
             continue;
         }
         items.push(FeedItem::Post(feed_post(project, page)));
@@ -232,6 +272,17 @@ impl FeedItem {
             }
         }
     }
+
+    pub fn tags(&self) -> &[String] {
+        match self {
+            FeedItem::Post(post) => &post.tags,
+            FeedItem::Series(series) => &series.tags,
+        }
+    }
+
+    pub fn has_tag(&self, tag: &str) -> bool {
+        self.tags().iter().any(|value| value == tag)
+    }
 }
 
 fn include_page(page: &Page, source_page_id: Option<DocId>) -> bool {
@@ -245,6 +296,9 @@ fn feed_post(project: &Project, page: &Page) -> FeedPost {
         page.header.abstract_text.as_deref(),
         &page.body_markdown,
     );
+    let mut tags = page.header.tags.clone();
+    tags.sort();
+    tags.dedup();
     FeedPost {
         page_id: page.id,
         logical_key: logical_key_from_source_path(&page.source_path),
@@ -257,6 +311,7 @@ fn feed_post(project: &Project, page: &Page) -> FeedPost {
         sort_date,
         content_hash: page.content_hash,
         abstract_text,
+        tags,
     }
 }
 
@@ -268,6 +323,10 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
     let mut part_candidates: Vec<SeriesPartCandidate<'_>> = Vec::new();
     let mut part_ids = Vec::new();
     let mut part_hashes = Vec::new();
+    let mut tag_set: BTreeSet<String> = BTreeSet::new();
+    for tag in &series.index.header.tags {
+        tag_set.insert(tag.clone());
+    }
     for part in &series.parts {
         if !include_page(&part.page, None) {
             continue;
@@ -283,6 +342,9 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         });
         part_ids.push(part.page.id);
         part_hashes.push(part.page.content_hash);
+        for tag in &part.page.header.tags {
+            tag_set.insert(tag.clone());
+        }
     }
 
     if part_candidates.is_empty() {
@@ -319,6 +381,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         series.index.header.abstract_text.as_deref(),
         &series.index.body_markdown,
     );
+    let tags = tag_set.into_iter().collect::<Vec<_>>();
 
     Some(FeedSeries {
         series_id: series.id,
@@ -332,6 +395,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         published,
         sort_date,
         abstract_text,
+        tags,
         latest_parts,
         index_id: series.index.id,
         index_hash: series.index.content_hash,
@@ -1020,5 +1084,107 @@ mod tests {
         assert_eq!(series_item.latest_parts.len(), 2);
         assert_eq!(series_item.latest_parts[0].logical_key, "series/a");
         assert_eq!(series_item.latest_parts[1].logical_key, "series/b");
+    }
+
+    #[test]
+    fn tag_feed_includes_series_when_part_has_tag() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        let index = make_page("series-index", "articles/series/index.md", header.clone());
+
+        let mut part = make_page("series-part", "articles/series/part1.md", header.clone());
+        part.header.published = Some(10);
+        part.header.tags = vec!["series-only".to_string()];
+
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts: vec![crate::model::SeriesPart {
+                part_no: 1,
+                page: part,
+            }],
+        };
+
+        let mut post_header = crate::header::Header::default();
+        post_header.is_published = true;
+        post_header.tags = vec!["rust".to_string()];
+        let mut post = make_page("post", "articles/post.md", post_header);
+        post.header.published = Some(5);
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config: base_config(),
+            content: SiteContent {
+                pages: vec![post],
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let items = collect_tag_feed(&project, "series-only");
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], FeedItem::Series(_)));
+
+        let items = collect_tag_feed(&project, "rust");
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], FeedItem::Post(_)));
+    }
+
+    #[test]
+    fn tag_feed_includes_series_index_tag() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.tags = vec!["series-index".to_string()];
+        let index = make_page("series-index", "articles/series/index.md", header.clone());
+
+        let mut part = make_page("series-part", "articles/series/part1.md", header);
+        part.header.published = Some(10);
+
+        let series = Series {
+            id: SeriesId(blake3::hash(b"series")),
+            dir_path: "articles/series".to_string(),
+            index,
+            parts: vec![crate::model::SeriesPart {
+                part_no: 1,
+                page: part,
+            }],
+        };
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config: base_config(),
+            content: SiteContent {
+                pages: Vec::new(),
+                series: vec![series],
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+
+        let items = collect_tag_feed(&project, "series-index");
+        assert_eq!(items.len(), 1);
+        assert!(matches!(items[0], FeedItem::Series(_)));
+    }
+
+    #[test]
+    fn tag_map_excludes_info_and_excluded_pages() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.template = Some(TemplateId::Info);
+        header.tags = vec!["hidden-info".to_string()];
+        let info = make_page("info", "articles/info.md", header);
+
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        header.exclude_from_blog = true;
+        header.tags = vec!["hidden-excluded".to_string()];
+        let excluded = make_page("excluded", "articles/excluded.md", header);
+
+        let project = project_with_pages(vec![info, excluded]);
+        let tag_map = collect_tag_map(&project);
+        assert!(!tag_map.contains_key("hidden-info"));
+        assert!(!tag_map.contains_key("hidden-excluded"));
     }
 }

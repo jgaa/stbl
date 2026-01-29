@@ -4,14 +4,14 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, anyhow};
 use stbl_core::blog_index::{
     FeedItem, blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed,
-    paginate_blog_index,
+    collect_tag_feed, paginate_blog_index,
 };
 use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::render_markdown_to_html;
 use stbl_core::templates::{
-    BlogIndexItem, BlogIndexPart, format_timestamp_ymd, render_blog_index, render_markdown_page,
-    render_page,
+    BlogIndexItem, BlogIndexPart, TagListingPage, format_timestamp_ymd, render_blog_index,
+    render_markdown_page, render_page, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 
@@ -98,10 +98,7 @@ fn render_primary_html(project: &Project, kind: &TaskKind) -> Result<String> {
             page_no,
         } => render_blog_index_page(project, source_page, *page_no),
         TaskKind::RenderSeries { series } => render_series(project, *series),
-        TaskKind::RenderTagIndex { tag } => {
-            let title = format!("Tag: {}", tag);
-            render_markdown_page(project, Some(&title), "*Not implemented.*\n")
-        }
+        TaskKind::RenderTagIndex { tag } => render_tag_index_page(project, tag),
         TaskKind::RenderTagsIndex => {
             render_markdown_page(project, Some("Tags"), "*Not implemented.*\n")
         }
@@ -236,6 +233,20 @@ fn render_blog_index_page(
         page_range.page_no,
         page_range.total_pages,
     )
+}
+
+fn render_tag_index_page(project: &Project, tag: &str) -> Result<String> {
+    let mapper = UrlMapper::new(&project.config);
+    let feed_items = collect_tag_feed(project, tag);
+    let items = feed_items
+        .iter()
+        .map(|item| map_feed_item(item, &mapper))
+        .collect::<Vec<_>>();
+    let listing = TagListingPage {
+        tag: tag.to_string(),
+        items,
+    };
+    render_tag_index(project, listing)
 }
 
 fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {

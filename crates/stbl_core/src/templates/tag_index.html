@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% if page_title %}
+  <h1>{{ page_title }}</h1>
+  {% endif %}
+
+  <ul class="post-list">
+  {% for item in items %}
+    <li>
+      <a href="{{ item.href }}">{{ item.title }}</a>
+      {% if item.published_display %}
+      <span class="meta">{{ item.published_display }}</span>
+      {% endif %}
+      {% if item.kind_label %}
+      <span class="meta">{{ item.kind_label }}</span>
+      {% endif %}
+      {% if item.abstract_text %}
+      <p class="abstract">{{ item.abstract_text }}</p>
+      {% endif %}
+      <ul class="series-parts">
+      {% for part in item.latest_parts %}
+        <li>
+          <a href="{{ part.href }}">{{ part.title }}</a>
+          {% if part.published_display %}
+          <span class="meta">{{ part.published_display }}</span>
+          {% endif %}
+        </li>
+      {% endfor %}
+      </ul>
+    </li>
+  {% endfor %}
+  </ul>
+{% endblock %}
