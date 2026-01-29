@@ -48,15 +48,15 @@ pub fn render_markdown_page(
 pub struct BlogIndexPart {
     pub title: String,
     pub href: String,
-    pub published: String,
+    pub published_display: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BlogIndexItem {
     pub title: String,
     pub href: String,
-    pub published: String,
-    pub kind_label: String,
+    pub published_display: Option<String>,
+    pub kind_label: Option<String>,
     pub abstract_text: Option<String>,
     pub latest_parts: Vec<BlogIndexPart>,
 }
@@ -140,4 +140,21 @@ pub fn format_timestamp_rfc3339(value: Option<i64>) -> Option<String> {
     let value = value?;
     let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
     Some(dt.to_rfc3339())
+}
+
+pub fn format_timestamp_ymd(value: Option<i64>) -> Option<String> {
+    let value = value?;
+    let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
+    Some(dt.format("%Y-%m-%d").to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_timestamp_ymd;
+
+    #[test]
+    fn format_timestamp_ymd_outputs_date_only() {
+        let value = format_timestamp_ymd(Some(1_704_153_600)).expect("date");
+        assert_eq!(value, "2024-01-02");
+    }
 }

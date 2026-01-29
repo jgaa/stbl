@@ -1,7 +1,7 @@
 use crate::abstracts::derive_abstract_from_markdown;
-use crate::header::TemplateId;
 use crate::model::{DocId, Page, Project, Series, SeriesId};
 use crate::url::logical_key_from_source_path;
+use crate::visibility::is_blog_index_excluded;
 
 #[derive(Debug, Clone)]
 pub enum FeedItem {
@@ -235,21 +235,7 @@ impl FeedItem {
 }
 
 fn include_page(page: &Page, source_page_id: Option<DocId>) -> bool {
-    if let Some(source_id) = source_page_id {
-        if page.id == source_id {
-            return false;
-        }
-    }
-    if !page.header.is_published {
-        return false;
-    }
-    if page.header.exclude_from_blog {
-        return false;
-    }
-    !matches!(
-        page.header.template,
-        Some(TemplateId::BlogIndex) | Some(TemplateId::Info)
-    )
+    !is_blog_index_excluded(page, source_page_id)
 }
 
 fn feed_post(project: &Project, page: &Page) -> FeedPost {
@@ -414,6 +400,7 @@ struct SeriesPartCandidate<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::header::TemplateId;
     use crate::model::{
         BlogConfig, BlogPaginationConfig, SiteConfig, SiteContent, SiteMeta, UrlStyle,
     };

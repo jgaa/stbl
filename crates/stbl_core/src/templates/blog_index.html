@@ -17,8 +17,12 @@
   {% for item in items %}
     <li>
       <a href="{{ item.href }}">{{ item.title }}</a>
-      <span class="meta">{{ item.published }}</span>
+      {% if item.published_display %}
+      <span class="meta">{{ item.published_display }}</span>
+      {% endif %}
+      {% if item.kind_label %}
       <span class="meta">{{ item.kind_label }}</span>
+      {% endif %}
       {% if item.abstract_text %}
       <p class="abstract">{{ item.abstract_text }}</p>
       {% endif %}
@@ -26,7 +30,9 @@
       {% for part in item.latest_parts %}
         <li>
           <a href="{{ part.href }}">{{ part.title }}</a>
-          <span class="meta">{{ part.published }}</span>
+          {% if part.published_display %}
+          <span class="meta">{{ part.published_display }}</span>
+          {% endif %}
         </li>
       {% endfor %}
       </ul>

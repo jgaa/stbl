@@ -10,8 +10,8 @@ use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::render_markdown_to_html;
 use stbl_core::templates::{
-    BlogIndexItem, BlogIndexPart, format_timestamp_rfc3339, render_blog_index,
-    render_markdown_page, render_page,
+    BlogIndexItem, BlogIndexPart, format_timestamp_ymd, render_blog_index, render_markdown_page,
+    render_page,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 
@@ -243,16 +243,16 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
         FeedItem::Post(post) => BlogIndexItem {
             title: post.title.clone(),
             href: mapper.map(&post.logical_key).href,
-            published: format_timestamp_rfc3339(post.published).unwrap_or_default(),
-            kind_label: String::new(),
+            published_display: format_timestamp_ymd(post.published),
+            kind_label: None,
             abstract_text: post.abstract_text.clone(),
             latest_parts: Vec::new(),
         },
         FeedItem::Series(series) => BlogIndexItem {
             title: series.title.clone(),
             href: mapper.map(&series.logical_key).href,
-            published: format_timestamp_rfc3339(series.published).unwrap_or_default(),
-            kind_label: "Series".to_string(),
+            published_display: format_timestamp_ymd(series.published),
+            kind_label: Some("Series".to_string()),
             abstract_text: series.abstract_text.clone(),
             latest_parts: series
                 .latest_parts
@@ -260,7 +260,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
                 .map(|part| BlogIndexPart {
                     title: part.title.clone(),
                     href: mapper.map(&part.logical_key).href,
-                    published: format_timestamp_rfc3339(part.published).unwrap_or_default(),
+                    published_display: format_timestamp_ymd(part.published),
                 })
                 .collect(),
         },
@@ -369,14 +369,19 @@ mod tests {
         assert!(index_html.contains("Part 3"));
         assert!(!index_html.contains("Part 2"));
         assert!(index_html.contains("Series abstract override."));
+        assert!(index_html.contains("2024-01-15"));
+        assert!(!index_html.contains("T10:00:00"));
+        assert!(!index_html.contains("<span class=\"meta\"></span>"));
 
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
         assert!(page2_html.contains("page&#x2f;3.html"));
         assert!(page2_html.contains("index.html"));
         assert!(!page2_html.contains("series.html"));
+        assert!(!page2_html.contains("<span class=\"meta\"></span>"));
 
         let page4_html = fs::read_to_string(out_dir.join("page/4.html")).expect("read page4");
         assert!(page4_html.contains("Custom abstract for page 1"));
         assert!(page4_html.contains("First paragraph for auto-abstract."));
+        assert!(!page4_html.contains("Series"));
     }
 }

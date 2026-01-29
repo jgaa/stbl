@@ -280,7 +280,7 @@ fn published_pages_by_path(project: &Project) -> Vec<&crate::model::Page> {
         .content
         .pages
         .iter()
-        .filter(|page| page.header.is_published)
+        .filter(|page| crate::visibility::is_published_page(page))
         .collect();
     pages.sort_by(|a, b| a.source_path.cmp(&b.source_path));
     pages

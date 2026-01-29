@@ -10,3 +10,4 @@ pub mod project;
 pub mod render;
 pub mod templates;
 pub mod url;
+pub mod visibility;

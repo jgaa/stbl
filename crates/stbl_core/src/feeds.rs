@@ -123,7 +123,7 @@ fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
         if page.header.template == Some(TemplateId::BlogIndex) {
             continue;
         }
-        if page.header.is_published {
+        if crate::visibility::is_published_page(page) {
             pages.push(FeedPage {
                 page,
                 logical_key: logical_key_from_source_path(&page.source_path),
@@ -131,14 +131,14 @@ fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
         }
     }
     for series in &project.content.series {
-        if series.index.header.is_published {
+        if crate::visibility::is_published_page(&series.index) {
             pages.push(FeedPage {
                 page: &series.index,
                 logical_key: logical_key_from_source_path(&series.dir_path),
             });
         }
         for part in &series.parts {
-            if part.page.header.is_published {
+            if crate::visibility::is_published_page(&part.page) {
                 pages.push(FeedPage {
                     page: &part.page,
                     logical_key: logical_key_from_source_path(&part.page.source_path),
@@ -186,7 +186,7 @@ impl FeedItem {
         page: &Page,
         logical_key: &str,
     ) -> Option<Self> {
-        if !page.header.is_published {
+        if !crate::visibility::is_published_page(page) {
             return None;
         }
         let published = page
@@ -238,7 +238,7 @@ mod tests {
     use crate::assemble::assemble_site;
     use crate::config::load_site_config;
     use crate::header::UnknownKeyPolicy;
-    use crate::model::{Project, UrlStyle};
+    use crate::model::{Page, Project, SiteConfig, SiteContent, SiteMeta, UrlStyle};
     use std::path::{Path, PathBuf};
     use std::time::SystemTime;
 
@@ -305,6 +305,77 @@ mod tests {
         }
 
         Ok(docs)
+    }
+
+    #[test]
+    fn rss_excludes_unpublished_pages() {
+        let config = SiteConfig {
+            site: SiteMeta {
+                id: "demo".to_string(),
+                title: "Demo".to_string(),
+                abstract_text: None,
+                base_url: "https://example.com/".to_string(),
+                language: "en".to_string(),
+                timezone: None,
+                url_style: UrlStyle::Html,
+            },
+            banner: None,
+            menu: Vec::new(),
+            people: None,
+            blog: None,
+            system: None,
+            publish: None,
+            rss: Some(crate::model::RssConfig {
+                enabled: true,
+                max_items: Some(10),
+                ttl_days: None,
+            }),
+            seo: None,
+            comments: None,
+            chroma: None,
+            plyr: None,
+        };
+
+        let mut published_header = crate::header::Header::default();
+        published_header.is_published = true;
+        published_header.title = Some("Published".to_string());
+        published_header.published = Some(1_704_153_600);
+
+        let mut draft_header = crate::header::Header::default();
+        draft_header.is_published = false;
+        draft_header.title = Some("Draft".to_string());
+
+        let published = Page {
+            id: crate::model::DocId(blake3::hash(b"pub")),
+            source_path: "articles/published.md".to_string(),
+            header: published_header,
+            body_markdown: "Body".to_string(),
+            url_path: "published".to_string(),
+            content_hash: blake3::hash(b"content"),
+        };
+        let draft = Page {
+            id: crate::model::DocId(blake3::hash(b"draft")),
+            source_path: "articles/draft.md".to_string(),
+            header: draft_header,
+            body_markdown: "Draft body".to_string(),
+            url_path: "draft".to_string(),
+            content_hash: blake3::hash(b"draft"),
+        };
+
+        let project = Project {
+            root: PathBuf::from("/tmp"),
+            config,
+            content: SiteContent {
+                pages: vec![published, draft],
+                series: Vec::new(),
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        };
+        let mapper = UrlMapper::new(&project.config);
+        let rss = render_rss(&project, &mapper);
+        assert!(rss.contains("Published"));
+        assert!(!rss.contains("Draft"));
     }
 
     fn to_relative_path(root: &Path, path: &Path) -> String {
