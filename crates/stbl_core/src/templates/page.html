@@ -27,7 +27,9 @@
   </div>
   {% endif %}
 
-  {{ body_html | safe }}
+  <div class="content">
+    {{ body_html | safe }}
+  </div>
 
   {% if series_nav %}
   <nav class="series-nav">

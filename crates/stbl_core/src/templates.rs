@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use minijinja::{AutoEscape, Environment, context};
 
+use crate::assets::AssetManifest;
 use crate::model::{NavItem, Page, Project};
-use crate::render::render_markdown_to_html;
+use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::url::UrlMapper;
 use serde::Serialize;
 
@@ -14,28 +15,56 @@ const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
 const SERIES_INDEX_TEMPLATE: &str = include_str!("templates/series_index.html");
 const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html");
 
+pub fn templates_hash() -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"stbl2.templates.v1");
+    add_template_hash(&mut hasher, "base", BASE_TEMPLATE);
+    add_template_hash(&mut hasher, "page", PAGE_TEMPLATE);
+    add_template_hash(&mut hasher, "blog_index", BLOG_INDEX_TEMPLATE);
+    add_template_hash(&mut hasher, "tag_index", TAG_INDEX_TEMPLATE);
+    add_template_hash(&mut hasher, "series_index", SERIES_INDEX_TEMPLATE);
+    add_template_hash(&mut hasher, "list_item", LIST_ITEM_TEMPLATE);
+    *hasher.finalize().as_bytes()
+}
+
+fn add_template_hash(hasher: &mut blake3::Hasher, name: &str, contents: &str) {
+    add_str(hasher, name);
+    add_str(hasher, contents);
+}
+
+fn add_str(hasher: &mut blake3::Hasher, value: &str) {
+    hasher.update(&(value.len() as u64).to_le_bytes());
+    hasher.update(value.as_bytes());
+}
+
 pub fn render_page(
     project: &Project,
     page: &Page,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
-    render_page_with_series_nav(project, page, None, current_href, build_date_ymd)
+    render_page_with_series_nav(
+        project,
+        page,
+        asset_manifest,
+        None,
+        current_href,
+        build_date_ymd,
+    )
 }
 
 pub fn render_page_with_series_nav(
     project: &Project,
     page: &Page,
+    asset_manifest: &AssetManifest,
     series_nav: Option<SeriesNavView>,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
-    let body_html = render_markdown_to_html(&page.body_markdown);
-    let page_title = page
-        .header
-        .title
-        .clone()
-        .unwrap_or_else(|| "Untitled".to_string());
+    let rel = rel_prefix_for_href(current_href);
+    let body_html = render_markdown_with_media(project, &page.body_markdown, &rel);
+    let page_title = page_title_or_filename(project, page);
     let authors = page.header.authors.clone();
     let tags = page.header.tags.clone();
     let published = format_timestamp_rfc3339(page.header.published);
@@ -49,6 +78,7 @@ pub fn render_page_with_series_nav(
         updated,
         tags,
         body_html,
+        asset_manifest,
         current_href,
         build_date_ymd,
         series_nav,
@@ -60,11 +90,13 @@ pub fn render_markdown_page(
     project: &Project,
     title: &str,
     body_markdown: &str,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
     redirect_href: Option<&str>,
 ) -> Result<String> {
-    let body_html = render_markdown_to_html(body_markdown);
+    let rel = rel_prefix_for_href(current_href);
+    let body_html = render_markdown_with_media(project, body_markdown, &rel);
     render_with_context(
         project,
         title.to_string(),
@@ -73,6 +105,7 @@ pub fn render_markdown_page(
         None,
         Vec::new(),
         body_html,
+        asset_manifest,
         current_href,
         build_date_ymd,
         None,
@@ -134,6 +167,7 @@ pub fn render_blog_index(
     next_href: Option<String>,
     page_no: u32,
     total_pages: u32,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -145,12 +179,15 @@ pub fn render_blog_index(
     let nav_items = build_nav_view(project, current_href);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rel = rel_prefix_for_href(current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
+            rel => rel,
+            asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
             page_title => title,
             intro_html => intro_html,
@@ -170,6 +207,7 @@ pub fn render_blog_index(
 pub fn render_tag_index(
     project: &Project,
     listing: TagListingPage,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -182,12 +220,15 @@ pub fn render_tag_index(
     let nav_items = build_nav_view(project, current_href);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rel = rel_prefix_for_href(current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
+            rel => rel,
+            asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
             page_title => page_title,
             tag => listing.tag,
@@ -204,6 +245,7 @@ pub fn render_series_index(
     project: &Project,
     index: &Page,
     parts: Vec<SeriesIndexPart>,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -215,15 +257,16 @@ pub fn render_series_index(
     let nav_items = build_nav_view(project, current_href);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
-    let page_title = index
-        .header
-        .title
-        .clone()
-        .unwrap_or_else(|| "Untitled".to_string());
+    let rel = rel_prefix_for_href(current_href);
+    let page_title = page_title_or_filename(project, index);
     let intro_html = if index.body_markdown.trim().is_empty() {
         None
     } else {
-        Some(render_markdown_to_html(&index.body_markdown))
+        Some(render_markdown_with_media(
+            project,
+            &index.body_markdown,
+            &rel,
+        ))
     };
 
     template
@@ -231,6 +274,8 @@ pub fn render_series_index(
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
+            rel => rel,
+            asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
             page_title => page_title,
             intro_html => intro_html,
@@ -246,6 +291,7 @@ pub fn render_series_index(
 pub fn render_redirect_page(
     project: &Project,
     target_href: &str,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -254,6 +300,7 @@ pub fn render_redirect_page(
         project,
         "Redirecting",
         &body,
+        asset_manifest,
         current_href,
         build_date_ymd,
         Some(target_href),
@@ -286,6 +333,7 @@ fn render_with_context(
     updated: Option<String>,
     tags: Vec<String>,
     body_html: String,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
     series_nav: Option<SeriesNavView>,
@@ -299,12 +347,15 @@ fn render_with_context(
     let nav_items = build_nav_view(project, current_href);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rel = rel_prefix_for_href(current_href);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
+            rel => rel,
+            asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
             page_title => page_title,
             authors => authors,
@@ -319,6 +370,14 @@ fn render_with_context(
             redirect_href => redirect_href,
         })
         .context("failed to render page template")
+}
+
+fn render_markdown_with_media(project: &Project, markdown: &str, rel: &str) -> String {
+    let options = RenderOptions {
+        rel_prefix: rel,
+        video_heights: &project.config.media.video.heights,
+    };
+    render_markdown_to_html_with_media(markdown, &options)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -368,6 +427,30 @@ fn resolved_nav_items(project: &Project) -> Vec<NavItem> {
     ]
 }
 
+fn rel_prefix_for_href(href: &str) -> String {
+    let trimmed = href.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let depth = if trimmed.ends_with('/') {
+        let stripped = trimmed.trim_end_matches('/');
+        if stripped.is_empty() {
+            0
+        } else {
+            stripped.split('/').count()
+        }
+    } else if let Some((parent, _)) = trimmed.rsplit_once('/') {
+        if parent.is_empty() {
+            0
+        } else {
+            parent.split('/').count()
+        }
+    } else {
+        0
+    };
+    "../".repeat(depth)
+}
+
 fn nav_item_href(item: &NavItem, mapper: &UrlMapper) -> String {
     if is_external_href(&item.href) || is_absolute_or_fragment_href(&item.href) {
         return item.href.clone();
@@ -412,6 +495,31 @@ fn footer_copyright_text(site: &crate::model::SiteMeta, build_date_ymd: &str) ->
     format!("Copyright {year} by {}", site.title)
 }
 
+fn page_title_or_filename(project: &Project, page: &Page) -> String {
+    if let Some(value) = page
+        .header
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        return value.to_string();
+    }
+    let logical_key = crate::url::logical_key_from_source_path(&page.source_path);
+    if logical_key == "index" {
+        return project.config.site.title.clone();
+    }
+    let stem = std::path::Path::new(&page.source_path)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Untitled");
+    let mut chars = stem.chars();
+    let Some(first) = chars.next() else {
+        return project.config.site.title.clone();
+    };
+    format!("{}{}", first.to_uppercase(), chars.collect::<String>())
+}
+
 pub fn format_timestamp_rfc3339(value: Option<i64>) -> Option<String> {
     let value = value?;
     let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
@@ -431,6 +539,7 @@ mod tests {
         build_nav_view, format_timestamp_ymd, render_blog_index, render_page,
         render_page_with_series_nav, render_series_index, render_tag_index,
     };
+    use crate::assets::AssetManifest;
     use crate::config::load_site_config;
     use crate::header::Header;
     use crate::model::{DocId, Page, Project, SiteContent};
@@ -538,10 +647,19 @@ mod tests {
             source_path: "articles/meta-test.md".to_string(),
             header: header.clone(),
             body_markdown: "Body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: "meta-test".to_string(),
             content_hash: blake3::hash(b"meta-test"),
         };
-        let html = render_page(&project, &page, "meta-test.html", "2026-01-29").expect("render");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "meta-test.html",
+            "2026-01-29",
+        )
+        .expect("render");
         assert!(!html.contains("<div class=\"meta\">"));
         assert!(!html.contains("Tags:"));
         assert!(!html.contains("class=\"tags\""));
@@ -552,8 +670,14 @@ mod tests {
             header: header_with_tags,
             ..page
         };
-        let html =
-            render_page(&project, &page_with_tags, "meta-test.html", "2026-01-29").expect("render");
+        let html = render_page(
+            &project,
+            &page_with_tags,
+            &default_manifest(),
+            "meta-test.html",
+            "2026-01-29",
+        )
+        .expect("render");
         assert!(html.contains("<div class=\"meta\">"));
         assert!(html.contains("Tags:"));
         assert!(html.contains("class=\"tags\""));
@@ -566,7 +690,14 @@ mod tests {
             SiteContent::default(),
         );
         let page = simple_page("Footer Test", "articles/footer-test.md");
-        let html = render_page(&project, &page, "footer.html", "2026-01-25").expect("render");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "footer.html",
+            "2026-01-25",
+        )
+        .expect("render");
         assert!(html.contains("Copyright 2026 by Demo"));
         assert!(html.contains("Generated by stbl on 2026-01-25"));
 
@@ -574,10 +705,73 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  copyright: \"Copyright ACME\"\nfooter:\n  show_stbl: false\n",
             SiteContent::default(),
         );
-        let html = render_page(&project, &page, "footer.html", "2026-01-25").expect("render");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "footer.html",
+            "2026-01-25",
+        )
+        .expect("render");
         assert!(html.contains("Copyright ACME"));
         assert!(!html.contains("Copyright 2026 by Demo"));
         assert!(!html.contains("Generated by stbl on"));
+    }
+
+    #[test]
+    fn page_title_falls_back_to_site_title() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let page = Page {
+            id: DocId(blake3::hash(b"index")),
+            source_path: "articles/index.md".to_string(),
+            header: Header::default(),
+            body_markdown: "Body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
+            url_path: "index".to_string(),
+            content_hash: blake3::hash(b"index"),
+        };
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "index.html",
+            "2026-01-30",
+        )
+        .expect("render");
+        assert!(html.contains("<title>Demo · Demo</title>"));
+        assert!(!html.contains("<title>Untitled · Demo</title>"));
+    }
+
+    #[test]
+    fn page_title_falls_back_to_filename() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let page = Page {
+            id: DocId(blake3::hash(b"download")),
+            source_path: "articles/download.md".to_string(),
+            header: Header::default(),
+            body_markdown: "Body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
+            url_path: "download".to_string(),
+            content_hash: blake3::hash(b"download"),
+        };
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "download.html",
+            "2026-01-30",
+        )
+        .expect("render");
+        assert!(html.contains("<title>Download · Demo</title>"));
+        assert!(!html.contains("<title>Untitled · Demo</title>"));
     }
 
     #[test]
@@ -605,6 +799,7 @@ mod tests {
             None,
             1,
             1,
+            &default_manifest(),
             "index.html",
             "2026-01-29",
         )
@@ -615,8 +810,14 @@ mod tests {
             tag: "rust".to_string(),
             items: vec![item],
         };
-        let html = render_tag_index(&project, listing, "tags/rust.html", "2026-01-29")
-            .expect("render tag");
+        let html = render_tag_index(
+            &project,
+            listing,
+            &default_manifest(),
+            "tags/rust.html",
+            "2026-01-29",
+        )
+        .expect("render tag");
         assert!(html.contains("class=\"list-item\""));
     }
 
@@ -627,7 +828,14 @@ mod tests {
             SiteContent::default(),
         );
         let page = simple_page("Series Part", "articles/series/part1.md");
-        let html = render_page(&project, &page, "part1.html", "2026-01-29").expect("render page");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "part1.html",
+            "2026-01-29",
+        )
+        .expect("render page");
         assert!(!html.contains("class=\"series-nav\""));
 
         let nav = SeriesNavView {
@@ -641,9 +849,15 @@ mod tests {
                 href: "part2.html".to_string(),
             }),
         };
-        let html =
-            render_page_with_series_nav(&project, &page, Some(nav), "part1.html", "2026-01-29")
-                .expect("render page");
+        let html = render_page_with_series_nav(
+            &project,
+            &page,
+            &default_manifest(),
+            Some(nav),
+            "part1.html",
+            "2026-01-29",
+        )
+        .expect("render page");
         assert!(html.contains("class=\"series-nav\""));
         assert!(html.contains("series.html"));
         assert!(html.contains("part2.html"));
@@ -668,8 +882,15 @@ mod tests {
                 published_display: Some("2024-01-02".to_string()),
             },
         ];
-        let html = render_series_index(&project, &index, parts, "series.html", "2026-01-29")
-            .expect("render series");
+        let html = render_series_index(
+            &project,
+            &index,
+            parts,
+            &default_manifest(),
+            "series.html",
+            "2026-01-29",
+        )
+        .expect("render series");
         let part1 = html.find("Part 1").expect("part1");
         let part2 = html.find("Part 2").expect("part2");
         assert!(part1 < part2);
@@ -704,6 +925,8 @@ mod tests {
             source_path: source_path.to_string(),
             header,
             body_markdown: String::new(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: String::new(),
             content_hash: blake3::hash(source_path.as_bytes()),
         }
@@ -717,6 +940,8 @@ mod tests {
             source_path: source_path.to_string(),
             header,
             body_markdown: "Body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: "simple".to_string(),
             content_hash: blake3::hash(title.as_bytes()),
         }
@@ -729,5 +954,30 @@ mod tests {
 
     fn active_count(items: &[NavItemView]) -> usize {
         items.iter().filter(|item| item.is_active).count()
+    }
+
+    fn default_manifest() -> AssetManifest {
+        let mut entries = std::collections::BTreeMap::new();
+        entries.insert(
+            "css/vars.css".to_string(),
+            "artifacts/css/vars.css".to_string(),
+        );
+        entries.insert(
+            "css/common.css".to_string(),
+            "artifacts/css/common.css".to_string(),
+        );
+        entries.insert(
+            "css/desktop.css".to_string(),
+            "artifacts/css/desktop.css".to_string(),
+        );
+        entries.insert(
+            "css/mobile.css".to_string(),
+            "artifacts/css/mobile.css".to_string(),
+        );
+        entries.insert(
+            "css/wide-desktop.css".to_string(),
+            "artifacts/css/wide-desktop.css".to_string(),
+        );
+        AssetManifest { entries }
     }
 }

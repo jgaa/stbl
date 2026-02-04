@@ -15,6 +15,7 @@ pub struct Header {
     pub template_raw: Option<String>,
     pub content_type: Option<String>,
     pub menu: Option<String>,
+    pub icon: Option<String>,
     pub banner: Option<String>,
     pub banner_credits: Option<String>,
     pub comments: Option<String>,
@@ -41,6 +42,7 @@ impl Default for Header {
             template_raw: None,
             content_type: None,
             menu: None,
+            icon: None,
             banner: None,
             banner_credits: None,
             comments: None,
@@ -66,6 +68,18 @@ pub enum UnknownKeyPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HeaderWarning {
     UnknownKey(String),
+    InvalidSitemapPriority(String),
+}
+
+impl HeaderWarning {
+    pub fn message(&self) -> String {
+        match self {
+            HeaderWarning::UnknownKey(key) => format!("unknown header key: {key}"),
+            HeaderWarning::InvalidSitemapPriority(value) => {
+                format!("invalid sitemap priority: {value}")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,11 +161,14 @@ pub fn parse_header(
             "template" => header.template_raw = non_empty(value),
             "type" => header.content_type = non_empty(value),
             "menu" => header.menu = non_empty(value),
+            "icon" => header.icon = non_empty(value),
             "banner" => header.banner = non_empty(value),
             "banner-credits" => header.banner_credits = non_empty(value),
             "comments" => header.comments = non_empty(value),
             "part" => header.part = non_empty(value),
-            "sitemap-priority" => header.sitemap_priority = parse_sitemap_priority(value)?,
+            "sitemap-priority" => {
+                header.sitemap_priority = parse_sitemap_priority(value, &mut warnings)
+            }
             "sitemap-changefreq" => header.sitemap_changefreq = parse_sitemap_changefreq(value)?,
             "published" => {
                 saw_published = true;
@@ -263,18 +280,23 @@ fn parse_datetime(value: &str, key: &str) -> Result<Option<i64>, HeaderError> {
     })
 }
 
-fn parse_sitemap_priority(value: &str) -> Result<Option<String>, HeaderError> {
+fn parse_sitemap_priority(value: &str, warnings: &mut Vec<HeaderWarning>) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
-        return Ok(None);
+        return None;
     }
     let parsed = trimmed
         .parse::<f32>()
-        .map_err(|_| HeaderError::InvalidSitemapPriority(trimmed.to_string()))?;
+        .map_err(|_| HeaderError::InvalidSitemapPriority(trimmed.to_string()));
+    let Ok(parsed) = parsed else {
+        warnings.push(HeaderWarning::InvalidSitemapPriority(trimmed.to_string()));
+        return None;
+    };
     if !(0.0..=1.0).contains(&parsed) {
-        return Err(HeaderError::InvalidSitemapPriority(trimmed.to_string()));
+        warnings.push(HeaderWarning::InvalidSitemapPriority(trimmed.to_string()));
+        return None;
     }
-    Ok(Some(trimmed.to_string()))
+    Some(trimmed.to_string())
 }
 
 fn parse_sitemap_changefreq(value: &str) -> Result<Option<String>, HeaderError> {
@@ -457,9 +479,13 @@ banner: https://example.com/#frag
 
     #[test]
     fn sitemap_invalid_values_fail() {
-        let err = parse_header("sitemap-priority: 1.5\n", UnknownKeyPolicy::Error)
-            .expect_err("expected error");
-        assert!(err.to_string().contains("sitemap"));
+        let parsed =
+            parse_header("sitemap-priority: 1.5\n", UnknownKeyPolicy::Error).expect("parse");
+        assert_eq!(
+            parsed.warnings,
+            vec![HeaderWarning::InvalidSitemapPriority("1.5".to_string())]
+        );
+        assert!(parsed.header.sitemap_priority.is_none());
 
         let err = parse_header("sitemap-changefreq: often\n", UnknownKeyPolicy::Error)
             .expect_err("expected error");

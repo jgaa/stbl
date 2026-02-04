@@ -1,0 +1,19 @@
+site:
+  id: "site-media"
+  title: "Media Fixture"
+  base_url: "https://example.invalid/"
+  language: "en"
+
+theme:
+  max_body_width: "72rem"
+  breakpoints:
+    desktop_min: "768px"
+    wide_min: "1400px"
+
+media:
+  images:
+    widths: [360, 720]
+    quality: 85
+  video:
+    heights: [360, 480]
+    poster_time: 1

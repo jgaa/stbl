@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use stbl_core::header::{UnknownKeyPolicy, parse_header};
+use stbl_core::header::{HeaderWarning, UnknownKeyPolicy, parse_header};
 use stbl_core::model::{DiscoveredDoc, DocKind, ParsedDoc, SourceDoc};
 use walkdir::WalkDir;
 
@@ -63,9 +63,10 @@ pub fn walk_content(
         let body_markdown = body_slice.to_string();
         let header = match header_text.as_deref() {
             Some(text) => {
-                parse_header(text, unknown_key_policy)
-                    .with_context(|| format!("failed to parse header in {}", path.display()))?
-                    .header
+                let parsed = parse_header(text, unknown_key_policy)
+                    .with_context(|| format!("failed to parse header in {}", path.display()))?;
+                emit_header_warnings(&parsed.warnings, &path);
+                parsed.header
             }
             None => stbl_core::header::Header::default(),
         };
@@ -100,6 +101,12 @@ pub fn walk_content(
     }
 
     Ok(docs)
+}
+
+fn emit_header_warnings(warnings: &[HeaderWarning], path: &Path) {
+    for warning in warnings {
+        eprintln!("warning: {}: {}", path.display(), warning.message());
+    }
 }
 
 fn classify_doc(

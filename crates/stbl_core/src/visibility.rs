@@ -35,6 +35,8 @@ mod tests {
             source_path: "articles/page.md".to_string(),
             header,
             body_markdown: String::new(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: "page".to_string(),
             content_hash: blake3::hash(b"content"),
         }

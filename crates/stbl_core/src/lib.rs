@@ -1,9 +1,11 @@
 pub mod abstracts;
 pub mod assemble;
+pub mod assets;
 pub mod blog_index;
 pub mod config;
 pub mod feeds;
 pub mod header;
+pub mod media;
 pub mod model;
 pub mod plan;
 pub mod project;

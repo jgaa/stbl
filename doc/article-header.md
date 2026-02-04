@@ -124,6 +124,14 @@ Rules:
 
 ---
 
+### `icon`
+
+* Optional
+* String
+* Reserved for future use (parsed and stored, not rendered yet)
+
+---
+
 ### `part`
 
 Used for ordered series content.

@@ -27,7 +27,7 @@ impl UrlMapper {
     }
 
     pub fn map(&self, logical_key: &str) -> UrlMapping {
-        let logical = logical_key.trim_matches('/');
+        let logical = normalize_logical_key(logical_key);
         match self.style {
             UrlStyle::Html => UrlMapping {
                 href: format!("{logical}.html"),
@@ -48,6 +48,16 @@ impl UrlMapper {
                 }),
             },
         }
+    }
+}
+
+fn normalize_logical_key(logical_key: &str) -> &str {
+    let trimmed = logical_key.trim_matches('/');
+    let normalized = trimmed.strip_suffix(".html").unwrap_or(trimmed);
+    if normalized.is_empty() || normalized == "." {
+        "index"
+    } else {
+        normalized
     }
 }
 

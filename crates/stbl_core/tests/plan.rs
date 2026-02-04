@@ -4,8 +4,10 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use stbl_core::assemble::assemble_site;
+use stbl_core::assets::AssetIndex;
 use stbl_core::config::load_site_config;
 use stbl_core::header::{Header, UnknownKeyPolicy, parse_header};
+use stbl_core::media::{ImagePlanInput, VideoPlanInput};
 use stbl_core::model::{DiscoveredDoc, DocKind, ParsedDoc, Project, SourceDoc, TaskKind};
 use stbl_core::plan::build_plan;
 
@@ -21,11 +23,18 @@ fn build_plan_is_deterministic_and_complete() {
         content,
     };
 
-    let plan = build_plan(&project);
-    let plan_second = build_plan(&project);
+    let asset_index = AssetIndex::default();
+    let image_plan = ImagePlanInput::default();
+    let video_plan = VideoPlanInput::default();
+    let plan = build_plan(&project, &asset_index, &image_plan, &video_plan);
+    let plan_second = build_plan(&project, &asset_index, &image_plan, &video_plan);
 
-    let task_ids: Vec<_> = plan.tasks.iter().map(|task| task.id).collect();
-    let task_ids_second: Vec<_> = plan_second.tasks.iter().map(|task| task.id).collect();
+    let task_ids: Vec<_> = plan.tasks.iter().map(|task| task.id.clone()).collect();
+    let task_ids_second: Vec<_> = plan_second
+        .tasks
+        .iter()
+        .map(|task| task.id.clone())
+        .collect();
     assert_eq!(task_ids, task_ids_second);
     assert_eq!(plan.edges, plan_second.edges);
     assert!(is_sorted(&plan.tasks));
@@ -40,6 +49,7 @@ fn build_plan_is_deterministic_and_complete() {
     assert_eq!(kind_counts.get("RenderTagIndex"), Some(&2));
     assert_eq!(kind_counts.get("RenderTagsIndex"), Some(&1));
     assert_eq!(kind_counts.get("RenderFrontPage"), None);
+    assert_eq!(kind_counts.get("GenerateVarsCss"), Some(&1));
     let rss_enabled = project.config.rss.as_ref().is_some_and(|rss| rss.enabled);
     if rss_enabled {
         assert_eq!(kind_counts.get("GenerateRss"), Some(&1));
@@ -54,11 +64,11 @@ fn build_plan_is_deterministic_and_complete() {
             .tasks
             .iter()
             .filter(|task| matches!(task.kind, TaskKind::RenderPage { .. }))
-            .map(|task| task.id)
+            .map(|task| task.id.clone())
             .collect::<Vec<_>>();
         for page_id in page_ids {
             assert!(
-                plan.edges.contains(&(page_id, rss_id)),
+                plan.edges.contains(&(page_id, rss_id.clone())),
                 "rss should depend on page render"
             );
         }
@@ -234,6 +244,12 @@ fn kind_label(kind: &TaskKind) -> &'static str {
         TaskKind::RenderTagIndex { .. } => "RenderTagIndex",
         TaskKind::RenderTagsIndex => "RenderTagsIndex",
         TaskKind::RenderFrontPage => "RenderFrontPage",
+        TaskKind::GenerateVarsCss { .. } => "GenerateVarsCss",
+        TaskKind::CopyImageOriginal { .. } => "CopyImageOriginal",
+        TaskKind::ResizeImage { .. } => "ResizeImage",
+        TaskKind::CopyVideoOriginal { .. } => "CopyVideoOriginal",
+        TaskKind::TranscodeVideoMp4 { .. } => "TranscodeVideoMp4",
+        TaskKind::ExtractVideoPoster { .. } => "ExtractVideoPoster",
         TaskKind::GenerateRss => "GenerateRss",
         TaskKind::GenerateSitemap => "GenerateSitemap",
         TaskKind::CopyAsset { .. } => "CopyAsset",
@@ -247,11 +263,11 @@ fn find_task_id(
     tasks
         .iter()
         .find(|task| kind_label(&task.kind) == label)
-        .map(|task| task.id)
+        .map(|task| task.id.clone())
 }
 
 fn is_sorted(tasks: &[stbl_core::model::BuildTask]) -> bool {
     tasks
         .windows(2)
-        .all(|pair| pair[0].id.0.as_bytes() <= pair[1].id.0.as_bytes())
+        .all(|pair| pair[0].id.0 <= pair[1].id.0)
 }

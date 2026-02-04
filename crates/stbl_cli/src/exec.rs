@@ -1,38 +1,145 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow};
+use crate::assets::{AssetSourceLookup, copy_asset_to_out};
+use crate::media::{ImageSourceLookup, VideoSourceLookup};
+use anyhow::{Context, Result, anyhow, bail};
+use image::imageops::FilterType;
+use image::{DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder, ImageFormat};
+use stbl_cache::CacheStore;
+use stbl_core::assets::AssetManifest;
 use stbl_core::blog_index::{
     FeedItem, blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed,
     collect_tag_feed, paginate_blog_index,
 };
 use stbl_core::feeds::{render_rss, render_sitemap};
-use stbl_core::model::{BuildPlan, DocId, Page, Project, Series, TaskKind};
-use stbl_core::render::render_markdown_to_html;
+use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
+use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
     format_timestamp_ymd, render_blog_index, render_markdown_page, render_page,
     render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Default)]
 #[allow(dead_code)]
-pub struct ExecReport {
+pub struct ExecSummary {
     pub executed: usize,
     pub skipped: usize,
+    pub executed_ids: Vec<String>,
+    pub skipped_ids: Vec<String>,
 }
 
-pub fn execute_plan(project: &Project, plan: &BuildPlan, out_dir: &PathBuf) -> Result<ExecReport> {
-    let mut report = ExecReport::default();
+pub fn execute_plan(
+    project: &Project,
+    plan: &BuildPlan,
+    out_dir: &PathBuf,
+    asset_lookup: &AssetSourceLookup,
+    image_lookup: &ImageSourceLookup,
+    video_lookup: &VideoSourceLookup,
+    asset_manifest: &AssetManifest,
+    mut cache: Option<&mut dyn CacheStore>,
+) -> Result<ExecSummary> {
+    let mut report = ExecSummary::default();
     let mapper = UrlMapper::new(&project.config);
     let build_date_ymd = build_date_ymd_now();
+    for task in &plan.tasks {
+        if let TaskKind::GenerateVarsCss { vars, out_rel } = &task.kind {
+            if should_skip_task(&mut cache, task, out_dir)? {
+                report.skipped += output_count(task);
+                report.skipped_ids.push(task.id.0.clone());
+                continue;
+            }
+            let out_path = out_dir.join(out_rel);
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)
+                    .with_context(|| format!("failed to create {}", parent.display()))?;
+            }
+            let contents = render_vars_css(vars);
+            fs::write(&out_path, contents)
+                .with_context(|| format!("failed to write {}", out_path.display()))?;
+            report.executed += output_count(task);
+            report.executed_ids.push(task.id.0.clone());
+            cache_put(&mut cache, task);
+        }
+    }
     for task in &plan.tasks {
         if matches!(task.kind, TaskKind::GenerateRss)
             && !project.config.rss.as_ref().is_some_and(|rss| rss.enabled)
         {
             continue;
+        }
+        if matches!(task.kind, TaskKind::GenerateVarsCss { .. }) {
+            continue;
+        }
+        if should_skip_task(&mut cache, task, out_dir)? {
+            report.skipped += output_count(task);
+            report.skipped_ids.push(task.id.0.clone());
+            continue;
+        }
+        if let TaskKind::CopyAsset {
+            source, out_rel, ..
+        } = &task.kind
+        {
+            copy_asset_to_out(out_dir, out_rel, source, asset_lookup)?;
+            report.executed += output_count(task);
+            report.executed_ids.push(task.id.0.clone());
+            cache_put(&mut cache, task);
+            continue;
+        }
+        match &task.kind {
+            TaskKind::CopyImageOriginal { source, out_rel } => {
+                copy_image_original(out_dir, out_rel, source, image_lookup)?;
+                report.executed += output_count(task);
+                report.executed_ids.push(task.id.0.clone());
+                cache_put(&mut cache, task);
+                continue;
+            }
+            TaskKind::ResizeImage {
+                source,
+                width,
+                quality,
+                out_rel,
+            } => {
+                resize_image(out_dir, out_rel, source, *width, *quality, image_lookup)?;
+                report.executed += output_count(task);
+                report.executed_ids.push(task.id.0.clone());
+                cache_put(&mut cache, task);
+                continue;
+            }
+            TaskKind::CopyVideoOriginal { source, out_rel } => {
+                copy_video_original(out_dir, out_rel, source, video_lookup)?;
+                report.executed += output_count(task);
+                report.executed_ids.push(task.id.0.clone());
+                cache_put(&mut cache, task);
+                continue;
+            }
+            TaskKind::TranscodeVideoMp4 {
+                source,
+                height,
+                out_rel,
+            } => {
+                transcode_video_mp4(out_dir, out_rel, source, *height, video_lookup)?;
+                report.executed += output_count(task);
+                report.executed_ids.push(task.id.0.clone());
+                cache_put(&mut cache, task);
+                continue;
+            }
+            TaskKind::ExtractVideoPoster {
+                source,
+                poster_time_sec,
+                out_rel,
+            } => {
+                extract_video_poster(out_dir, out_rel, source, *poster_time_sec, video_lookup)?;
+                report.executed += output_count(task);
+                report.executed_ids.push(task.id.0.clone());
+                cache_put(&mut cache, task);
+                continue;
+            }
+            _ => {}
         }
         for output in &task.outputs {
             let out_path = out_dir.join(&output.path);
@@ -40,15 +147,310 @@ pub fn execute_plan(project: &Project, plan: &BuildPlan, out_dir: &PathBuf) -> R
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
             }
-            let contents =
-                render_output(project, &mapper, &task.kind, &output.path, &build_date_ymd)
-                    .with_context(|| format!("failed to render {}", out_path.display()))?;
+            let contents = render_output(
+                project,
+                &mapper,
+                &task.kind,
+                &output.path,
+                asset_manifest,
+                &build_date_ymd,
+            )
+            .with_context(|| format!("failed to render {}", out_path.display()))?;
             fs::write(&out_path, contents)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
-            report.executed += 1;
         }
+        report.executed += output_count(task);
+        report.executed_ids.push(task.id.0.clone());
+        cache_put(&mut cache, task);
     }
     Ok(report)
+}
+
+fn output_count(task: &BuildTask) -> usize {
+    if task.outputs.is_empty() {
+        1
+    } else {
+        task.outputs.len()
+    }
+}
+
+fn outputs_exist(outputs: &[String], out_dir: &Path) -> bool {
+    outputs.iter().all(|output| {
+        let path = out_dir.join(output);
+        fs::metadata(&path).map(|meta| meta.is_file()).unwrap_or(false)
+    })
+}
+
+fn should_skip_task(
+    cache: &mut Option<&mut dyn CacheStore>,
+    task: &BuildTask,
+    out_dir: &Path,
+) -> Result<bool> {
+    let Some(cache) = cache.as_mut() else {
+        return Ok(false);
+    };
+    let cache: &mut dyn CacheStore = &mut **cache;
+    if task.outputs.is_empty() {
+        return Ok(false);
+    }
+    match cache.get(task.id.0.as_str()) {
+        Ok(Some(cached)) => {
+            if cached.inputs_fingerprint == task.inputs_fingerprint.0
+                && outputs_exist(&cached.outputs, out_dir)
+            {
+                return Ok(true);
+            }
+        }
+        Ok(None) => {}
+        Err(err) => {
+            eprintln!("warning: cache get failed for {}: {}", task.id.0, err);
+        }
+    }
+    Ok(false)
+}
+
+fn cache_put_inner(cache: &mut dyn CacheStore, task: &BuildTask) {
+    if task.outputs.is_empty() {
+        return;
+    }
+    let outputs = task
+        .outputs
+        .iter()
+        .map(|output| output.path.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    if let Err(err) = cache.put(task.id.0.as_str(), task.inputs_fingerprint.0, &outputs) {
+        eprintln!("warning: cache put failed for {}: {}", task.id.0, err);
+    }
+}
+
+fn cache_put(cache: &mut Option<&mut dyn CacheStore>, task: &BuildTask) {
+    let Some(cache) = cache.as_mut() else {
+        return;
+    };
+    let cache: &mut dyn CacheStore = &mut **cache;
+    cache_put_inner(cache, task);
+}
+
+fn render_vars_css(vars: &stbl_core::model::ThemeVars) -> String {
+    format!(
+        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n}}\n",
+        vars.max_body_width, vars.desktop_min, vars.wide_min
+    )
+}
+
+fn copy_image_original(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    source: &stbl_core::assets::AssetSourceId,
+    lookup: &ImageSourceLookup,
+) -> Result<()> {
+    let src_path = lookup
+        .resolve(source)
+        .ok_or_else(|| anyhow!("unknown image source {}", source.0))?;
+    let out_path = out_dir.join(out_rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::copy(src_path, &out_path).with_context(|| {
+        format!(
+            "failed to copy {} to {}",
+            src_path.display(),
+            out_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn resize_image(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    source: &stbl_core::assets::AssetSourceId,
+    width: u32,
+    quality: u8,
+    lookup: &ImageSourceLookup,
+) -> Result<()> {
+    let src_path = lookup
+        .resolve(source)
+        .ok_or_else(|| anyhow!("unknown image source {}", source.0))?;
+    if is_svg(src_path) {
+        return copy_image_original(out_dir, out_rel, source, lookup);
+    }
+    let reader = image::ImageReader::open(src_path)
+        .with_context(|| format!("failed to open {}", src_path.display()))?
+        .with_guessed_format()
+        .with_context(|| format!("failed to guess format for {}", src_path.display()))?;
+    let format = reader
+        .format()
+        .ok_or_else(|| anyhow!("unknown image format for {}", src_path.display()))?;
+    let image = reader
+        .decode()
+        .with_context(|| format!("failed to decode {}", src_path.display()))?;
+    let (src_w, src_h) = image.dimensions();
+    if src_w <= width {
+        return copy_image_original(out_dir, out_rel, source, lookup);
+    }
+    let height = ((src_h as f64) * (width as f64) / (src_w as f64)).round() as u32;
+    let resized = image.resize_exact(width, height, FilterType::Lanczos3);
+    write_resized(out_dir, out_rel, &resized, format, quality)
+}
+
+fn write_resized(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    image: &DynamicImage,
+    format: ImageFormat,
+    quality: u8,
+) -> Result<()> {
+    let out_path = out_dir.join(out_rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let mut file = fs::File::create(&out_path)
+        .with_context(|| format!("failed to create {}", out_path.display()))?;
+    let (width, height) = image.dimensions();
+    match format {
+        ImageFormat::Jpeg => {
+            let rgb = image.to_rgb8();
+            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, quality);
+            encoder
+                .write_image(&rgb, width, height, ExtendedColorType::Rgb8)
+                .with_context(|| format!("failed to encode {}", out_path.display()))?;
+        }
+        ImageFormat::Png => {
+            let rgba = image.to_rgba8();
+            let encoder = image::codecs::png::PngEncoder::new(&mut file);
+            encoder
+                .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
+                .with_context(|| format!("failed to encode {}", out_path.display()))?;
+        }
+        ImageFormat::WebP => {
+            let rgba = image.to_rgba8();
+            let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut file);
+            encoder
+                .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
+                .with_context(|| format!("failed to encode {}", out_path.display()))?;
+        }
+        _ => bail!("unsupported image format for {}", out_path.display()),
+    }
+    Ok(())
+}
+
+fn is_svg(path: &PathBuf) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("svg"))
+        .unwrap_or(false)
+}
+
+fn copy_video_original(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    source: &stbl_core::assets::AssetSourceId,
+    lookup: &VideoSourceLookup,
+) -> Result<()> {
+    let src_path = lookup
+        .resolve(source)
+        .ok_or_else(|| anyhow!("unknown video source {}", source.0))?;
+    let out_path = out_dir.join(out_rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    fs::copy(src_path, &out_path).with_context(|| {
+        format!(
+            "failed to copy {} to {}",
+            src_path.display(),
+            out_path.display()
+        )
+    })?;
+    Ok(())
+}
+
+fn transcode_video_mp4(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    source: &stbl_core::assets::AssetSourceId,
+    height: u32,
+    lookup: &VideoSourceLookup,
+) -> Result<()> {
+    let src_path = lookup
+        .resolve(source)
+        .ok_or_else(|| anyhow!("unknown video source {}", source.0))?;
+    let out_path = out_dir.join(out_rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let scale_arg = format!("scale=-2:min({height}\\,ih)");
+    let status = Command::new("ffmpeg")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-y")
+        .arg("-i")
+        .arg(src_path)
+        .arg("-vf")
+        .arg(scale_arg)
+        .arg("-c:v")
+        .arg("libx264")
+        .arg("-preset")
+        .arg("veryfast")
+        .arg("-crf")
+        .arg("23")
+        .arg("-c:a")
+        .arg("aac")
+        .arg("-b:a")
+        .arg("128k")
+        .arg("-movflags")
+        .arg("+faststart")
+        .arg(out_path.as_os_str())
+        .status()
+        .with_context(|| "failed to run ffmpeg")?;
+    if !status.success() {
+        bail!("ffmpeg failed to transcode {}", src_path.display());
+    }
+    Ok(())
+}
+
+fn extract_video_poster(
+    out_dir: &PathBuf,
+    out_rel: &str,
+    source: &stbl_core::assets::AssetSourceId,
+    poster_time_sec: u32,
+    lookup: &VideoSourceLookup,
+) -> Result<()> {
+    let src_path = lookup
+        .resolve(source)
+        .ok_or_else(|| anyhow!("unknown video source {}", source.0))?;
+    let out_path = out_dir.join(out_rel);
+    if let Some(parent) = out_path.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    let status = Command::new("ffmpeg")
+        .arg("-hide_banner")
+        .arg("-loglevel")
+        .arg("error")
+        .arg("-y")
+        .arg("-ss")
+        .arg(poster_time_sec.to_string())
+        .arg("-i")
+        .arg(src_path)
+        .arg("-frames:v")
+        .arg("1")
+        .arg("-update")
+        .arg("1")
+        .arg("-q:v")
+        .arg("2")
+        .arg(out_path.as_os_str())
+        .status()
+        .with_context(|| "failed to run ffmpeg")?;
+    if !status.success() {
+        bail!("ffmpeg failed to extract poster for {}", src_path.display());
+    }
+    Ok(())
 }
 
 fn render_output(
@@ -56,10 +458,18 @@ fn render_output(
     mapper: &UrlMapper,
     kind: &TaskKind,
     output_path: &PathBuf,
+    asset_manifest: &AssetManifest,
     build_date_ymd: &str,
 ) -> Result<String> {
     match output_path.extension().and_then(|ext| ext.to_str()) {
-        Some("html") => render_html_output(project, mapper, kind, output_path, build_date_ymd),
+        Some("html") => render_html_output(
+            project,
+            mapper,
+            kind,
+            output_path,
+            asset_manifest,
+            build_date_ymd,
+        ),
         Some("xml") => render_xml_output(project, mapper, kind),
         _ => Ok(String::new()),
     }
@@ -70,22 +480,23 @@ fn render_html_output(
     mapper: &UrlMapper,
     kind: &TaskKind,
     output_path: &PathBuf,
+    asset_manifest: &AssetManifest,
     build_date_ymd: &str,
 ) -> Result<String> {
     if let Some(mapping) = mapping_for_task(project, mapper, kind)? {
         if output_path == &mapping.primary_output {
-            return render_primary_html(project, mapper, kind, build_date_ymd);
+            return render_primary_html(project, mapper, kind, asset_manifest, build_date_ymd);
         }
         if mapping
             .fallback
             .as_ref()
             .is_some_and(|redirect| output_path == &redirect.from)
         {
-            return render_redirect_stub(project, &mapping.href, build_date_ymd);
+            return render_redirect_stub(project, &mapping.href, asset_manifest, build_date_ymd);
         }
     }
 
-    render_primary_html(project, mapper, kind, build_date_ymd)
+    render_primary_html(project, mapper, kind, asset_manifest, build_date_ymd)
 }
 
 fn render_xml_output(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> Result<String> {
@@ -100,13 +511,18 @@ fn render_primary_html(
     project: &Project,
     mapper: &UrlMapper,
     kind: &TaskKind,
+    asset_manifest: &AssetManifest,
     build_date_ymd: &str,
 ) -> Result<String> {
     let current_href = current_href_for_task(project, mapper, kind)?;
     match kind {
-        TaskKind::RenderPage { page } => {
-            render_page_by_id(project, *page, &current_href, build_date_ymd)
-        }
+        TaskKind::RenderPage { page } => render_page_by_id(
+            project,
+            *page,
+            asset_manifest,
+            &current_href,
+            build_date_ymd,
+        ),
         TaskKind::RenderBlogIndex {
             source_page,
             page_no,
@@ -114,19 +530,25 @@ fn render_primary_html(
             project,
             source_page,
             *page_no,
+            asset_manifest,
             &current_href,
             build_date_ymd,
         ),
-        TaskKind::RenderSeries { series } => {
-            render_series(project, *series, &current_href, build_date_ymd)
-        }
+        TaskKind::RenderSeries { series } => render_series(
+            project,
+            *series,
+            asset_manifest,
+            &current_href,
+            build_date_ymd,
+        ),
         TaskKind::RenderTagIndex { tag } => {
-            render_tag_index_page(project, tag, &current_href, build_date_ymd)
+            render_tag_index_page(project, tag, asset_manifest, &current_href, build_date_ymd)
         }
         TaskKind::RenderTagsIndex => render_markdown_page(
             project,
             "Tags",
             "*Not implemented.*\n",
+            asset_manifest,
             &current_href,
             build_date_ymd,
             None,
@@ -137,6 +559,7 @@ fn render_primary_html(
                 project,
                 &title,
                 "*Not implemented.*\n",
+                asset_manifest,
                 &current_href,
                 build_date_ymd,
                 None,
@@ -146,6 +569,7 @@ fn render_primary_html(
             project,
             "Not implemented",
             "*Not implemented.*\n",
+            asset_manifest,
             &current_href,
             build_date_ymd,
             None,
@@ -156,6 +580,7 @@ fn render_primary_html(
 fn render_page_by_id(
     project: &Project,
     page_id: DocId,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -164,15 +589,23 @@ fn render_page_by_id(
     let mapper = UrlMapper::new(&project.config);
     let series_nav = series_nav_for_page(project, page_id, &mapper);
     if series_nav.is_some() {
-        render_page_with_series_nav(project, page, series_nav, current_href, build_date_ymd)
+        render_page_with_series_nav(
+            project,
+            page,
+            asset_manifest,
+            series_nav,
+            current_href,
+            build_date_ymd,
+        )
     } else {
-        render_page(project, page, current_href, build_date_ymd)
+        render_page(project, page, asset_manifest, current_href, build_date_ymd)
     }
 }
 
 fn render_series(
     project: &Project,
     series_id: stbl_core::model::SeriesId,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -195,7 +628,14 @@ fn render_series(
             published_display: format_timestamp_ymd(part.page.header.published),
         })
         .collect::<Vec<_>>();
-    render_series_index(project, &series.index, parts, current_href, build_date_ymd)
+    render_series_index(
+        project,
+        &series.index,
+        parts,
+        asset_manifest,
+        current_href,
+        build_date_ymd,
+    )
 }
 
 fn find_page(project: &Project, page_id: DocId) -> Option<&Page> {
@@ -310,15 +750,21 @@ fn mapping_for_task(
     Ok(Some(mapper.map(&logical_key)))
 }
 
-fn render_redirect_stub(project: &Project, href: &str, build_date_ymd: &str) -> Result<String> {
+fn render_redirect_stub(
+    project: &Project,
+    href: &str,
+    asset_manifest: &AssetManifest,
+    build_date_ymd: &str,
+) -> Result<String> {
     let target = format!("/{}", href.trim_start_matches('/'));
-    render_redirect_page(project, &target, &target, build_date_ymd)
+    render_redirect_page(project, &target, asset_manifest, &target, build_date_ymd)
 }
 
 fn render_blog_index_page(
     project: &Project,
     source_page_id: &DocId,
     page_no: u32,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -341,7 +787,15 @@ fn render_blog_index_page(
         .collect::<Vec<_>>();
 
     let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
-        Some(render_markdown_to_html(&source_page.body_markdown))
+        let rel = rel_prefix_for_href(current_href);
+        let options = RenderOptions {
+            rel_prefix: &rel,
+            video_heights: &project.config.media.video.heights,
+        };
+        Some(render_markdown_to_html_with_media(
+            &source_page.body_markdown,
+            &options,
+        ))
     } else {
         None
     };
@@ -359,6 +813,7 @@ fn render_blog_index_page(
         next_href,
         page_range.page_no,
         page_range.total_pages,
+        asset_manifest,
         current_href,
         build_date_ymd,
     )
@@ -367,6 +822,7 @@ fn render_blog_index_page(
 fn render_tag_index_page(
     project: &Project,
     tag: &str,
+    asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
@@ -380,7 +836,13 @@ fn render_tag_index_page(
         tag: tag.to_string(),
         items,
     };
-    render_tag_index(project, listing, current_href, build_date_ymd)
+    render_tag_index(
+        project,
+        listing,
+        asset_manifest,
+        current_href,
+        build_date_ymd,
+    )
 }
 
 fn current_href_for_task(project: &Project, mapper: &UrlMapper, kind: &TaskKind) -> Result<String> {
@@ -394,6 +856,30 @@ fn build_date_ymd_now() -> String {
         .unwrap_or_default()
         .as_secs() as i64;
     format_timestamp_ymd(Some(timestamp)).unwrap_or_else(|| "1970-01-01".to_string())
+}
+
+fn rel_prefix_for_href(href: &str) -> String {
+    let trimmed = href.trim_start_matches('/');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let depth = if trimmed.ends_with('/') {
+        let stripped = trimmed.trim_end_matches('/');
+        if stripped.is_empty() {
+            0
+        } else {
+            stripped.split('/').count()
+        }
+    } else if let Some((parent, _)) = trimmed.rsplit_once('/') {
+        if parent.is_empty() {
+            0
+        } else {
+            parent.split('/').count()
+        }
+    } else {
+        0
+    };
+    "../".repeat(depth)
 }
 
 fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
@@ -468,10 +954,31 @@ mod tests {
 
     fn build_into_temp(url_style: UrlStyle) -> (TempDir, PathBuf) {
         let project = build_project(url_style);
-        let plan = stbl_core::plan::build_plan(&project);
+        let site_assets_root = project.root.join("assets");
+        let (asset_index, asset_lookup) =
+            crate::assets::discover_assets(&site_assets_root).expect("discover assets");
+        let (image_plan, image_lookup) =
+            crate::media::discover_images(&project).expect("discover images");
+        let (video_plan, video_lookup) =
+            crate::media::discover_videos(&project).expect("discover videos");
+        let asset_manifest = stbl_core::assets::build_asset_manifest(
+            &asset_index,
+            project.config.assets.cache_busting,
+        );
+        let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
         let temp = TempDir::new().expect("tempdir");
         let out_dir = temp.path().join("out");
-        execute_plan(&project, &plan, &out_dir).expect("execute plan");
+        execute_plan(
+            &project,
+            &plan,
+            &out_dir,
+            &asset_lookup,
+            &image_lookup,
+            &video_lookup,
+            &asset_manifest,
+            None,
+        )
+        .expect("execute plan");
         (temp, out_dir)
     }
 
@@ -511,12 +1018,42 @@ mod tests {
     }
 
     #[test]
+    fn vars_css_is_generated_with_defaults() {
+        let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
+        let vars_path = out_dir.join("artifacts/css/vars.css");
+        let contents = fs::read_to_string(vars_path).expect("read vars css");
+        let expected = ":root {\n  --layout-max-width: 72rem;\n  --bp-desktop-min: 768px;\n  --bp-wide-min: 1400px;\n}\n";
+        assert_eq!(contents, expected);
+    }
+
+    #[test]
     fn pagination_fixture_generates_multiple_blog_pages() {
         let project = build_project_at(fixture_root("site-pagination"), UrlStyle::Html);
-        let plan = stbl_core::plan::build_plan(&project);
+        let site_assets_root = project.root.join("assets");
+        let (asset_index, asset_lookup) =
+            crate::assets::discover_assets(&site_assets_root).expect("discover assets");
+        let (image_plan, image_lookup) =
+            crate::media::discover_images(&project).expect("discover images");
+        let (video_plan, video_lookup) =
+            crate::media::discover_videos(&project).expect("discover videos");
+        let asset_manifest = stbl_core::assets::build_asset_manifest(
+            &asset_index,
+            project.config.assets.cache_busting,
+        );
+        let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
         let temp = TempDir::new().expect("tempdir");
         let out_dir = temp.path().join("out");
-        execute_plan(&project, &plan, &out_dir).expect("execute plan");
+        execute_plan(
+            &project,
+            &plan,
+            &out_dir,
+            &asset_lookup,
+            &image_lookup,
+            &video_lookup,
+            &asset_manifest,
+            None,
+        )
+        .expect("execute plan");
 
         assert!(out_dir.join("index.html").exists());
         assert!(out_dir.join("page/2.html").exists());

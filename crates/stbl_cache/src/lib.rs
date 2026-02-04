@@ -1,1 +1,5 @@
-// Placeholder lib target to allow other crates to depend on stbl_cache.
+mod error;
+mod store;
+
+pub use crate::error::CacheError;
+pub use crate::store::{CacheStore, CachedTask, SqliteCacheStore};

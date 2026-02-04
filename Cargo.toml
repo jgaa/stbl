@@ -4,6 +4,7 @@ members = [
     "crates/stbl_core",
     "crates/stbl_cache",
     "crates/stbl_cli",
+    "crates/stbl_embedded_assets",
 ]
 resolver = "2"
 

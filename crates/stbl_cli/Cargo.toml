@@ -7,11 +7,20 @@ edition = "2024"
 clap = { version = "4", features = ["derive"] }
 stbl_core = { path = "../stbl_core" }
 stbl_cache = { path = "../stbl_cache" }
+stbl_embedded_assets = { path = "../stbl_embedded_assets" }
 walkdir = "2"
 anyhow = "1"
+blake3 = "1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+tiny_http = "0.12"
+urlencoding = "2"
+webbrowser = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
+ureq = "2"
 
 # [[bin]]
 # name = "stbl"

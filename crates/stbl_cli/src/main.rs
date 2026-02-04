@@ -1,10 +1,17 @@
+mod assets;
+mod config_loader;
 mod exec;
+mod init;
+mod media;
+mod preview;
+mod upgrade;
 mod walk;
 
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
+use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::config::load_site_config;
 use stbl_core::header::UnknownKeyPolicy;
@@ -16,8 +23,6 @@ use std::process::Command as ProcessCommand;
 struct Cli {
     #[arg(long = "source-dir", short = 's', global = true)]
     source_dir: Option<PathBuf>,
-    #[arg(long)]
-    preview: bool,
     #[arg(long)]
     include_unpublished: bool,
     #[arg(long, value_enum, default_value = "error")]
@@ -43,6 +48,13 @@ enum UnknownHeaderKeys {
     Warn,
 }
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum InitKindArg {
+    Blog,
+    #[value(name = "landing-page")]
+    LandingPage,
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
     Scan {
@@ -55,11 +67,47 @@ enum Command {
         #[arg(long, value_name = "PATH", num_args = 0..=1, default_missing_value = "stbl.dot")]
         dot: Option<PathBuf>,
     },
+    #[command(about = "Build site from stbl.yaml.")]
     Build {
         #[arg(default_value = "articles")]
         articles_dir: PathBuf,
         #[arg(long, value_name = "PATH", default_value = "out")]
         out: PathBuf,
+        #[arg(long)]
+        no_cache: bool,
+        #[arg(long, value_name = "PATH")]
+        cache_path: Option<PathBuf>,
+        #[arg(long)]
+        preview: bool,
+        #[arg(long, default_value = "127.0.0.1", requires = "preview")]
+        preview_host: String,
+        #[arg(long, default_value_t = 8080, requires = "preview")]
+        preview_port: u16,
+        #[arg(long, requires = "preview")]
+        preview_no_open: bool,
+        #[arg(long, conflicts_with = "preview_no_open", requires = "preview")]
+        preview_open: bool,
+        #[arg(long, default_value = "index.html", requires = "preview")]
+        preview_index: String,
+    },
+    #[command(about = "Generate stbl.yaml from legacy stbl.conf.")]
+    Upgrade {
+        #[arg(long)]
+        force: bool,
+    },
+    #[command(about = "Initialize a new site.")]
+    Init {
+        #[arg(long)]
+        title: String,
+        #[arg(long, default_value = "http://localhost:8080/")]
+        url: String,
+        #[arg(long, default_value = "en")]
+        language: String,
+        #[arg(long, value_enum, default_value = "blog")]
+        kind: InitKindArg,
+        #[arg(long)]
+        copy_all: bool,
+        target_dir: Option<PathBuf>,
     },
 }
 
@@ -69,7 +117,39 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::Scan { articles_dir } => run_scan(&cli, articles_dir),
         Command::Plan { articles_dir, dot } => run_plan(&cli, articles_dir, dot.as_ref()),
-        Command::Build { articles_dir, out } => run_build(&cli, articles_dir, out),
+        Command::Build {
+            articles_dir,
+            out,
+            no_cache,
+            cache_path,
+            preview,
+            preview_host,
+            preview_port,
+            preview_no_open,
+            preview_open,
+            preview_index,
+        } => run_build(
+            &cli,
+            articles_dir,
+            out,
+            *no_cache,
+            cache_path.as_ref(),
+            *preview,
+            preview_host,
+            *preview_port,
+            *preview_no_open,
+            *preview_open,
+            preview_index,
+        ),
+        Command::Upgrade { force } => run_upgrade(&cli, *force),
+        Command::Init {
+            title,
+            url,
+            language,
+            kind,
+            copy_all,
+            target_dir,
+        } => run_init(title, url, language, *kind, *copy_all, target_dir.as_ref()),
     }
 }
 
@@ -132,7 +212,14 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
         config,
         content,
     };
-    let plan = stbl_core::plan::build_plan(&project);
+    let site_assets_root = root.join("assets");
+    let (asset_index, _asset_lookup) = assets::discover_assets(&site_assets_root)
+        .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    let (image_plan, _image_lookup) =
+        media::discover_images(&project).with_context(|| "failed to discover images")?;
+    let (video_plan, _video_lookup) =
+        media::discover_videos(&project).with_context(|| "failed to discover videos")?;
+    let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     if let Some(dot_path) = dot {
         let dot_contents = render_dot(&plan);
@@ -148,10 +235,10 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
         println!("tasks: {}", plan.tasks.len());
         println!("edges: {}", plan.edges.len());
         for task in &plan.tasks {
-            println!("task: {} {}", kind_label(&task.kind), task.id.0.to_hex());
+            println!("task: {} {}", kind_label(&task.kind), task.id.0);
         }
         for (from, to) in &plan.edges {
-            println!("edge: {} -> {}", from.0.to_hex(), to.0.to_hex());
+            println!("edge: {} -> {}", from.0, to.0);
         }
     }
     let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
@@ -159,11 +246,22 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
     Ok(())
 }
 
-fn run_build(cli: &Cli, articles_dir: &PathBuf, out: &PathBuf) -> Result<()> {
+fn run_build(
+    cli: &Cli,
+    articles_dir: &PathBuf,
+    out: &PathBuf,
+    no_cache: bool,
+    cache_path_override: Option<&PathBuf>,
+    preview: bool,
+    preview_host: &str,
+    preview_port: u16,
+    preview_no_open: bool,
+    preview_open: bool,
+    preview_index: &str,
+) -> Result<()> {
     let root = root_dir(cli)?;
-    let config_path = root.join("stbl.yaml");
-    let config = load_site_config(&config_path)
-        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let config = crate::config_loader::load_config_for_build(&root)
+        .with_context(|| "failed to load stbl.yaml")?;
     let docs = walk::walk_content(&root, articles_dir, cli.unknown_header_keys.into())?;
     let content = match assemble_site(docs) {
         Ok(site) => site,
@@ -187,7 +285,16 @@ fn run_build(cli: &Cli, articles_dir: &PathBuf, out: &PathBuf) -> Result<()> {
         config,
         content,
     };
-    let plan = stbl_core::plan::build_plan(&project);
+    let site_assets_root = root.join("assets");
+    let (asset_index, asset_lookup) = assets::discover_assets(&site_assets_root)
+        .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    let (image_plan, image_lookup) =
+        media::discover_images(&project).with_context(|| "failed to discover images")?;
+    let (video_plan, video_lookup) =
+        media::discover_videos(&project).with_context(|| "failed to discover videos")?;
+    let asset_manifest =
+        stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
+    let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     let out_dir = if out.is_absolute() {
         out.clone()
@@ -196,15 +303,82 @@ fn run_build(cli: &Cli, articles_dir: &PathBuf, out: &PathBuf) -> Result<()> {
     };
 
     let output_count: usize = plan.tasks.iter().map(|task| task.outputs.len()).sum();
-    exec::execute_plan(&project, &plan, &out_dir)?;
+
+    let (mut cache, cache_state, cache_path) = open_cache_store(&root, no_cache, cache_path_override);
+    let report = exec::execute_plan(
+        &project,
+        &plan,
+        &out_dir,
+        &asset_lookup,
+        &image_lookup,
+        &video_lookup,
+        &asset_manifest,
+        cache.as_mut().map(|store| store as &mut dyn CacheStore),
+    )?;
     println!("tasks: {}", plan.tasks.len());
     println!("edges: {}", plan.edges.len());
     println!("outputs: {}", output_count);
     println!("out: {}", out_dir.display());
+    println!("executed: {}", report.executed);
+    println!("skipped: {}", report.skipped);
+    println!("cache: {}", cache_state);
+    if let Some(path) = cache_path {
+        println!("cache_path: {}", path.display());
+    }
 
     let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
     println!("{summary}");
+    if preview {
+        let no_open = if preview_open { false } else { preview_no_open };
+        preview::run_preview(preview::PreviewOpts {
+            site_dir: None,
+            out_dir: Some(out_dir),
+            host: preview_host.to_string(),
+            port: preview_port,
+            no_open,
+            index: preview_index.to_string(),
+        })?;
+    }
     Ok(())
+}
+
+fn run_upgrade(cli: &Cli, force: bool) -> Result<()> {
+    if cli.source_dir.is_none() {
+        anyhow::bail!("upgrade requires --source-dir");
+    }
+    let root = root_dir(cli)?;
+    let result = crate::upgrade::upgrade_site(&root, force)?;
+    for warning in result.warnings {
+        eprintln!("warning: {warning}");
+    }
+    println!("wrote {}", root.join("stbl.yaml").display());
+    Ok(())
+}
+
+fn run_init(
+    title: &str,
+    url: &str,
+    language: &str,
+    kind: InitKindArg,
+    copy_all: bool,
+    target_dir: Option<&PathBuf>,
+) -> Result<()> {
+    let target_dir = match target_dir {
+        Some(path) => path.clone(),
+        None => std::env::current_dir().context("failed to resolve current directory")?,
+    };
+    let kind = match kind {
+        InitKindArg::Blog => crate::init::InitKind::Blog,
+        InitKindArg::LandingPage => crate::init::InitKind::LandingPage,
+    };
+    crate::init::init_site(crate::init::InitOptions {
+        title: title.to_string(),
+        base_url: url.to_string(),
+        language: language.to_string(),
+        kind,
+        copy_all,
+        target_dir,
+    })
 }
 
 fn root_dir(cli: &Cli) -> Result<PathBuf> {
@@ -266,10 +440,14 @@ fn handle_writeback(
 }
 
 fn validate_flags(cli: &Cli) -> Result<()> {
-    if cli.include_unpublished && !cli.preview {
+    let is_preview = match &cli.command {
+        Command::Build { preview, .. } => *preview,
+        _ => false,
+    };
+    if cli.include_unpublished && !is_preview {
         anyhow::bail!("--include-unpublished requires --preview");
     }
-    if cli.no_writeback && !cli.preview {
+    if cli.no_writeback && !is_preview {
         anyhow::bail!("--no-writeback requires --preview");
     }
     if cli.commit_writeback && cli.no_writeback {
@@ -340,6 +518,40 @@ fn commit_writeback(root: &PathBuf, touched: &[&str]) -> Result<()> {
     Ok(())
 }
 
+fn open_cache_store(
+    root: &PathBuf,
+    no_cache: bool,
+    cache_path_override: Option<&PathBuf>,
+) -> (Option<SqliteCacheStore>, &'static str, Option<PathBuf>) {
+    if no_cache {
+        return (None, "off", None);
+    }
+    let cache_path = cache_path_override
+        .map(|path| if path.is_absolute() { path.clone() } else { root.join(path) })
+        .unwrap_or_else(|| root.join(".stbl").join("cache.sqlite"));
+    if let Some(parent) = cache_path.parent() {
+        if let Err(err) = std::fs::create_dir_all(parent) {
+            eprintln!(
+                "warning: failed to create cache directory {}: {}",
+                parent.display(),
+                err
+            );
+            return (None, "off", Some(cache_path));
+        }
+    }
+    match SqliteCacheStore::open(&cache_path) {
+        Ok(store) => (Some(store), "on", Some(cache_path)),
+        Err(err) => {
+            eprintln!(
+                "warning: failed to open cache at {}: {}",
+                cache_path.display(),
+                err
+            );
+            (None, "off", Some(cache_path))
+        }
+    }
+}
+
 fn kind_label(kind: &stbl_core::model::TaskKind) -> &'static str {
     match kind {
         stbl_core::model::TaskKind::RenderPage { .. } => "RenderPage",
@@ -348,6 +560,12 @@ fn kind_label(kind: &stbl_core::model::TaskKind) -> &'static str {
         stbl_core::model::TaskKind::RenderTagIndex { .. } => "RenderTagIndex",
         stbl_core::model::TaskKind::RenderTagsIndex => "RenderTagsIndex",
         stbl_core::model::TaskKind::RenderFrontPage => "RenderFrontPage",
+        stbl_core::model::TaskKind::GenerateVarsCss { .. } => "GenerateVarsCss",
+        stbl_core::model::TaskKind::CopyImageOriginal { .. } => "CopyImageOriginal",
+        stbl_core::model::TaskKind::ResizeImage { .. } => "ResizeImage",
+        stbl_core::model::TaskKind::CopyVideoOriginal { .. } => "CopyVideoOriginal",
+        stbl_core::model::TaskKind::TranscodeVideoMp4 { .. } => "TranscodeVideoMp4",
+        stbl_core::model::TaskKind::ExtractVideoPoster { .. } => "ExtractVideoPoster",
         stbl_core::model::TaskKind::GenerateRss => "GenerateRss",
         stbl_core::model::TaskKind::GenerateSitemap => "GenerateSitemap",
         stbl_core::model::TaskKind::CopyAsset { .. } => "CopyAsset",
@@ -359,15 +577,15 @@ fn render_dot(plan: &stbl_core::model::BuildPlan) -> String {
     for task in &plan.tasks {
         output.push_str(&format!(
             "  \"{}\" [label=\"{}\"];\n",
-            task.id.0.to_hex(),
+            task.id.0,
             kind_label(&task.kind)
         ));
     }
     for (from, to) in &plan.edges {
         output.push_str(&format!(
             "  \"{}\" -> \"{}\";\n",
-            from.0.to_hex(),
-            to.0.to_hex()
+            from.0,
+            to.0
         ));
     }
     output.push_str("}\n");
@@ -392,7 +610,6 @@ mod tests {
 
     fn base_cli() -> Cli {
         Cli {
-            preview: false,
             include_unpublished: false,
             unknown_header_keys: UnknownHeaderKeys::Error,
             no_writeback: false,
@@ -423,7 +640,18 @@ mod tests {
     #[test]
     fn commit_writeback_conflicts_with_no_writeback() {
         let mut cli = base_cli();
-        cli.preview = true;
+        cli.command = Command::Build {
+            articles_dir: PathBuf::from("articles"),
+            out: PathBuf::from("out"),
+            no_cache: false,
+            cache_path: None,
+            preview: true,
+            preview_host: "127.0.0.1".to_string(),
+            preview_port: 8080,
+            preview_no_open: true,
+            preview_open: false,
+            preview_index: "index.html".to_string(),
+        };
         cli.no_writeback = true;
         cli.commit_writeback = true;
         let err = validate_flags(&cli).expect_err("expected error");

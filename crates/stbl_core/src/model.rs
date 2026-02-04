@@ -9,6 +9,9 @@ use crate::header::Header;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+use crate::assets::{AssetRelPath, AssetSourceId};
+use crate::media::MediaRef;
 use std::time::SystemTime;
 
 // ----------------------------
@@ -66,8 +69,49 @@ pub struct DocId(pub blake3::Hash);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SeriesId(pub blake3::Hash);
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct TaskId(pub String);
+
+impl TaskId {
+    pub fn new(kind: &str, parts: &[&str]) -> Self {
+        let mut out = String::with_capacity(32);
+        out.push_str(kind);
+        for part in parts {
+            out.push(':');
+            out.push_str(&encode_task_id_component(part));
+        }
+        TaskId(out)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TaskId(pub blake3::Hash);
+pub struct InputFingerprint(pub [u8; 32]);
+
+impl InputFingerprint {
+    pub fn to_hex(self) -> String {
+        let mut out = String::with_capacity(64);
+        for byte in self.0 {
+            use std::fmt::Write;
+            let _ = write!(out, "{:02x}", byte);
+        }
+        out
+    }
+}
+
+fn encode_task_id_component(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for &byte in value.as_bytes() {
+        let ch = byte as char;
+        let is_safe = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' || ch == '/';
+        if is_safe {
+            out.push(ch);
+        } else {
+            use std::fmt::Write;
+            let _ = write!(out, "%{:02X}", byte);
+        }
+    }
+    out
+}
 
 // ----------------------------
 // Site content model (assembled)
@@ -79,6 +123,8 @@ pub struct Page {
     pub source_path: String,
     pub header: Header,
     pub body_markdown: String,
+    pub banner_name: Option<String>,
+    pub media_refs: Vec<MediaRef>,
 
     /// Derived/normalized output path within the site (e.g. "posts/hello-world/").
     /// Keep as a logical path, not an OS path.
@@ -151,6 +197,9 @@ pub struct SiteConfig {
     pub banner: Option<BannerConfig>,
     pub menu: Vec<MenuItem>,
     pub nav: Vec<NavItem>,
+    pub theme: ThemeConfig,
+    pub assets: AssetsConfig,
+    pub media: MediaConfig,
     pub footer: FooterConfig,
     pub people: Option<PeopleConfig>,
     pub blog: Option<BlogConfig>,
@@ -174,6 +223,48 @@ pub struct SiteMeta {
     pub language: String,
     pub timezone: Option<String>,
     pub url_style: UrlStyle,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AssetsConfig {
+    pub cache_busting: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MediaConfig {
+    pub images: ImageConfig,
+    pub video: VideoConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImageConfig {
+    pub widths: Vec<u32>,
+    pub quality: u8,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct VideoConfig {
+    pub heights: Vec<u32>,
+    pub poster_time_sec: u32,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ThemeConfig {
+    pub max_body_width: String,
+    pub breakpoints: ThemeBreakpoints,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ThemeBreakpoints {
+    pub desktop_min: String,
+    pub wide_min: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThemeVars {
+    pub max_body_width: String,
+    pub desktop_min: String,
+    pub wide_min: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -320,15 +411,56 @@ pub struct Project {
 
 #[derive(Debug, Clone)]
 pub enum TaskKind {
-    RenderPage { page: DocId },
-    RenderBlogIndex { source_page: DocId, page_no: u32 },
-    RenderSeries { series: SeriesId },
-    RenderTagIndex { tag: String },
+    RenderPage {
+        page: DocId,
+    },
+    RenderBlogIndex {
+        source_page: DocId,
+        page_no: u32,
+    },
+    RenderSeries {
+        series: SeriesId,
+    },
+    RenderTagIndex {
+        tag: String,
+    },
     RenderTagsIndex,
     RenderFrontPage,
+    GenerateVarsCss {
+        vars: ThemeVars,
+        out_rel: String,
+    },
+    CopyImageOriginal {
+        source: AssetSourceId,
+        out_rel: String,
+    },
+    ResizeImage {
+        source: AssetSourceId,
+        width: u32,
+        quality: u8,
+        out_rel: String,
+    },
+    CopyVideoOriginal {
+        source: AssetSourceId,
+        out_rel: String,
+    },
+    TranscodeVideoMp4 {
+        source: AssetSourceId,
+        height: u32,
+        out_rel: String,
+    },
+    ExtractVideoPoster {
+        source: AssetSourceId,
+        poster_time_sec: u32,
+        out_rel: String,
+    },
     GenerateRss,
     GenerateSitemap,
-    CopyAsset { rel_path: PathBuf },
+    CopyAsset {
+        rel: AssetRelPath,
+        source: AssetSourceId,
+        out_rel: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -336,7 +468,9 @@ pub enum ContentId {
     Doc(DocId),
     Series(SeriesId),
     Tag(String),
-    Asset(PathBuf),
+    Asset(AssetRelPath),
+    Image(String),
+    Video(String),
 }
 
 #[derive(Debug, Clone)]
@@ -348,6 +482,7 @@ pub struct OutputArtifact {
 pub struct BuildTask {
     pub id: TaskId,
     pub kind: TaskKind,
+    pub inputs_fingerprint: InputFingerprint,
 
     /// Logical input identifiers (docs, assets, etc.).
     pub inputs: Vec<ContentId>,

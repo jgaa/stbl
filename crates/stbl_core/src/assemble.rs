@@ -46,7 +46,8 @@ pub fn assemble_site_with_template_policy(
                 write_back.edits.push(edit);
             }
         }
-        let content_hash = blake3::hash(doc.parsed.src.source_path.as_bytes());
+        let doc_id_hash = blake3::hash(doc.parsed.src.source_path.as_bytes());
+        let content_hash = blake3::hash(doc.parsed.src.raw.as_bytes());
         let mut header = doc.parsed.header.clone();
         normalize_template(
             &mut header,
@@ -54,11 +55,15 @@ pub fn assemble_site_with_template_policy(
             &mut diagnostics,
             &doc.parsed.src.source_path,
         );
+        let media_refs = crate::media::collect_media_refs(&doc.parsed.body_markdown);
+        let banner_name = header.banner.clone();
         let page_doc = Page {
-            id: DocId(content_hash),
+            id: DocId(doc_id_hash),
             source_path: doc.parsed.src.source_path.clone(),
             header,
             body_markdown: doc.parsed.body_markdown.clone(),
+            banner_name,
+            media_refs,
             url_path: String::new(),
             content_hash,
         };

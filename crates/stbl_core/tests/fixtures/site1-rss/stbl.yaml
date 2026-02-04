@@ -1,0 +1,8 @@
+site:
+  id: "site1-rss"
+  title: "Site One RSS"
+  base_url: "https://example.com/"
+  language: "en"
+rss:
+  enabled: true
+  max_items: 10

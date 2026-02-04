@@ -6,8 +6,9 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::model::{
-    BannerConfig, FooterConfig, MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig,
-    RssConfig, SeoConfig, SiteConfig, SiteMeta, SystemConfig, UrlStyle,
+    AssetsConfig, BannerConfig, FooterConfig, ImageConfig, MediaConfig, MenuItem, NavItem,
+    PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig, SiteMeta,
+    SystemConfig, ThemeBreakpoints, ThemeConfig, UrlStyle, VideoConfig,
 };
 
 #[derive(Debug, Deserialize)]
@@ -16,6 +17,9 @@ struct SiteConfigRaw {
     banner: Option<BannerConfig>,
     #[serde(default)]
     menu: Vec<MenuItem>,
+    theme: Option<ThemeConfigRaw>,
+    assets: Option<AssetsConfigRaw>,
+    media: Option<MediaConfigRaw>,
     footer: Option<FooterConfigRaw>,
     people: Option<PeopleConfigRaw>,
     blog: Option<BlogConfigRaw>,
@@ -45,6 +49,48 @@ struct SiteMetaRaw {
 #[derive(Debug, Deserialize)]
 struct FooterConfigRaw {
     show_stbl: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct AssetsConfigRaw {
+    cache_busting: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeConfigRaw {
+    max_body_width: Option<String>,
+    breakpoints: Option<ThemeBreakpointsRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeBreakpointsRaw {
+    desktop_min: Option<String>,
+    wide_min: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaConfigRaw {
+    images: Option<ImageConfigRaw>,
+    video: Option<VideoConfigRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageConfigRaw {
+    widths: Option<Vec<u32>>,
+    quality: Option<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VideoConfigRaw {
+    heights: Option<Vec<u32>>,
+    poster_time: Option<PosterTimeRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum PosterTimeRaw {
+    Int(u32),
+    String(String),
 }
 
 #[derive(Debug, Deserialize)]
@@ -215,11 +261,83 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         }
     };
 
+    let theme = ThemeConfig {
+        max_body_width: non_empty_or_default(
+            parsed
+                .theme
+                .as_ref()
+                .and_then(|theme| theme.max_body_width.clone()),
+            "72rem",
+            "theme.max_body_width",
+        )?,
+        breakpoints: ThemeBreakpoints {
+            desktop_min: non_empty_or_default(
+                parsed
+                    .theme
+                    .as_ref()
+                    .and_then(|theme| theme.breakpoints.as_ref())
+                    .and_then(|breakpoints| breakpoints.desktop_min.clone()),
+                "768px",
+                "theme.breakpoints.desktop_min",
+            )?,
+            wide_min: non_empty_or_default(
+                parsed
+                    .theme
+                    .as_ref()
+                    .and_then(|theme| theme.breakpoints.as_ref())
+                    .and_then(|breakpoints| breakpoints.wide_min.clone()),
+                "1400px",
+                "theme.breakpoints.wide_min",
+            )?,
+        },
+    };
+
+    let media = MediaConfig {
+        images: ImageConfig {
+            widths: parsed
+                .media
+                .as_ref()
+                .and_then(|media| media.images.as_ref())
+                .and_then(|images| images.widths.clone())
+                .unwrap_or_else(default_image_widths),
+            quality: parsed
+                .media
+                .as_ref()
+                .and_then(|media| media.images.as_ref())
+                .and_then(|images| images.quality)
+                .unwrap_or(90),
+        },
+        video: VideoConfig {
+            heights: parsed
+                .media
+                .as_ref()
+                .and_then(|media| media.video.as_ref())
+                .and_then(|video| video.heights.clone())
+                .unwrap_or_else(default_video_heights),
+            poster_time_sec: parsed
+                .media
+                .as_ref()
+                .and_then(|media| media.video.as_ref())
+                .and_then(|video| video.poster_time.as_ref())
+                .map(parse_poster_time)
+                .transpose()?
+                .unwrap_or(1),
+        },
+    };
+
     Ok(SiteConfig {
         site,
         banner: parsed.banner,
         menu: parsed.menu,
         nav,
+        theme,
+        assets: AssetsConfig {
+            cache_busting: parsed
+                .assets
+                .and_then(|assets| assets.cache_busting)
+                .unwrap_or(false),
+        },
+        media,
         footer: FooterConfig {
             show_stbl: parsed
                 .footer
@@ -255,6 +373,46 @@ fn parse_nav_items(items: Vec<NavItemRaw>) -> Result<Vec<NavItem>> {
     Ok(out)
 }
 
+fn non_empty_or_default(value: Option<String>, default: &str, field: &str) -> Result<String> {
+    match value {
+        Some(text) => {
+            if text.trim().is_empty() {
+                bail!("{field} must not be empty");
+            }
+            Ok(text)
+        }
+        None => Ok(default.to_string()),
+    }
+}
+
+fn default_image_widths() -> Vec<u32> {
+    vec![
+        94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
+    ]
+}
+
+fn default_video_heights() -> Vec<u32> {
+    vec![360, 480, 720, 1080]
+}
+
+fn parse_poster_time(value: &PosterTimeRaw) -> Result<u32> {
+    match value {
+        PosterTimeRaw::Int(value) => Ok(*value),
+        PosterTimeRaw::String(text) => {
+            let trimmed = text.trim();
+            if let Some(stripped) = trimmed.strip_suffix('s') {
+                return stripped
+                    .trim()
+                    .parse::<u32>()
+                    .context("media.video.poster_time must be a positive integer");
+            }
+            trimmed
+                .parse::<u32>()
+                .context("media.video.poster_time must be a positive integer")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::load_site_config;
@@ -275,6 +433,17 @@ mod tests {
         );
         let config = load_site_config(&path).expect("config should load");
         assert_eq!(config.site.id, "demo");
+    }
+
+    #[test]
+    fn theme_defaults_apply_when_missing() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.theme.max_body_width, "72rem");
+        assert_eq!(config.theme.breakpoints.desktop_min, "768px");
+        assert_eq!(config.theme.breakpoints.wide_min, "1400px");
     }
 
     #[test]

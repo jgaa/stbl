@@ -1,4 +1,6 @@
-use stbl_core::model::{SiteConfig, SiteMeta, UrlStyle};
+use stbl_core::model::{
+    AssetsConfig, SiteConfig, SiteMeta, ThemeBreakpoints, ThemeConfig, UrlStyle,
+};
 use stbl_core::url::{Redirect, UrlMapper, UrlMapping};
 
 fn base_config(style: UrlStyle) -> SiteConfig {
@@ -16,6 +18,28 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         banner: None,
         menu: Vec::new(),
         nav: Vec::new(),
+        theme: ThemeConfig {
+            max_body_width: "72rem".to_string(),
+            breakpoints: ThemeBreakpoints {
+                desktop_min: "768px".to_string(),
+                wide_min: "1400px".to_string(),
+            },
+        },
+        assets: AssetsConfig {
+            cache_busting: false,
+        },
+        media: stbl_core::model::MediaConfig {
+            images: stbl_core::model::ImageConfig {
+                widths: vec![
+                    94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
+                ],
+                quality: 90,
+            },
+            video: stbl_core::model::VideoConfig {
+                heights: vec![360, 480, 720, 1080],
+                poster_time_sec: 1,
+            },
+        },
         footer: stbl_core::model::FooterConfig { show_stbl: true },
         people: None,
         blog: None,
@@ -45,6 +69,36 @@ fn maps_html_style_nested_key() {
 }
 
 #[test]
+fn strips_html_suffix_for_html_style() {
+    let config = base_config(UrlStyle::Html);
+    let mapper = UrlMapper::new(&config);
+    let mapping = mapper.map("download.html");
+    assert_eq!(
+        mapping,
+        UrlMapping {
+            href: "download.html".to_string(),
+            primary_output: "download.html".into(),
+            fallback: None,
+        }
+    );
+}
+
+#[test]
+fn maps_dot_to_index_for_html_style() {
+    let config = base_config(UrlStyle::Html);
+    let mapper = UrlMapper::new(&config);
+    let mapping = mapper.map("./");
+    assert_eq!(
+        mapping,
+        UrlMapping {
+            href: "index.html".to_string(),
+            primary_output: "index.html".into(),
+            fallback: None,
+        }
+    );
+}
+
+#[test]
 fn maps_pretty_style_nested_key() {
     let config = base_config(UrlStyle::Pretty);
     let mapper = UrlMapper::new(&config);
@@ -54,6 +108,21 @@ fn maps_pretty_style_nested_key() {
         UrlMapping {
             href: "a/b/c/".to_string(),
             primary_output: "a/b/c/index.html".into(),
+            fallback: None,
+        }
+    );
+}
+
+#[test]
+fn strips_html_suffix_for_pretty_style() {
+    let config = base_config(UrlStyle::Pretty);
+    let mapper = UrlMapper::new(&config);
+    let mapping = mapper.map("download.html");
+    assert_eq!(
+        mapping,
+        UrlMapping {
+            href: "download/".to_string(),
+            primary_output: "download/index.html".into(),
             fallback: None,
         }
     );

@@ -316,6 +316,28 @@ mod tests {
             banner: None,
             menu: Vec::new(),
             nav: Vec::new(),
+            theme: crate::model::ThemeConfig {
+                max_body_width: "72rem".to_string(),
+                breakpoints: crate::model::ThemeBreakpoints {
+                    desktop_min: "768px".to_string(),
+                    wide_min: "1400px".to_string(),
+                },
+            },
+            assets: crate::model::AssetsConfig {
+                cache_busting: false,
+            },
+            media: crate::model::MediaConfig {
+                images: crate::model::ImageConfig {
+                    widths: vec![
+                        94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
+                    ],
+                    quality: 90,
+                },
+                video: crate::model::VideoConfig {
+                    heights: vec![360, 480, 720, 1080],
+                    poster_time_sec: 1,
+                },
+            },
             footer: crate::model::FooterConfig { show_stbl: true },
             people: None,
             blog: None,
@@ -346,6 +368,8 @@ mod tests {
             source_path: "articles/published.md".to_string(),
             header: published_header,
             body_markdown: "Body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: "published".to_string(),
             content_hash: blake3::hash(b"content"),
         };
@@ -354,6 +378,8 @@ mod tests {
             source_path: "articles/draft.md".to_string(),
             header: draft_header,
             body_markdown: "Draft body".to_string(),
+            banner_name: None,
+            media_refs: Vec::new(),
             url_path: "draft".to_string(),
             content_hash: blake3::hash(b"draft"),
         };

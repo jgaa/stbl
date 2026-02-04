@@ -1,0 +1,3 @@
+/* Desktop presentation: show desktop nav, hide mobile nav */
+.nav-desktop { display: block; }
+.nav-mobile { display: none; }
