@@ -1,10 +1,22 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
+use std::collections::BTreeMap;
 
-use crate::media::{MediaRef, parse_media_destination};
+use crate::media::{
+    ImageVariantIndex, ImageVariantSet, MediaRef, fallback_format, format_extension, format_mime,
+    image_output_formats, parse_media_destination,
+};
+use crate::model::{ImageFormatMode, ImageOutputFormat};
 
 pub struct RenderOptions<'a> {
     pub rel_prefix: &'a str,
     pub video_heights: &'a [u32],
+    pub image_widths: &'a [u32],
+    pub max_body_width: &'a str,
+    pub desktop_min: &'a str,
+    pub wide_min: &'a str,
+    pub image_format_mode: ImageFormatMode,
+    pub image_alpha: Option<&'a BTreeMap<String, bool>>,
+    pub image_variants: Option<&'a ImageVariantIndex>,
 }
 
 pub fn render_markdown_to_html(md: &str) -> String {
@@ -19,6 +31,7 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
     let parser = Parser::new_ext(md, Options::empty());
     let mut events = Vec::new();
     let mut video_pending: Option<VideoPending> = None;
+    let mut image_pending: Option<ImagePending> = None;
 
     for event in parser {
         match event {
@@ -30,6 +43,11 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
             }) => {
                 if dest_url.starts_with("video/") {
                     video_pending = Some(VideoPending {
+                        dest_url: dest_url.to_string(),
+                        alt: String::new(),
+                    });
+                } else if dest_url.starts_with("images/") {
+                    image_pending = Some(ImagePending {
                         dest_url: dest_url.to_string(),
                         alt: String::new(),
                     });
@@ -46,6 +64,9 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
                 if let Some(video) = video_pending.take() {
                     let html = render_video_html(&video.dest_url, &video.alt, options);
                     events.push(Event::Html(html.into()));
+                } else if let Some(image) = image_pending.take() {
+                    let html = render_image_html(&image.dest_url, &image.alt, options);
+                    events.push(Event::Html(html.into()));
                 } else {
                     events.push(Event::End(TagEnd::Image));
                 }
@@ -53,6 +74,8 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
             Event::Text(text) | Event::Code(text) => {
                 if let Some(video) = video_pending.as_mut() {
                     video.alt.push_str(&text);
+                } else if let Some(image) = image_pending.as_mut() {
+                    image.alt.push_str(&text);
                 } else {
                     events.push(Event::Text(text));
                 }
@@ -62,12 +85,16 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
                     if !video.alt.ends_with(' ') {
                         video.alt.push(' ');
                     }
+                } else if let Some(image) = image_pending.as_mut() {
+                    if !image.alt.ends_with(' ') {
+                        image.alt.push(' ');
+                    }
                 } else {
                     events.push(event);
                 }
             }
             _ => {
-                if video_pending.is_none() {
+                if video_pending.is_none() && image_pending.is_none() {
                     events.push(event);
                 }
             }
@@ -82,6 +109,234 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
 struct VideoPending {
     dest_url: String,
     alt: String,
+}
+
+struct ImagePending {
+    dest_url: String,
+    alt: String,
+}
+
+pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
+    let Some(MediaRef::Image(image)) = parse_media_destination(dest_url, alt) else {
+        return render_plain_image(dest_url, alt);
+    };
+    let path = image.path.raw.as_str();
+    let rel = path.strip_prefix("images/").unwrap_or(path);
+    let is_svg = rel.to_lowercase().ends_with(".svg");
+    let has_alpha = image_has_alpha(path, options);
+    let fallback = fallback_format(has_alpha);
+    let variants = options
+        .image_variants
+        .and_then(|index| index.get(path));
+    let (src, srcset) = if is_svg {
+        (
+            format!("{}artifacts/images/{rel}", options.rel_prefix),
+            None,
+        )
+    } else if let Some(variants) = variants {
+        let src = fallback_src_from_variants(variants, options.rel_prefix);
+        let src = if src.is_empty() {
+            src_for_format(
+                rel,
+                options.image_widths,
+                format_extension(fallback),
+                options.rel_prefix,
+            )
+        } else {
+            src
+        };
+        (
+            src,
+            srcset_for_variant_format(variants, fallback, options.rel_prefix),
+        )
+    } else {
+        (
+            src_for_format(
+                rel,
+                options.image_widths,
+                format_extension(fallback),
+                options.rel_prefix,
+            ),
+            srcset_for_format(
+                rel,
+                options.image_widths,
+                format_extension(fallback),
+                options.rel_prefix,
+            ),
+        )
+    };
+    let sizes = image_sizes(&image.attrs, options);
+    let (class_attr, style_attr) = image_class_style(&image.attrs);
+    let alt = escape_attr(alt.trim());
+
+    let mut html = String::new();
+    html.push_str("<picture");
+    if let Some(class_attr) = class_attr.as_ref() {
+        html.push_str(" class=\"");
+        html.push_str(class_attr);
+        html.push('"');
+    }
+    html.push('>');
+    if !is_svg {
+        let formats = image_output_formats(options.image_format_mode, has_alpha);
+        for format in formats
+            .iter()
+            .copied()
+            .filter(|format| matches!(format, ImageOutputFormat::Avif | ImageOutputFormat::Webp))
+        {
+            let srcset = if let Some(variants) = variants {
+                srcset_for_variant_format(variants, format, options.rel_prefix)
+            } else {
+                srcset_for_format(
+                    rel,
+                    options.image_widths,
+                    format_extension(format),
+                    options.rel_prefix,
+                )
+            };
+            if let Some(srcset) = srcset {
+                html.push_str("<source type=\"");
+                html.push_str(format_mime(format));
+                html.push_str("\" srcset=\"");
+                html.push_str(&srcset);
+                html.push_str("\" sizes=\"");
+                html.push_str(&sizes);
+                html.push_str("\">");
+            }
+        }
+    }
+    html.push_str("<img src=\"");
+    html.push_str(&src);
+    html.push('"');
+    html.push_str(" alt=\"");
+    html.push_str(&alt);
+    html.push('"');
+    if let Some(srcset) = srcset {
+        html.push_str(" srcset=\"");
+        html.push_str(&srcset);
+        html.push('"');
+        html.push_str(" sizes=\"");
+        html.push_str(&sizes);
+        html.push('"');
+    }
+    if let Some(style_attr) = style_attr.as_ref() {
+        html.push_str(" style=\"");
+        html.push_str(style_attr);
+        html.push('"');
+    }
+    html.push_str(" loading=\"lazy\" decoding=\"async\">");
+    html.push_str("</picture>");
+    html
+}
+
+fn srcset_for_variant_format(
+    variants: &BTreeMap<u32, ImageVariantSet>,
+    format: ImageOutputFormat,
+    rel_prefix: &str,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    for (width, set) in variants {
+        let path = match format {
+            ImageOutputFormat::Avif => set.avif.as_ref(),
+            ImageOutputFormat::Webp => set.webp.as_ref(),
+            ImageOutputFormat::Jpeg | ImageOutputFormat::Png => {
+                if set.fallback.format == format {
+                    Some(&set.fallback.path)
+                } else {
+                    None
+                }
+            }
+        };
+        if let Some(path) = path {
+            parts.push(format!("{rel_prefix}{path} {width}w"));
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+fn fallback_src_from_variants(
+    variants: &BTreeMap<u32, ImageVariantSet>,
+    rel_prefix: &str,
+) -> String {
+    if let Some((_, set)) = variants.iter().next_back() {
+        return format!("{rel_prefix}{}", set.fallback.path);
+    }
+    String::new()
+}
+
+fn srcset_for_format(
+    rel: &str,
+    widths: &[u32],
+    ext: &str,
+    rel_prefix: &str,
+) -> Option<String> {
+    let mut widths = widths.to_vec();
+    widths.sort_unstable();
+    widths.dedup();
+    let parts = widths
+        .into_iter()
+        .filter(|width| *width > 0)
+        .map(|width| {
+            format!(
+                "{}artifacts/images/_scale_{width}/{} {width}w",
+                rel_prefix,
+                replace_extension(rel, ext),
+            )
+        })
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(", "))
+    }
+}
+
+fn src_for_format(rel: &str, widths: &[u32], ext: &str, rel_prefix: &str) -> String {
+    let max_width = widths.iter().copied().filter(|width| *width > 0).max();
+    match max_width {
+        Some(width) => format!(
+            "{}artifacts/images/_scale_{width}/{}",
+            rel_prefix,
+            replace_extension(rel, ext),
+        ),
+        None => format!("{}artifacts/images/{}", rel_prefix, rel),
+    }
+}
+
+fn image_has_alpha(path: &str, options: &RenderOptions<'_>) -> bool {
+    if let Some(map) = options.image_alpha {
+        if let Some(value) = map.get(path) {
+            return *value;
+        }
+    }
+    match path.rsplit_once('.') {
+        Some((_, ext)) => matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "png" | "apng" | "gif"
+        ),
+        None => false,
+    }
+}
+
+fn replace_extension(path: &str, ext: &str) -> String {
+    match path.rsplit_once('.') {
+        Some((stem, _)) => format!("{stem}.{ext}"),
+        None => format!("{path}.{ext}"),
+    }
+}
+
+fn render_plain_image(dest_url: &str, alt: &str) -> String {
+    let mut html = String::new();
+    html.push_str("<img src=\"");
+    html.push_str(dest_url);
+    html.push_str("\" alt=\"");
+    html.push_str(&escape_attr(alt.trim()));
+    html.push_str("\">");
+    html
 }
 
 fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
@@ -194,6 +449,48 @@ fn ordered_heights(heights: &[u32], prefer_p: u16) -> Vec<u32> {
     } else {
         sorted
     }
+}
+
+fn image_sizes(attrs: &[crate::media::ImageAttr], options: &RenderOptions<'_>) -> String {
+    for attr in attrs {
+        if let crate::media::ImageAttr::WidthPercent(percent) = attr {
+            return format!("{percent}vw");
+        }
+    }
+    if attrs
+        .iter()
+        .any(|attr| matches!(attr, crate::media::ImageAttr::Banner))
+    {
+        return "100vw".to_string();
+    }
+    format!(
+        "(min-width: {}) {}, (min-width: {}) {}, 100vw",
+        options.wide_min,
+        options.max_body_width,
+        options.desktop_min,
+        options.max_body_width
+    )
+}
+
+fn image_class_style(attrs: &[crate::media::ImageAttr]) -> (Option<String>, Option<String>) {
+    let mut class_attr = None;
+    let mut style_attr = None;
+    let mut width_percent = None;
+    for attr in attrs {
+        match attr {
+            crate::media::ImageAttr::Banner => {
+                class_attr = Some("banner-image".to_string());
+            }
+            crate::media::ImageAttr::WidthPercent(percent) => {
+                width_percent = Some(*percent);
+            }
+            _ => {}
+        }
+    }
+    if let Some(percent) = width_percent {
+        style_attr = Some(format!("width: {percent}%; height: auto;"));
+    }
+    (class_attr, style_attr)
 }
 
 fn escape_attr(text: &str) -> String {

@@ -66,7 +66,7 @@ pub fn logical_key_from_source_path(source_path: &str) -> String {
     let without_prefix = normalized
         .strip_prefix("articles/")
         .unwrap_or(normalized.as_str());
-    without_extension(without_prefix)
+    logical_key_without_hidden_dirs(without_prefix)
 }
 
 fn without_extension(path: &str) -> String {
@@ -78,5 +78,26 @@ fn without_extension(path: &str) -> String {
         }
     } else {
         path.to_string_lossy().to_string()
+    }
+}
+
+fn logical_key_without_hidden_dirs(path: &str) -> String {
+    let path = std::path::Path::new(path);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("");
+    if stem.is_empty() {
+        return without_extension(path.to_string_lossy().as_ref());
+    }
+    let parent = path.parent().and_then(|value| value.to_str()).unwrap_or("");
+    let mut parts: Vec<&str> = parent.split('/').filter(|part| !part.is_empty()).collect();
+    while matches!(parts.first(), Some(part) if part.starts_with('_')) {
+        parts.remove(0);
+    }
+    if parts.is_empty() {
+        stem.to_string()
+    } else {
+        format!("{}/{}", parts.join("/"), stem)
     }
 }

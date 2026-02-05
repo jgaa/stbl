@@ -82,6 +82,21 @@ impl HeaderWarning {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HeaderNotice {
+    SitemapPriorityDefault,
+}
+
+impl HeaderNotice {
+    pub fn message(&self) -> String {
+        match self {
+            HeaderNotice::SitemapPriorityDefault => {
+                "sitemap-priority=-1 treated as default (unset)".to_string()
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TemplateId {
     Landing,
@@ -94,6 +109,7 @@ pub enum TemplateId {
 pub struct HeaderParseResult {
     pub header: Header,
     pub warnings: Vec<HeaderWarning>,
+    pub notices: Vec<HeaderNotice>,
 }
 
 #[derive(Debug, Error)]
@@ -122,6 +138,7 @@ pub fn parse_header(
 ) -> Result<HeaderParseResult, HeaderError> {
     let mut header = Header::default();
     let mut warnings = Vec::new();
+    let mut notices = Vec::new();
     let mut saw_published = false;
     for raw_line in input.lines() {
         if raw_line.trim().is_empty() {
@@ -167,7 +184,8 @@ pub fn parse_header(
             "comments" => header.comments = non_empty(value),
             "part" => header.part = non_empty(value),
             "sitemap-priority" => {
-                header.sitemap_priority = parse_sitemap_priority(value, &mut warnings)
+                header.sitemap_priority =
+                    parse_sitemap_priority(value, &mut warnings, &mut notices)
             }
             "sitemap-changefreq" => header.sitemap_changefreq = parse_sitemap_changefreq(value)?,
             "published" => {
@@ -212,7 +230,11 @@ pub fn parse_header(
         header.published_needs_writeback = true;
     }
 
-    Ok(HeaderParseResult { header, warnings })
+    Ok(HeaderParseResult {
+        header,
+        warnings,
+        notices,
+    })
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -280,9 +302,17 @@ fn parse_datetime(value: &str, key: &str) -> Result<Option<i64>, HeaderError> {
     })
 }
 
-fn parse_sitemap_priority(value: &str, warnings: &mut Vec<HeaderWarning>) -> Option<String> {
+fn parse_sitemap_priority(
+    value: &str,
+    warnings: &mut Vec<HeaderWarning>,
+    notices: &mut Vec<HeaderNotice>,
+) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed == "-1" {
+        notices.push(HeaderNotice::SitemapPriorityDefault);
         return None;
     }
     let parsed = trimmed
@@ -485,11 +515,24 @@ banner: https://example.com/#frag
             parsed.warnings,
             vec![HeaderWarning::InvalidSitemapPriority("1.5".to_string())]
         );
+        assert!(parsed.notices.is_empty());
         assert!(parsed.header.sitemap_priority.is_none());
 
         let err = parse_header("sitemap-changefreq: often\n", UnknownKeyPolicy::Error)
             .expect_err("expected error");
         assert!(err.to_string().contains("sitemap"));
+    }
+
+    #[test]
+    fn sitemap_priority_default_minus_one_is_ignored() {
+        let parsed =
+            parse_header("sitemap-priority: -1\n", UnknownKeyPolicy::Error).expect("parse");
+        assert!(parsed.warnings.is_empty());
+        assert_eq!(
+            parsed.notices,
+            vec![HeaderNotice::SitemapPriorityDefault]
+        );
+        assert!(parsed.header.sitemap_priority.is_none());
     }
 
     #[test]

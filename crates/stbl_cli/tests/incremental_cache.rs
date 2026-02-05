@@ -18,11 +18,17 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
     let out_dir = temp.path().join("out");
     let cache_path = temp.path().join("cache.sqlite");
 
-    let project = build_project(&source_dir);
+    let mut project = build_project(&source_dir);
     let site_assets_root = source_dir.join("assets");
     let (asset_index, asset_lookup) =
         assets::discover_assets(&site_assets_root).expect("discover assets");
     let (image_plan, image_lookup) = media::discover_images(&project).expect("discover images");
+    project.image_alpha = image_plan.alpha.clone();
+    project.image_variants = stbl_core::media::build_image_variant_index(
+        &image_plan,
+        &project.config.media.images.widths,
+        project.config.media.images.format_mode,
+    );
     let (video_plan, video_lookup) = media::discover_videos(&project).expect("discover videos");
     let asset_manifest = stbl_core::assets::build_asset_manifest(
         &asset_index,
@@ -40,6 +46,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &video_lookup,
         &asset_manifest,
         Some(&mut cache),
+        None,
     )
     .expect("execute plan");
     assert!(report_first.executed > 0);
@@ -53,6 +60,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &video_lookup,
         &asset_manifest,
         Some(&mut cache),
+        None,
     )
     .expect("execute plan");
     assert_eq!(report_second.executed, 0);
@@ -71,6 +79,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &video_lookup,
         &asset_manifest,
         Some(&mut cache),
+        None,
     )
     .expect("execute plan");
     assert!(report_third.executed >= 1);
@@ -89,13 +98,15 @@ fn fixture_root(name: &str) -> PathBuf {
 fn build_project(root: &Path) -> Project {
     let config_path = root.join("stbl.yaml");
     let config = load_site_config(&config_path).expect("load config");
-    let docs = walk::walk_content(root, &root.join("articles"), UnknownKeyPolicy::Error)
+    let docs = walk::walk_content(root, &root.join("articles"), UnknownKeyPolicy::Error, false)
         .expect("walk content");
     let content = assemble_site(docs).expect("assemble site");
     Project {
         root: root.to_path_buf(),
         config,
         content,
+        image_alpha: std::collections::BTreeMap::new(),
+        image_variants: Default::default(),
     }
 }
 

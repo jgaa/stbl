@@ -231,7 +231,10 @@ mod tests {
     use crate::assemble::assemble_site;
     use crate::config::load_site_config;
     use crate::header::UnknownKeyPolicy;
-    use crate::model::{Page, Project, SiteConfig, SiteContent, SiteMeta, UrlStyle};
+    use crate::model::{
+        ImageFormatMode, Page, Project, SiteConfig, SiteContent, SiteMeta, ThemeColorOverrides,
+        ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+    };
     use std::path::{Path, PathBuf};
     use std::time::SystemTime;
 
@@ -317,11 +320,15 @@ mod tests {
             menu: Vec::new(),
             nav: Vec::new(),
             theme: crate::model::ThemeConfig {
+                variant: "default".to_string(),
                 max_body_width: "72rem".to_string(),
                 breakpoints: crate::model::ThemeBreakpoints {
                     desktop_min: "768px".to_string(),
                     wide_min: "1400px".to_string(),
                 },
+                colors: ThemeColorOverrides::default(),
+                nav: ThemeNavOverrides::default(),
+                wide_background: ThemeWideBackgroundOverrides::default(),
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,
@@ -332,6 +339,7 @@ mod tests {
                         94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
                     ],
                     quality: 90,
+                    format_mode: ImageFormatMode::Normal,
                 },
                 video: crate::model::VideoConfig {
                     heights: vec![360, 480, 720, 1080],
@@ -393,6 +401,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
         let mapper = UrlMapper::new(&project.config);
         let rss = render_rss(&project, &mapper);
@@ -509,6 +519,8 @@ mod tests {
             root,
             config,
             content,
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         }
     }
 

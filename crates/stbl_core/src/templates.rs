@@ -64,6 +64,7 @@ pub fn render_page_with_series_nav(
 ) -> Result<String> {
     let rel = rel_prefix_for_href(current_href);
     let body_html = render_markdown_with_media(project, &page.body_markdown, &rel);
+    let banner_html = render_banner_html(project, page, &rel);
     let page_title = page_title_or_filename(project, page);
     let authors = page.header.authors.clone();
     let tags = page.header.tags.clone();
@@ -78,6 +79,7 @@ pub fn render_page_with_series_nav(
         updated,
         tags,
         body_html,
+        banner_html,
         asset_manifest,
         current_href,
         build_date_ymd,
@@ -105,6 +107,7 @@ pub fn render_markdown_page(
         None,
         Vec::new(),
         body_html,
+        None,
         asset_manifest,
         current_href,
         build_date_ymd,
@@ -333,6 +336,7 @@ fn render_with_context(
     updated: Option<String>,
     tags: Vec<String>,
     body_html: String,
+    banner_html: Option<String>,
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
@@ -363,6 +367,7 @@ fn render_with_context(
             updated => updated,
             tags => tags,
             body_html => body_html,
+            banner_html => banner_html,
             series_nav => series_nav,
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
@@ -376,8 +381,43 @@ fn render_markdown_with_media(project: &Project, markdown: &str, rel: &str) -> S
     let options = RenderOptions {
         rel_prefix: rel,
         video_heights: &project.config.media.video.heights,
+        image_widths: &project.config.media.images.widths,
+        max_body_width: &project.config.theme.max_body_width,
+        desktop_min: &project.config.theme.breakpoints.desktop_min,
+        wide_min: &project.config.theme.breakpoints.wide_min,
+        image_format_mode: project.config.media.images.format_mode,
+        image_alpha: Some(&project.image_alpha),
+        image_variants: Some(&project.image_variants),
     };
     render_markdown_to_html_with_media(markdown, &options)
+}
+
+fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<String> {
+    let banner = page.banner_name.as_ref()?;
+    let mut banner_path = banner.clone();
+    if !banner_path.starts_with("images/") {
+        if banner_path.contains('/') || banner_path.contains('\\') {
+            return None;
+        }
+        banner_path = format!("images/{banner_path}");
+    }
+    let options = RenderOptions {
+        rel_prefix: rel,
+        video_heights: &project.config.media.video.heights,
+        image_widths: &project.config.media.images.widths,
+        max_body_width: &project.config.theme.max_body_width,
+        desktop_min: &project.config.theme.breakpoints.desktop_min,
+        wide_min: &project.config.theme.breakpoints.wide_min,
+        image_format_mode: project.config.media.images.format_mode,
+        image_alpha: Some(&project.image_alpha),
+        image_variants: Some(&project.image_variants),
+    };
+    let alt = page.header.title.clone().unwrap_or_default();
+    Some(crate::render::render_image_html(
+        &format!("{banner_path};banner"),
+        &alt,
+        &options,
+    ))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -903,6 +943,8 @@ mod tests {
             root: PathBuf::from("."),
             config,
             content,
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         }
     }
 

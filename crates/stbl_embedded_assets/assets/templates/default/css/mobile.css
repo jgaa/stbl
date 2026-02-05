@@ -2,12 +2,24 @@
 .nav-desktop { display: none; }
 .nav-mobile { display: block; }
 
+header {
+  background: var(--c-nav-bg);
+  color: var(--c-nav-fg);
+  border-bottom: 1px solid var(--c-nav-border);
+}
+
+header a { color: var(--c-nav-fg); }
+header a:hover { color: var(--c-nav-fg); }
+
 .nav-mobile details.menu > summary {
   cursor: pointer;
   user-select: none;
   display: inline-block;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
+  background: var(--c-nav-bg);
+  color: var(--c-nav-fg);
+  border: 1px solid var(--c-nav-border);
 }
 
 .nav-mobile details.menu[open] .menu-overlay {
@@ -16,6 +28,8 @@
   padding: 4rem 1.25rem 1.25rem;
   overflow: auto;
   z-index: 999;
+  background: var(--c-bg);
+  color: var(--c-nav-fg);
 }
 
 .nav-mobile .menu-overlay ul {
@@ -26,4 +40,5 @@
 
 .nav-mobile .menu-overlay a {
   font-size: 1.25rem;
+  color: var(--c-nav-fg);
 }

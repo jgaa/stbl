@@ -2,7 +2,10 @@ use pulldown_cmark::{Event, Parser, Tag, TagEnd};
 use std::collections::BTreeMap;
 
 use crate::assets::AssetSourceId;
-use crate::model::{BuildTask, ContentId, InputFingerprint, OutputArtifact, TaskId, TaskKind};
+use crate::model::{
+    BuildTask, ContentId, ImageFormatMode, ImageOutputFormat, InputFingerprint, OutputArtifact,
+    TaskId, TaskKind,
+};
 use blake3::{Hash, Hasher};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -55,7 +58,24 @@ pub enum MediaRef {
 pub struct ImagePlanInput {
     pub sources: BTreeMap<String, AssetSourceId>,
     pub hashes: BTreeMap<String, Hash>,
+    pub alpha: BTreeMap<String, bool>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageVariantFallback {
+    pub path: String,
+    pub format: ImageOutputFormat,
+    pub mime: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImageVariantSet {
+    pub avif: Option<String>,
+    pub webp: Option<String>,
+    pub fallback: ImageVariantFallback,
+}
+
+pub type ImageVariantIndex = BTreeMap<String, BTreeMap<u32, ImageVariantSet>>;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VideoPlanInput {
@@ -158,6 +178,7 @@ pub fn plan_image_tasks(
     images: &ImagePlanInput,
     widths: &[u32],
     quality: u8,
+    format_mode: ImageFormatMode,
     render_config_hash: [u8; 32],
 ) -> Vec<BuildTask> {
     let mut tasks = Vec::new();
@@ -172,6 +193,7 @@ pub fn plan_image_tasks(
             .get(&path)
             .copied()
             .expect("image hash exists");
+        let has_alpha = images.alpha.get(&path).copied().unwrap_or(false);
         let rel = path.strip_prefix("images/").unwrap_or(path.as_str());
         let original_out = format!("artifacts/images/{rel}");
         let copy_kind = TaskKind::CopyImageOriginal {
@@ -195,37 +217,153 @@ pub fn plan_image_tasks(
         if is_svg {
             continue;
         }
+        let formats = image_output_formats(format_mode, has_alpha);
         for width in &widths {
             if *width == 0 {
                 continue;
             }
-            let out_rel = format!("artifacts/images/_scale_{width}/{rel}");
-            let width_label = format!("w={width}");
-            let quality_label = format!("q={quality}");
-            let kind = TaskKind::ResizeImage {
-                source: source.clone(),
-                width: *width,
-                quality,
-                out_rel: out_rel.clone(),
-            };
-            let id = TaskId::new(
-                "img_scale",
-                &[path.as_str(), &width_label, &quality_label],
-            );
-            let fingerprint =
-                fingerprint_image_task(&id, "ResizeImage", render_config_hash, input_hash);
-            tasks.push(BuildTask {
-                id,
-                kind,
-                inputs_fingerprint: fingerprint,
-                inputs: vec![ContentId::Image(path.clone())],
-                outputs: vec![OutputArtifact {
-                    path: std::path::PathBuf::from(out_rel),
-                }],
-            });
+            for format in &formats {
+                let ext = format_extension(*format);
+                let out_rel = format!(
+                    "artifacts/images/_scale_{width}/{}",
+                    replace_extension(rel, ext)
+                );
+                let width_label = format!("w={width}");
+                let quality_label = format!("q={quality}");
+                let format_label = format!("f={}", ext);
+                let kind = TaskKind::ResizeImage {
+                    source: source.clone(),
+                    width: *width,
+                    quality,
+                    format: *format,
+                    out_rel: out_rel.clone(),
+                };
+                let id = TaskId::new(
+                    "img_scale",
+                    &[path.as_str(), &width_label, &quality_label, &format_label],
+                );
+                let fingerprint =
+                    fingerprint_image_task(&id, "ResizeImage", render_config_hash, input_hash);
+                tasks.push(BuildTask {
+                    id,
+                    kind,
+                    inputs_fingerprint: fingerprint,
+                    inputs: vec![ContentId::Image(path.clone())],
+                    outputs: vec![OutputArtifact {
+                        path: std::path::PathBuf::from(out_rel),
+                    }],
+                });
+            }
         }
     }
     tasks
+}
+
+pub fn build_image_variant_index(
+    images: &ImagePlanInput,
+    widths: &[u32],
+    format_mode: ImageFormatMode,
+) -> ImageVariantIndex {
+    let mut index = BTreeMap::new();
+    let mut widths = widths.to_vec();
+    widths.sort_unstable();
+    widths.dedup();
+    let mut paths = images.sources.keys().cloned().collect::<Vec<_>>();
+    paths.sort();
+    for path in paths {
+        let is_svg = path.to_ascii_lowercase().ends_with(".svg");
+        if is_svg {
+            continue;
+        }
+        let has_alpha = images.alpha.get(&path).copied().unwrap_or(false);
+        let rel = path.strip_prefix("images/").unwrap_or(path.as_str());
+        let formats = image_output_formats(format_mode, has_alpha);
+        let fallback = fallback_format(has_alpha);
+        let mut per_width = BTreeMap::new();
+        for width in widths.iter().copied().filter(|width| *width > 0) {
+            let fallback_path = scaled_image_path(rel, width, fallback);
+            let mut set = ImageVariantSet {
+                avif: None,
+                webp: None,
+                fallback: ImageVariantFallback {
+                    path: fallback_path,
+                    format: fallback,
+                    mime: format_mime(fallback),
+                },
+            };
+            for format in &formats {
+                let path = scaled_image_path(rel, width, *format);
+                match format {
+                    ImageOutputFormat::Avif => set.avif = Some(path),
+                    ImageOutputFormat::Webp => set.webp = Some(path),
+                    ImageOutputFormat::Jpeg | ImageOutputFormat::Png => {}
+                }
+            }
+            per_width.insert(width, set);
+        }
+        if !per_width.is_empty() {
+            index.insert(path, per_width);
+        }
+    }
+    index
+}
+
+pub fn image_output_formats(
+    mode: ImageFormatMode,
+    has_alpha: bool,
+) -> Vec<ImageOutputFormat> {
+    let mut formats = Vec::new();
+    if mode == ImageFormatMode::Normal && cfg!(feature = "avif") {
+        formats.push(ImageOutputFormat::Avif);
+    }
+    formats.push(ImageOutputFormat::Webp);
+    formats.push(if has_alpha {
+        ImageOutputFormat::Png
+    } else {
+        ImageOutputFormat::Jpeg
+    });
+    formats
+}
+
+pub fn fallback_format(has_alpha: bool) -> ImageOutputFormat {
+    if has_alpha {
+        ImageOutputFormat::Png
+    } else {
+        ImageOutputFormat::Jpeg
+    }
+}
+
+pub fn format_extension(format: ImageOutputFormat) -> &'static str {
+    match format {
+        ImageOutputFormat::Avif => "avif",
+        ImageOutputFormat::Webp => "webp",
+        ImageOutputFormat::Jpeg => "jpg",
+        ImageOutputFormat::Png => "png",
+    }
+}
+
+pub fn format_mime(format: ImageOutputFormat) -> &'static str {
+    match format {
+        ImageOutputFormat::Avif => "image/avif",
+        ImageOutputFormat::Webp => "image/webp",
+        ImageOutputFormat::Jpeg => "image/jpeg",
+        ImageOutputFormat::Png => "image/png",
+    }
+}
+
+fn replace_extension(path: &str, ext: &str) -> String {
+    match path.rsplit_once('.') {
+        Some((stem, _)) => format!("{stem}.{ext}"),
+        None => format!("{path}.{ext}"),
+    }
+}
+
+fn scaled_image_path(rel: &str, width: u32, format: ImageOutputFormat) -> String {
+    let ext = format_extension(format);
+    format!(
+        "artifacts/images/_scale_{width}/{}",
+        replace_extension(rel, ext)
+    )
 }
 
 pub fn plan_video_tasks(

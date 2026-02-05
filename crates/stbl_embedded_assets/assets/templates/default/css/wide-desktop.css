@@ -3,4 +3,23 @@ body { background: transparent; }
 
 .wide-bg {
   min-height: 100vh;
+  background-color: var(--c-wide-bg);
+  position: relative;
+}
+
+.wide-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--wide-bg-image);
+  background-repeat: var(--wide-bg-repeat);
+  background-size: var(--wide-bg-size);
+  background-position: var(--wide-bg-position);
+  opacity: var(--wide-bg-opacity);
+  pointer-events: none;
+}
+
+.wide-bg > * {
+  position: relative;
+  z-index: 1;
 }

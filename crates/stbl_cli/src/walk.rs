@@ -13,6 +13,7 @@ pub fn walk_content(
     root: &Path,
     articles_dir: &Path,
     unknown_key_policy: UnknownKeyPolicy,
+    verbose: bool,
 ) -> Result<Vec<DiscoveredDoc>> {
     let articles_dir = if articles_dir.is_absolute() {
         articles_dir.to_path_buf()
@@ -66,6 +67,7 @@ pub fn walk_content(
                 let parsed = parse_header(text, unknown_key_policy)
                     .with_context(|| format!("failed to parse header in {}", path.display()))?;
                 emit_header_warnings(&parsed.warnings, &path);
+                emit_header_notices(&parsed.notices, &path, verbose);
                 parsed.header
             }
             None => stbl_core::header::Header::default(),
@@ -106,6 +108,15 @@ pub fn walk_content(
 fn emit_header_warnings(warnings: &[HeaderWarning], path: &Path) {
     for warning in warnings {
         eprintln!("warning: {}: {}", path.display(), warning.message());
+    }
+}
+
+fn emit_header_notices(notices: &[stbl_core::header::HeaderNotice], path: &Path, verbose: bool) {
+    if !verbose {
+        return;
+    }
+    for notice in notices {
+        eprintln!("debug: {}: {}", path.display(), notice.message());
     }
 }
 
@@ -241,8 +252,8 @@ mod tests {
         write_file(&articles.join("_grouped/part.md"), "title: Part\n\nBody");
         write_file(&articles.join("_ignored.md"), "title: Ignore\n\nBody");
 
-        let docs =
-            walk_content(root, &articles, UnknownKeyPolicy::Error).expect("walk should succeed");
+        let docs = walk_content(root, &articles, UnknownKeyPolicy::Error, false)
+            .expect("walk should succeed");
         assert_eq!(docs.len(), 6);
 
         let mut by_path = docs

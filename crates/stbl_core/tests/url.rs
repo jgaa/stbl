@@ -1,7 +1,8 @@
 use stbl_core::model::{
-    AssetsConfig, SiteConfig, SiteMeta, ThemeBreakpoints, ThemeConfig, UrlStyle,
+    AssetsConfig, SiteConfig, SiteMeta, ThemeBreakpoints, ThemeConfig, ThemeColorOverrides,
+    ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, ImageFormatMode,
 };
-use stbl_core::url::{Redirect, UrlMapper, UrlMapping};
+use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path};
 
 fn base_config(style: UrlStyle) -> SiteConfig {
     SiteConfig {
@@ -19,11 +20,15 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         menu: Vec::new(),
         nav: Vec::new(),
         theme: ThemeConfig {
+            variant: "default".to_string(),
             max_body_width: "72rem".to_string(),
             breakpoints: ThemeBreakpoints {
                 desktop_min: "768px".to_string(),
                 wide_min: "1400px".to_string(),
             },
+            colors: ThemeColorOverrides::default(),
+            nav: ThemeNavOverrides::default(),
+            wide_background: ThemeWideBackgroundOverrides::default(),
         },
         assets: AssetsConfig {
             cache_busting: false,
@@ -34,6 +39,7 @@ fn base_config(style: UrlStyle) -> SiteConfig {
                     94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
                 ],
                 quality: 90,
+                format_mode: ImageFormatMode::Normal,
             },
             video: stbl_core::model::VideoConfig {
                 heights: vec![360, 480, 720, 1080],
@@ -143,5 +149,25 @@ fn maps_pretty_with_fallback_style_nested_key() {
                 to_href: "a/b/c/".to_string(),
             }),
         }
+    );
+}
+
+#[test]
+fn logical_key_strips_leading_hidden_dirs() {
+    assert_eq!(
+        logical_key_from_source_path("articles/_drafts/post.md"),
+        "post"
+    );
+    assert_eq!(
+        logical_key_from_source_path("articles/_hidden/real/post.md"),
+        "real/post"
+    );
+    assert_eq!(
+        logical_key_from_source_path("articles/real/_hidden/post.md"),
+        "real/_hidden/post"
+    );
+    assert_eq!(
+        logical_key_from_source_path("articles/_one/_two/post.md"),
+        "post"
     );
 }

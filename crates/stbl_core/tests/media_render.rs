@@ -1,12 +1,21 @@
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
+use stbl_core::model::ImageFormatMode;
 
 #[test]
 fn managed_video_renders_html5_video_markup() {
     let md = "![Landscape sample](video/5786143-hd_1920_1080_30fps.mp4;p360)\n\n![Portrait sample](video/13029714_1080_1920_60fps.mp4)";
     let heights = vec![360, 480, 720];
+    let widths = vec![360, 720];
     let options = RenderOptions {
         rel_prefix: "",
         video_heights: &heights,
+        image_widths: &widths,
+        max_body_width: "72rem",
+        desktop_min: "768px",
+        wide_min: "1400px",
+        image_format_mode: ImageFormatMode::Normal,
+        image_alpha: None,
+        image_variants: None,
     };
     let html = render_markdown_to_html_with_media(md, &options);
 
@@ -33,9 +42,17 @@ fn managed_video_renders_html5_video_markup() {
 fn non_managed_video_links_render_as_images() {
     let md = "![External](https://example.com/x.mp4)";
     let heights = vec![360, 480];
+    let widths = vec![360, 720];
     let options = RenderOptions {
         rel_prefix: "",
         video_heights: &heights,
+        image_widths: &widths,
+        max_body_width: "72rem",
+        desktop_min: "768px",
+        wide_min: "1400px",
+        image_format_mode: ImageFormatMode::Normal,
+        image_alpha: None,
+        image_variants: None,
     };
     let html = render_markdown_to_html_with_media(md, &options);
     assert!(html.contains("<img"));

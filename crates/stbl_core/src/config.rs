@@ -6,9 +6,10 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::model::{
-    AssetsConfig, BannerConfig, FooterConfig, ImageConfig, MediaConfig, MenuItem, NavItem,
-    PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig, SiteMeta,
-    SystemConfig, ThemeBreakpoints, ThemeConfig, UrlStyle, VideoConfig,
+    AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuItem,
+    NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig, SiteMeta,
+    SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeNavOverrides,
+    ThemeWideBackgroundOverrides, UrlStyle, VideoConfig, WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -58,14 +59,52 @@ struct AssetsConfigRaw {
 
 #[derive(Debug, Deserialize)]
 struct ThemeConfigRaw {
+    variant: Option<String>,
     max_body_width: Option<String>,
     breakpoints: Option<ThemeBreakpointsRaw>,
+    colors: Option<ThemeColorsRaw>,
+    nav: Option<ThemeNavRaw>,
+    wide_background: Option<ThemeWideBackgroundRaw>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ThemeBreakpointsRaw {
     desktop_min: Option<String>,
     wide_min: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeColorsRaw {
+    bg: Option<String>,
+    fg: Option<String>,
+    heading: Option<String>,
+    accent: Option<String>,
+    link: Option<String>,
+    muted: Option<String>,
+    surface: Option<String>,
+    border: Option<String>,
+    link_hover: Option<String>,
+    code_bg: Option<String>,
+    code_fg: Option<String>,
+    quote_bg: Option<String>,
+    quote_border: Option<String>,
+    wide_bg: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeNavRaw {
+    bg: Option<String>,
+    fg: Option<String>,
+    border: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeWideBackgroundRaw {
+    color: Option<String>,
+    image: Option<String>,
+    style: Option<String>,
+    position: Option<String>,
+    opacity: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,34 +300,169 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         }
     };
 
+    let theme_raw = parsed.theme.as_ref();
     let theme = ThemeConfig {
+        variant: non_empty_or_default(
+            theme_raw.and_then(|theme| theme.variant.clone()),
+            "default",
+            "theme.variant",
+        )?,
         max_body_width: non_empty_or_default(
-            parsed
-                .theme
-                .as_ref()
-                .and_then(|theme| theme.max_body_width.clone()),
+            theme_raw.and_then(|theme| theme.max_body_width.clone()),
             "72rem",
             "theme.max_body_width",
         )?,
         breakpoints: ThemeBreakpoints {
             desktop_min: non_empty_or_default(
-                parsed
-                    .theme
-                    .as_ref()
+                theme_raw
                     .and_then(|theme| theme.breakpoints.as_ref())
                     .and_then(|breakpoints| breakpoints.desktop_min.clone()),
                 "768px",
                 "theme.breakpoints.desktop_min",
             )?,
             wide_min: non_empty_or_default(
-                parsed
-                    .theme
-                    .as_ref()
+                theme_raw
                     .and_then(|theme| theme.breakpoints.as_ref())
                     .and_then(|breakpoints| breakpoints.wide_min.clone()),
                 "1400px",
                 "theme.breakpoints.wide_min",
             )?,
+        },
+        colors: ThemeColorOverrides {
+            bg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.bg.clone()),
+                "theme.colors.bg",
+            )?,
+            fg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.fg.clone()),
+                "theme.colors.fg",
+            )?,
+            heading: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.heading.clone()),
+                "theme.colors.heading",
+            )?,
+            accent: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.accent.clone()),
+                "theme.colors.accent",
+            )?,
+            link: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.link.clone()),
+                "theme.colors.link",
+            )?,
+            muted: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.muted.clone()),
+                "theme.colors.muted",
+            )?,
+            surface: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.surface.clone()),
+                "theme.colors.surface",
+            )?,
+            border: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.border.clone()),
+                "theme.colors.border",
+            )?,
+            link_hover: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.link_hover.clone()),
+                "theme.colors.link_hover",
+            )?,
+            code_bg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.code_bg.clone()),
+                "theme.colors.code_bg",
+            )?,
+            code_fg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.code_fg.clone()),
+                "theme.colors.code_fg",
+            )?,
+            quote_bg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.quote_bg.clone()),
+                "theme.colors.quote_bg",
+            )?,
+            quote_border: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.quote_border.clone()),
+                "theme.colors.quote_border",
+            )?,
+            wide_bg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.wide_bg.clone()),
+                "theme.colors.wide_bg",
+            )?,
+        },
+        nav: ThemeNavOverrides {
+            bg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.nav.as_ref())
+                    .and_then(|nav| nav.bg.clone()),
+                "theme.nav.bg",
+            )?,
+            fg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.nav.as_ref())
+                    .and_then(|nav| nav.fg.clone()),
+                "theme.nav.fg",
+            )?,
+            border: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.nav.as_ref())
+                    .and_then(|nav| nav.border.clone()),
+                "theme.nav.border",
+            )?,
+        },
+        wide_background: ThemeWideBackgroundOverrides {
+            color: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.wide_background.as_ref())
+                    .and_then(|wide| wide.color.clone()),
+                "theme.wide_background.color",
+            )?,
+            image: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.wide_background.as_ref())
+                    .and_then(|wide| wide.image.clone()),
+                "theme.wide_background.image",
+            )?,
+            style: theme_raw
+                .and_then(|theme| theme.wide_background.as_ref())
+                .and_then(|wide| wide.style.as_ref())
+                .map(|value| parse_wide_background_style(value))
+                .transpose()?,
+            position: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.wide_background.as_ref())
+                    .and_then(|wide| wide.position.clone()),
+                "theme.wide_background.position",
+            )?,
+            opacity: theme_raw
+                .and_then(|theme| theme.wide_background.as_ref())
+                .and_then(|wide| wide.opacity)
+                .map(validate_opacity)
+                .transpose()?,
         },
     };
 
@@ -306,6 +480,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                 .and_then(|media| media.images.as_ref())
                 .and_then(|images| images.quality)
                 .unwrap_or(90),
+            format_mode: ImageFormatMode::Normal,
         },
         video: VideoConfig {
             heights: parsed
@@ -385,6 +560,36 @@ fn non_empty_or_default(value: Option<String>, default: &str, field: &str) -> Re
     }
 }
 
+fn optional_non_empty(value: Option<String>, field: &str) -> Result<Option<String>> {
+    match value {
+        Some(text) => {
+            if text.trim().is_empty() {
+                bail!("{field} must not be empty");
+            }
+            Ok(Some(text))
+        }
+        None => Ok(None),
+    }
+}
+
+fn parse_wide_background_style(value: &str) -> Result<WideBackgroundStyle> {
+    match value.trim() {
+        "cover" => Ok(WideBackgroundStyle::Cover),
+        "tile" => Ok(WideBackgroundStyle::Tile),
+        _ => bail!("theme.wide_background.style must be 'cover' or 'tile'"),
+    }
+}
+
+fn validate_opacity(value: f32) -> Result<f32> {
+    if !value.is_finite() {
+        bail!("theme.wide_background.opacity must be a finite number");
+    }
+    if !(0.0..=1.0).contains(&value) {
+        bail!("theme.wide_background.opacity must be between 0.0 and 1.0");
+    }
+    Ok(value)
+}
+
 fn default_image_widths() -> Vec<u32> {
     vec![
         94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
@@ -441,9 +646,13 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
         );
         let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.theme.variant, "default");
         assert_eq!(config.theme.max_body_width, "72rem");
         assert_eq!(config.theme.breakpoints.desktop_min, "768px");
         assert_eq!(config.theme.breakpoints.wide_min, "1400px");
+        assert!(config.theme.colors.bg.is_none());
+        assert!(config.theme.nav.bg.is_none());
+        assert!(config.theme.wide_background.color.is_none());
     }
 
     #[test]

@@ -141,6 +141,8 @@ Default widths (configurable):
 ```
 
 Variants are generated for configured formats (e.g. AVIF/WebP/JPEG).
+Default format set is **AVIF + WebP + JPEG/PNG fallback**.
+Fast mode (`--fast-images`) skips AVIF and emits **WebP + JPEG/PNG fallback**.
 
 ### Output
 

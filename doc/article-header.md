@@ -172,7 +172,8 @@ Behavior:
 #### `sitemap-priority`
 
 * Optional
-* Must be a valid sitemap priority value
+* Must be a valid sitemap priority value or -1 (default)
+* `-1` is treated as if the header was not set
 
 #### `sitemap-changefreq`
 

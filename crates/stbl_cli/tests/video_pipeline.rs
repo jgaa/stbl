@@ -30,13 +30,20 @@ fn video_pipeline_generates_variants_and_posters() {
 
     let root = fixture_root("site-media");
     let config = load_site_config(&root.join("stbl.yaml")).expect("load config");
-    let docs = stbl_cli::walk::walk_content(&root, &root.join("articles"), UnknownKeyPolicy::Error)
+    let docs = stbl_cli::walk::walk_content(
+        &root,
+        &root.join("articles"),
+        UnknownKeyPolicy::Error,
+        false,
+    )
         .expect("walk content");
     let content = assemble_site(docs).expect("assemble site");
-    let project = Project {
+    let mut project = Project {
         root: root.clone(),
         config,
         content,
+        image_alpha: std::collections::BTreeMap::new(),
+        image_variants: Default::default(),
     };
 
     let site_assets_root = root.join("assets");
@@ -44,6 +51,12 @@ fn video_pipeline_generates_variants_and_posters() {
         stbl_cli::assets::discover_assets(&site_assets_root).expect("discover assets");
     let (image_plan, image_lookup) =
         stbl_cli::media::discover_images(&project).expect("discover images");
+    project.image_alpha = image_plan.alpha.clone();
+    project.image_variants = stbl_core::media::build_image_variant_index(
+        &image_plan,
+        &project.config.media.images.widths,
+        project.config.media.images.format_mode,
+    );
     let (video_plan, video_lookup) =
         stbl_cli::media::discover_videos(&project).expect("discover videos");
     let asset_manifest =
@@ -60,6 +73,7 @@ fn video_pipeline_generates_variants_and_posters() {
         &image_lookup,
         &video_lookup,
         &asset_manifest,
+        None,
         None,
     )
     .expect("execute plan");

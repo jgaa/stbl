@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail};
 use stbl_core::assets::AssetSourceId;
 use stbl_core::media::{ImagePlanInput, MediaRef, VideoPlanInput};
 use stbl_core::model::{Page, Project};
+use image::ColorType;
 
 #[derive(Debug, Default, Clone)]
 pub struct ImageSourceLookup {
@@ -46,19 +47,23 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
     let mut sources = BTreeMap::new();
     let mut hashes = BTreeMap::new();
     let mut lookup = ImageSourceLookup::default();
+    let mut alpha = BTreeMap::new();
     for logical in paths {
         let abs_path = project.root.join(&logical);
         if !abs_path.exists() {
             bail!("image not found: {}", abs_path.display());
         }
+        let has_alpha = detect_alpha(&abs_path)
+            .with_context(|| format!("failed to inspect image {}", abs_path.display()))?;
         let content_hash = hash_file(&abs_path)
             .with_context(|| format!("failed to hash image {}", abs_path.display()))?;
         let source = AssetSourceId(abs_path.to_string_lossy().to_string());
         sources.insert(logical.clone(), source.clone());
-        hashes.insert(logical, content_hash);
+        hashes.insert(logical.clone(), content_hash);
+        alpha.insert(logical, has_alpha);
         lookup.sources.insert(source, abs_path);
     }
-    Ok((ImagePlanInput { sources, hashes }, lookup))
+    Ok((ImagePlanInput { sources, hashes, alpha }, lookup))
 }
 
 pub fn discover_videos(project: &Project) -> Result<(VideoPlanInput, VideoSourceLookup)> {
@@ -89,6 +94,25 @@ pub fn discover_videos(project: &Project) -> Result<(VideoPlanInput, VideoSource
     Ok((VideoPlanInput { sources, hashes }, lookup))
 }
 
+pub fn resolve_banner_paths(project: &mut Project) -> Result<()> {
+    for page in project.content.pages.iter_mut() {
+        if let Some(name) = page.banner_name.clone() {
+            page.banner_name = Some(resolve_banner_name(&project.root, &name)?);
+        }
+    }
+    for series in project.content.series.iter_mut() {
+        if let Some(name) = series.index.banner_name.clone() {
+            series.index.banner_name = Some(resolve_banner_name(&project.root, &name)?);
+        }
+        for part in series.parts.iter_mut() {
+            if let Some(name) = part.page.banner_name.clone() {
+                part.page.banner_name = Some(resolve_banner_name(&project.root, &name)?);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn all_pages(project: &Project) -> Vec<&Page> {
     let mut pages = Vec::new();
     pages.extend(project.content.pages.iter());
@@ -101,10 +125,36 @@ fn all_pages(project: &Project) -> Vec<&Page> {
     pages
 }
 
-fn resolve_banner_name(root: &Path, name: &str) -> Result<String> {
+fn detect_alpha(path: &Path) -> Result<bool> {
+    if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("svg")) {
+        return Ok(false);
+    }
+    let reader = image::ImageReader::open(path)?.with_guessed_format()?;
+    let image = reader.decode()?;
+    Ok(matches!(
+        image.color(),
+        ColorType::La8
+            | ColorType::La16
+            | ColorType::Rgba8
+            | ColorType::Rgba16
+            | ColorType::Rgba32F
+    ))
+}
+
+pub(crate) fn resolve_banner_name(root: &Path, name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {
         bail!("banner name must not be empty");
+    }
+    if name.starts_with("images/") {
+        let candidate = root.join(name);
+        if candidate.exists() {
+            return Ok(name.to_string());
+        }
+        bail!("banner image not found: {}", candidate.display());
+    }
+    if name.contains('/') || name.contains('\\') {
+        bail!("banner name must not be a path: {}", name);
     }
     let images_dir = root.join("images");
     if name.contains('.') {

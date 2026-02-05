@@ -5,8 +5,10 @@ mod init;
 mod media;
 mod preview;
 mod upgrade;
+mod verify;
 mod walk;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
@@ -17,12 +19,15 @@ use stbl_core::config::load_site_config;
 use stbl_core::header::UnknownKeyPolicy;
 use stbl_core::model::DiagnosticLevel;
 use std::process::Command as ProcessCommand;
+use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
 #[command(name = "stbl_cli")]
 struct Cli {
     #[arg(long = "source-dir", short = 's', global = true)]
     source_dir: Option<PathBuf>,
+    #[arg(long, short = 'v', global = true)]
+    verbose: bool,
     #[arg(long)]
     include_unpublished: bool,
     #[arg(long, value_enum, default_value = "error")]
@@ -61,6 +66,15 @@ enum Command {
         #[arg(default_value = "articles")]
         articles_dir: PathBuf,
     },
+    #[command(about = "Verify config and content without building.")]
+    Verify {
+        #[arg(default_value = "articles")]
+        articles_dir: PathBuf,
+        #[arg(long)]
+        strict: bool,
+    },
+    #[command(about = "Remove cached outputs and database for this site.")]
+    Clean,
     Plan {
         #[arg(default_value = "articles")]
         articles_dir: PathBuf,
@@ -71,23 +85,29 @@ enum Command {
     Build {
         #[arg(default_value = "articles")]
         articles_dir: PathBuf,
-        #[arg(long, value_name = "PATH", default_value = "out")]
-        out: PathBuf,
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
         #[arg(long)]
         no_cache: bool,
         #[arg(long, value_name = "PATH")]
         cache_path: Option<PathBuf>,
         #[arg(long)]
+        fast_images: bool,
+        #[arg(long, value_name = "N")]
+        jobs: Option<usize>,
+        #[arg(long)]
         preview: bool,
-        #[arg(long, default_value = "127.0.0.1", requires = "preview")]
+        #[arg(long)]
+        beep: bool,
+        #[arg(long)]
+        no_beep: bool,
+        #[arg(long, default_value = "127.0.0.1")]
         preview_host: String,
-        #[arg(long, default_value_t = 8080, requires = "preview")]
+        #[arg(long, default_value_t = 8080)]
         preview_port: u16,
-        #[arg(long, requires = "preview")]
-        preview_no_open: bool,
-        #[arg(long, conflicts_with = "preview_no_open", requires = "preview")]
+        #[arg(long)]
         preview_open: bool,
-        #[arg(long, default_value = "index.html", requires = "preview")]
+        #[arg(long, default_value = "index.html")]
         preview_index: String,
     },
     #[command(about = "Generate stbl.yaml from legacy stbl.conf.")]
@@ -116,28 +136,39 @@ fn main() -> Result<()> {
     validate_flags(&cli)?;
     match &cli.command {
         Command::Scan { articles_dir } => run_scan(&cli, articles_dir),
+        Command::Verify {
+            articles_dir,
+            strict,
+        } => run_verify(&cli, articles_dir, *strict),
+        Command::Clean => run_clean(&cli),
         Command::Plan { articles_dir, dot } => run_plan(&cli, articles_dir, dot.as_ref()),
         Command::Build {
             articles_dir,
             out,
             no_cache,
             cache_path,
+            fast_images,
+            jobs,
             preview,
+            beep,
+            no_beep,
             preview_host,
             preview_port,
-            preview_no_open,
             preview_open,
             preview_index,
         } => run_build(
             &cli,
             articles_dir,
-            out,
+            out.as_ref(),
             *no_cache,
             cache_path.as_ref(),
+            *fast_images,
+            *jobs,
             *preview,
+            *beep,
+            *no_beep,
             preview_host,
             *preview_port,
-            *preview_no_open,
             *preview_open,
             preview_index,
         ),
@@ -158,7 +189,12 @@ fn run_scan(cli: &Cli, articles_dir: &PathBuf) -> Result<()> {
     let config_path = root.join("stbl.yaml");
     let _config = load_site_config(&config_path)
         .with_context(|| format!("failed to load {}", config_path.display()))?;
-    let docs = walk::walk_content(&root, articles_dir, cli.unknown_header_keys.into())?;
+    let docs = walk::walk_content(
+        &root,
+        articles_dir,
+        cli.unknown_header_keys.into(),
+        cli.verbose,
+    )?;
     match assemble_site(docs) {
         Ok(site) => {
             println!("pages: {}", site.pages.len());
@@ -189,7 +225,12 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
     let config_path = root.join("stbl.yaml");
     let config = load_site_config(&config_path)
         .with_context(|| format!("failed to load {}", config_path.display()))?;
-    let docs = walk::walk_content(&root, articles_dir, cli.unknown_header_keys.into())?;
+    let docs = walk::walk_content(
+        &root,
+        articles_dir,
+        cli.unknown_header_keys.into(),
+        cli.verbose,
+    )?;
     let content = match assemble_site(docs) {
         Ok(site) => site,
         Err(diagnostics) => {
@@ -207,16 +248,24 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
             std::process::exit(1);
         }
     };
-    let project = stbl_core::model::Project {
+    let mut project = stbl_core::model::Project {
         root: root.clone(),
         config,
         content,
+        image_alpha: BTreeMap::new(),
+        image_variants: Default::default(),
     };
     let site_assets_root = root.join("assets");
     let (asset_index, _asset_lookup) = assets::discover_assets(&site_assets_root)
         .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
     let (image_plan, _image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
+    project.image_alpha = image_plan.alpha.clone();
+    project.image_variants = stbl_core::media::build_image_variant_index(
+        &image_plan,
+        &project.config.media.images.widths,
+        project.config.media.images.format_mode,
+    );
     let (video_plan, _video_lookup) =
         media::discover_videos(&project).with_context(|| "failed to discover videos")?;
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
@@ -246,23 +295,59 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
     Ok(())
 }
 
+fn run_verify(cli: &Cli, articles_dir: &PathBuf, strict: bool) -> Result<()> {
+    let root = root_dir(cli)?;
+    let exit_code = crate::verify::run_verify(&root, articles_dir, strict, cli.verbose)?;
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
+    Ok(())
+}
+
+fn run_clean(cli: &Cli) -> Result<()> {
+    let root = root_dir(cli)?;
+    let config_path = root.join("stbl.yaml");
+    let config = load_site_config(&config_path)
+        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let cache_dir = default_cache_dir_for_config(&config)?;
+    if cache_dir.exists() {
+        std::fs::remove_dir_all(&cache_dir)
+            .with_context(|| format!("failed to remove {}", cache_dir.display()))?;
+        println!("removed {}", cache_dir.display());
+    } else {
+        println!("cache not found: {}", cache_dir.display());
+    }
+    Ok(())
+}
+
 fn run_build(
     cli: &Cli,
     articles_dir: &PathBuf,
-    out: &PathBuf,
+    out: Option<&PathBuf>,
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
+    fast_images: bool,
+    jobs: Option<usize>,
     preview: bool,
+    beep: bool,
+    no_beep: bool,
     preview_host: &str,
     preview_port: u16,
-    preview_no_open: bool,
     preview_open: bool,
     preview_index: &str,
 ) -> Result<()> {
     let root = root_dir(cli)?;
-    let config = crate::config_loader::load_config_for_build(&root)
+    let mut config = crate::config_loader::load_config_for_build(&root)
         .with_context(|| "failed to load stbl.yaml")?;
-    let docs = walk::walk_content(&root, articles_dir, cli.unknown_header_keys.into())?;
+    if fast_images {
+        config.media.images.format_mode = stbl_core::model::ImageFormatMode::Fast;
+    }
+    let docs = walk::walk_content(
+        &root,
+        articles_dir,
+        cli.unknown_header_keys.into(),
+        cli.verbose,
+    )?;
     let content = match assemble_site(docs) {
         Ok(site) => site,
         Err(diagnostics) => {
@@ -280,31 +365,48 @@ fn run_build(
             std::process::exit(1);
         }
     };
-    let project = stbl_core::model::Project {
+    let mut project = stbl_core::model::Project {
         root: root.clone(),
         config,
         content,
+        image_alpha: BTreeMap::new(),
+        image_variants: Default::default(),
     };
     let site_assets_root = root.join("assets");
     let (asset_index, asset_lookup) = assets::discover_assets(&site_assets_root)
         .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
     let (image_plan, image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
+    project.image_alpha = image_plan.alpha.clone();
+    project.image_variants = stbl_core::media::build_image_variant_index(
+        &image_plan,
+        &project.config.media.images.widths,
+        project.config.media.images.format_mode,
+    );
+    media::resolve_banner_paths(&mut project).with_context(|| "failed to resolve banners")?;
     let (video_plan, video_lookup) =
         media::discover_videos(&project).with_context(|| "failed to discover videos")?;
     let asset_manifest =
         stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
-    let out_dir = if out.is_absolute() {
-        out.clone()
-    } else {
-        root.join(out)
+    let out_dir = match out {
+        Some(path) => {
+            if path.is_absolute() {
+                path.clone()
+            } else {
+                root.join(path)
+            }
+        }
+        None => default_out_dir(&project.config)?,
     };
+
+    prune_out_dir(&out_dir, &plan, cli.verbose)?;
 
     let output_count: usize = plan.tasks.iter().map(|task| task.outputs.len()).sum();
 
-    let (mut cache, cache_state, cache_path) = open_cache_store(&root, no_cache, cache_path_override);
+    let (mut cache, cache_state, cache_path) =
+        open_cache_store(&root, &project.config, no_cache, cache_path_override)?;
     let report = exec::execute_plan(
         &project,
         &plan,
@@ -314,22 +416,30 @@ fn run_build(
         &video_lookup,
         &asset_manifest,
         cache.as_mut().map(|store| store as &mut dyn CacheStore),
+        jobs,
     )?;
     println!("tasks: {}", plan.tasks.len());
     println!("edges: {}", plan.edges.len());
     println!("outputs: {}", output_count);
-    println!("out: {}", out_dir.display());
     println!("executed: {}", report.executed);
     println!("skipped: {}", report.skipped);
     println!("cache: {}", cache_state);
+    println!("out: {}", out_dir.display());
     if let Some(path) = cache_path {
         println!("cache_path: {}", path.display());
     }
 
     let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
     println!("{summary}");
-    if preview {
-        let no_open = if preview_open { false } else { preview_no_open };
+    let effective_preview = preview || preview_open;
+    if should_beep(effective_preview, beep, no_beep) {
+        print!("\x07");
+    }
+    if preview && preview_open {
+        eprintln!("notice: --preview-open implies --preview");
+    }
+    if effective_preview {
+        let no_open = !preview_open;
         preview::run_preview(preview::PreviewOpts {
             site_dir: None,
             out_dir: Some(out_dir),
@@ -340,6 +450,16 @@ fn run_build(
         })?;
     }
     Ok(())
+}
+
+fn should_beep(preview: bool, beep: bool, no_beep: bool) -> bool {
+    if no_beep {
+        return false;
+    }
+    if preview {
+        return true;
+    }
+    beep
 }
 
 fn run_upgrade(cli: &Cli, force: bool) -> Result<()> {
@@ -441,7 +561,11 @@ fn handle_writeback(
 
 fn validate_flags(cli: &Cli) -> Result<()> {
     let is_preview = match &cli.command {
-        Command::Build { preview, .. } => *preview,
+        Command::Build {
+            preview,
+            preview_open,
+            ..
+        } => *preview || *preview_open,
         _ => false,
     };
     if cli.include_unpublished && !is_preview {
@@ -452,6 +576,11 @@ fn validate_flags(cli: &Cli) -> Result<()> {
     }
     if cli.commit_writeback && cli.no_writeback {
         anyhow::bail!("--commit-writeback cannot be used with --no-writeback");
+    }
+    if let Command::Build { jobs: Some(value), .. } = &cli.command {
+        if *value == 0 {
+            anyhow::bail!("--jobs must be at least 1");
+        }
     }
     Ok(())
 }
@@ -520,15 +649,23 @@ fn commit_writeback(root: &PathBuf, touched: &[&str]) -> Result<()> {
 
 fn open_cache_store(
     root: &PathBuf,
+    config: &stbl_core::model::SiteConfig,
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
-) -> (Option<SqliteCacheStore>, &'static str, Option<PathBuf>) {
+) -> Result<(Option<SqliteCacheStore>, &'static str, Option<PathBuf>)> {
     if no_cache {
-        return (None, "off", None);
+        return Ok((None, "off", None));
     }
-    let cache_path = cache_path_override
-        .map(|path| if path.is_absolute() { path.clone() } else { root.join(path) })
-        .unwrap_or_else(|| root.join(".stbl").join("cache.sqlite"));
+    let cache_path = match cache_path_override {
+        Some(path) => {
+            if path.is_absolute() {
+                path.clone()
+            } else {
+                root.join(path)
+            }
+        }
+        None => default_cache_dir_for_config(config)?.join("cache.sqlite"),
+    };
     if let Some(parent) = cache_path.parent() {
         if let Err(err) = std::fs::create_dir_all(parent) {
             eprintln!(
@@ -536,20 +673,32 @@ fn open_cache_store(
                 parent.display(),
                 err
             );
-            return (None, "off", Some(cache_path));
+            return Ok((None, "off", Some(cache_path)));
         }
     }
     match SqliteCacheStore::open(&cache_path) {
-        Ok(store) => (Some(store), "on", Some(cache_path)),
+        Ok(store) => Ok((Some(store), "on", Some(cache_path))),
         Err(err) => {
             eprintln!(
                 "warning: failed to open cache at {}: {}",
                 cache_path.display(),
                 err
             );
-            (None, "off", Some(cache_path))
+            Ok((None, "off", Some(cache_path)))
         }
     }
+}
+
+fn default_out_dir(config: &stbl_core::model::SiteConfig) -> Result<PathBuf> {
+    Ok(default_cache_dir_for_config(config)?.join("out"))
+}
+
+fn default_cache_dir_for_config(config: &stbl_core::model::SiteConfig) -> Result<PathBuf> {
+    let home = std::env::var("HOME").context("HOME not set for default cache dir")?;
+    Ok(PathBuf::from(home)
+        .join(".cache")
+        .join("stbl")
+        .join(&config.site.id))
 }
 
 fn kind_label(kind: &stbl_core::model::TaskKind) -> &'static str {
@@ -592,6 +741,62 @@ fn render_dot(plan: &stbl_core::model::BuildPlan) -> String {
     output
 }
 
+fn prune_out_dir(out_dir: &PathBuf, plan: &stbl_core::model::BuildPlan, verbose: bool) -> Result<()> {
+    if !out_dir.exists() {
+        return Ok(());
+    }
+    let expected = collect_expected_outputs(plan);
+    let mut removed_files = 0usize;
+    let mut dirs = Vec::new();
+    for entry in WalkDir::new(out_dir).min_depth(1) {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type().is_dir() {
+            dirs.push(path.to_path_buf());
+            continue;
+        }
+        let rel = path.strip_prefix(out_dir).unwrap_or(path);
+        let key = normalize_path(rel);
+        if !expected.contains(&key) {
+            std::fs::remove_file(path)
+                .with_context(|| format!("failed to remove {}", path.display()))?;
+            removed_files += 1;
+        }
+    }
+    dirs.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
+    for dir in dirs {
+        if dir == *out_dir {
+            continue;
+        }
+        if is_dir_empty(&dir)? {
+            std::fs::remove_dir(&dir)
+                .with_context(|| format!("failed to remove {}", dir.display()))?;
+        }
+    }
+    if verbose && removed_files > 0 {
+        println!("pruned {} stale outputs", removed_files);
+    }
+    Ok(())
+}
+
+fn collect_expected_outputs(plan: &stbl_core::model::BuildPlan) -> std::collections::HashSet<String> {
+    let mut expected = std::collections::HashSet::new();
+    for task in &plan.tasks {
+        for output in &task.outputs {
+            expected.insert(normalize_path(&output.path));
+        }
+    }
+    expected
+}
+
+fn normalize_path(path: &std::path::Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn is_dir_empty(path: &std::path::Path) -> Result<bool> {
+    Ok(std::fs::read_dir(path)?.next().is_none())
+}
+
 impl From<UnknownHeaderKeys> for UnknownKeyPolicy {
     fn from(value: UnknownHeaderKeys) -> Self {
         match value {
@@ -615,6 +820,7 @@ mod tests {
             no_writeback: false,
             commit_writeback: false,
             source_dir: None,
+            verbose: false,
             command: Command::Scan {
                 articles_dir: PathBuf::from("articles"),
             },
@@ -642,13 +848,16 @@ mod tests {
         let mut cli = base_cli();
         cli.command = Command::Build {
             articles_dir: PathBuf::from("articles"),
-            out: PathBuf::from("out"),
+            out: Some(PathBuf::from("out")),
             no_cache: false,
             cache_path: None,
+            fast_images: false,
+            jobs: None,
             preview: true,
+            beep: false,
+            no_beep: false,
             preview_host: "127.0.0.1".to_string(),
             preview_port: 8080,
-            preview_no_open: true,
             preview_open: false,
             preview_index: "index.html".to_string(),
         };

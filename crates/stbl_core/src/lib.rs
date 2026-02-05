@@ -11,5 +11,6 @@ pub mod plan;
 pub mod project;
 pub mod render;
 pub mod templates;
+pub mod theme;
 pub mod url;
 pub mod visibility;

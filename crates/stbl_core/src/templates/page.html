@@ -27,6 +27,12 @@
   </div>
   {% endif %}
 
+  {% if banner_html %}
+  <div class="banner">
+    {{ banner_html | safe }}
+  </div>
+  {% endif %}
+
   <div class="content">
     {{ body_html | safe }}
   </div>

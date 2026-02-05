@@ -4,8 +4,9 @@ use std::path::{Path, PathBuf};
 use crate::assets::{AssetSourceLookup, copy_asset_to_out};
 use crate::media::{ImageSourceLookup, VideoSourceLookup};
 use anyhow::{Context, Result, anyhow, bail};
+use image::codecs::avif::AvifEncoder;
 use image::imageops::FilterType;
-use image::{DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder, ImageFormat};
+use image::{DynamicImage, ExtendedColorType, GenericImageView, ImageEncoder};
 use stbl_cache::CacheStore;
 use stbl_core::assets::AssetManifest;
 use stbl_core::blog_index::{
@@ -15,6 +16,7 @@ use stbl_core::blog_index::{
 use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
+use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
     format_timestamp_ymd, render_blog_index, render_markdown_page, render_page,
@@ -22,6 +24,8 @@ use stbl_core::templates::{
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 use std::process::Command;
+use std::sync::{Arc, Mutex, mpsc};
+use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Default)]
@@ -42,12 +46,15 @@ pub fn execute_plan(
     video_lookup: &VideoSourceLookup,
     asset_manifest: &AssetManifest,
     mut cache: Option<&mut dyn CacheStore>,
+    jobs: Option<usize>,
 ) -> Result<ExecSummary> {
     let mut report = ExecSummary::default();
     let mapper = UrlMapper::new(&project.config);
     let build_date_ymd = build_date_ymd_now();
+    let mut image_jobs: Vec<BuildTask> = Vec::new();
+    let mut video_jobs: Vec<BuildTask> = Vec::new();
     for task in &plan.tasks {
-        if let TaskKind::GenerateVarsCss { vars, out_rel } = &task.kind {
+        if let TaskKind::GenerateVarsCss { vars: _, out_rel } = &task.kind {
             if should_skip_task(&mut cache, task, out_dir)? {
                 report.skipped += output_count(task);
                 report.skipped_ids.push(task.id.0.clone());
@@ -58,7 +65,10 @@ pub fn execute_plan(
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
             }
-            let contents = render_vars_css(vars);
+            let defaults = stbl_embedded_assets::template_colors_yaml(&project.config.theme.variant)
+                .map_err(|err| anyhow!("theme defaults for {}: {}", project.config.theme.variant, err))?;
+            let resolved = resolve_theme_vars(defaults, &project.config)?;
+            let contents = render_vars_css(&resolved);
             fs::write(&out_path, contents)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
             report.executed += output_count(task);
@@ -98,16 +108,8 @@ pub fn execute_plan(
                 cache_put(&mut cache, task);
                 continue;
             }
-            TaskKind::ResizeImage {
-                source,
-                width,
-                quality,
-                out_rel,
-            } => {
-                resize_image(out_dir, out_rel, source, *width, *quality, image_lookup)?;
-                report.executed += output_count(task);
-                report.executed_ids.push(task.id.0.clone());
-                cache_put(&mut cache, task);
+            TaskKind::ResizeImage { .. } => {
+                image_jobs.push(task.clone());
                 continue;
             }
             TaskKind::CopyVideoOriginal { source, out_rel } => {
@@ -117,26 +119,12 @@ pub fn execute_plan(
                 cache_put(&mut cache, task);
                 continue;
             }
-            TaskKind::TranscodeVideoMp4 {
-                source,
-                height,
-                out_rel,
-            } => {
-                transcode_video_mp4(out_dir, out_rel, source, *height, video_lookup)?;
-                report.executed += output_count(task);
-                report.executed_ids.push(task.id.0.clone());
-                cache_put(&mut cache, task);
+            TaskKind::TranscodeVideoMp4 { .. } => {
+                video_jobs.push(task.clone());
                 continue;
             }
-            TaskKind::ExtractVideoPoster {
-                source,
-                poster_time_sec,
-                out_rel,
-            } => {
-                extract_video_poster(out_dir, out_rel, source, *poster_time_sec, video_lookup)?;
-                report.executed += output_count(task);
-                report.executed_ids.push(task.id.0.clone());
-                cache_put(&mut cache, task);
+            TaskKind::ExtractVideoPoster { .. } => {
+                video_jobs.push(task.clone());
                 continue;
             }
             _ => {}
@@ -163,7 +151,150 @@ pub fn execute_plan(
         report.executed_ids.push(task.id.0.clone());
         cache_put(&mut cache, task);
     }
+    if !image_jobs.is_empty() {
+        let max_threads = jobs.unwrap_or_else(max_parallelism);
+        let results = run_parallel_image_jobs(
+            image_jobs,
+            max_threads,
+            out_dir,
+            image_lookup,
+        )?;
+        for (task, result) in results {
+            result?;
+            report.executed += output_count(&task);
+            report.executed_ids.push(task.id.0.clone());
+            cache_put(&mut cache, &task);
+        }
+    }
+    if !video_jobs.is_empty() {
+        let max_threads = jobs.unwrap_or_else(max_parallelism);
+        let video_threads = std::cmp::max(1, max_threads / 4);
+        let results = run_parallel_video_jobs(
+            video_jobs,
+            video_threads,
+            out_dir,
+            video_lookup,
+        )?;
+        for (task, result) in results {
+            result?;
+            report.executed += output_count(&task);
+            report.executed_ids.push(task.id.0.clone());
+            cache_put(&mut cache, &task);
+        }
+    }
     Ok(report)
+}
+
+fn run_parallel_image_jobs(
+    jobs: Vec<BuildTask>,
+    concurrency: usize,
+    out_dir: &PathBuf,
+    lookup: &ImageSourceLookup,
+) -> Result<Vec<(BuildTask, Result<()>)>> {
+    let out_dir = Arc::new(out_dir.clone());
+    let lookup = Arc::new(lookup.clone());
+    run_parallel_jobs(jobs, concurrency, move |task| match &task.kind {
+        TaskKind::ResizeImage {
+            source,
+            width,
+            quality,
+            format,
+            out_rel,
+        } => resize_image(
+            &out_dir,
+            out_rel,
+            source,
+            *width,
+            *quality,
+            *format,
+            &lookup,
+        ),
+        _ => Ok(()),
+    })
+}
+
+fn run_parallel_video_jobs(
+    jobs: Vec<BuildTask>,
+    concurrency: usize,
+    out_dir: &PathBuf,
+    lookup: &VideoSourceLookup,
+) -> Result<Vec<(BuildTask, Result<()>)>> {
+    let out_dir = Arc::new(out_dir.clone());
+    let lookup = Arc::new(lookup.clone());
+    run_parallel_jobs(jobs, concurrency, move |task| match &task.kind {
+        TaskKind::TranscodeVideoMp4 {
+            source,
+            height,
+            out_rel,
+        } => transcode_video_mp4(&out_dir, out_rel, source, *height, &lookup),
+        TaskKind::ExtractVideoPoster {
+            source,
+            poster_time_sec,
+            out_rel,
+        } => extract_video_poster(&out_dir, out_rel, source, *poster_time_sec, &lookup),
+        _ => Ok(()),
+    })
+}
+
+fn run_parallel_jobs<F>(
+    jobs: Vec<BuildTask>,
+    concurrency: usize,
+    worker: F,
+) -> Result<Vec<(BuildTask, Result<()>)>>
+where
+    F: Fn(&BuildTask) -> Result<()> + Send + Sync + 'static,
+{
+    let job_count = jobs.len();
+    if jobs.is_empty() {
+        return Ok(Vec::new());
+    }
+    let concurrency = std::cmp::max(1, std::cmp::min(concurrency, job_count));
+    let worker = Arc::new(worker);
+    let (tx, rx) = mpsc::channel::<BuildTask>();
+    let rx = Arc::new(Mutex::new(rx));
+    let (result_tx, result_rx) = mpsc::channel::<(BuildTask, Result<()>)>();
+
+    let mut handles = Vec::with_capacity(concurrency);
+    for _ in 0..concurrency {
+        let rx = Arc::clone(&rx);
+        let result_tx = result_tx.clone();
+        let worker = Arc::clone(&worker);
+        handles.push(thread::spawn(move || loop {
+            let task = {
+                let rx = rx.lock().expect("lock receiver");
+                rx.recv()
+            };
+            match task {
+                Ok(task) => {
+                    let result = (worker)(&task);
+                    let _ = result_tx.send((task, result));
+                }
+                Err(_) => break,
+            }
+        }));
+    }
+    for task in jobs {
+        tx.send(task)?;
+    }
+    drop(tx);
+    drop(result_tx);
+
+    let mut results = Vec::new();
+    for _ in 0..job_count {
+        if let Ok(value) = result_rx.recv() {
+            results.push(value);
+        }
+    }
+    for handle in handles {
+        let _ = handle.join();
+    }
+    Ok(results)
+}
+
+fn max_parallelism() -> usize {
+    thread::available_parallelism()
+        .map(|value| value.get())
+        .unwrap_or(1)
 }
 
 fn output_count(task: &BuildTask) -> usize {
@@ -231,10 +362,34 @@ fn cache_put(cache: &mut Option<&mut dyn CacheStore>, task: &BuildTask) {
     cache_put_inner(cache, task);
 }
 
-fn render_vars_css(vars: &stbl_core::model::ThemeVars) -> String {
+fn render_vars_css(vars: &ResolvedThemeVars) -> String {
     format!(
-        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n}}\n",
-        vars.max_body_width, vars.desktop_min, vars.wide_min
+        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
+        vars.max_body_width,
+        vars.desktop_min,
+        vars.wide_min,
+        vars.c_bg,
+        vars.c_fg,
+        vars.c_heading,
+        vars.c_muted,
+        vars.c_surface,
+        vars.c_border,
+        vars.c_link,
+        vars.c_link_hover,
+        vars.c_accent,
+        vars.c_nav_bg,
+        vars.c_nav_fg,
+        vars.c_nav_border,
+        vars.c_code_bg,
+        vars.c_code_fg,
+        vars.c_quote_bg,
+        vars.c_quote_border,
+        vars.c_wide_bg,
+        vars.wide_bg_image,
+        vars.wide_bg_repeat,
+        vars.wide_bg_size,
+        vars.wide_bg_position,
+        vars.wide_bg_opacity
     )
 }
 
@@ -267,7 +422,8 @@ fn resize_image(
     out_rel: &str,
     source: &stbl_core::assets::AssetSourceId,
     width: u32,
-    quality: u8,
+    _quality: u8,
+    format: stbl_core::model::ImageOutputFormat,
     lookup: &ImageSourceLookup,
 ) -> Result<()> {
     let src_path = lookup
@@ -280,27 +436,23 @@ fn resize_image(
         .with_context(|| format!("failed to open {}", src_path.display()))?
         .with_guessed_format()
         .with_context(|| format!("failed to guess format for {}", src_path.display()))?;
-    let format = reader
-        .format()
-        .ok_or_else(|| anyhow!("unknown image format for {}", src_path.display()))?;
     let image = reader
         .decode()
         .with_context(|| format!("failed to decode {}", src_path.display()))?;
     let (src_w, src_h) = image.dimensions();
     if src_w <= width {
-        return copy_image_original(out_dir, out_rel, source, lookup);
+        return write_resized(out_dir, out_rel, &image, format);
     }
     let height = ((src_h as f64) * (width as f64) / (src_w as f64)).round() as u32;
     let resized = image.resize_exact(width, height, FilterType::Lanczos3);
-    write_resized(out_dir, out_rel, &resized, format, quality)
+    write_resized(out_dir, out_rel, &resized, format)
 }
 
 fn write_resized(
     out_dir: &PathBuf,
     out_rel: &str,
     image: &DynamicImage,
-    format: ImageFormat,
-    quality: u8,
+    format: stbl_core::model::ImageOutputFormat,
 ) -> Result<()> {
     let out_path = out_dir.join(out_rel);
     if let Some(parent) = out_path.parent() {
@@ -311,28 +463,34 @@ fn write_resized(
         .with_context(|| format!("failed to create {}", out_path.display()))?;
     let (width, height) = image.dimensions();
     match format {
-        ImageFormat::Jpeg => {
+        stbl_core::model::ImageOutputFormat::Jpeg => {
             let rgb = image.to_rgb8();
-            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, quality);
+            let encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut file, 84);
             encoder
                 .write_image(&rgb, width, height, ExtendedColorType::Rgb8)
                 .with_context(|| format!("failed to encode {}", out_path.display()))?;
         }
-        ImageFormat::Png => {
+        stbl_core::model::ImageOutputFormat::Png => {
             let rgba = image.to_rgba8();
             let encoder = image::codecs::png::PngEncoder::new(&mut file);
             encoder
                 .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
                 .with_context(|| format!("failed to encode {}", out_path.display()))?;
         }
-        ImageFormat::WebP => {
+        stbl_core::model::ImageOutputFormat::Webp => {
             let rgba = image.to_rgba8();
             let encoder = image::codecs::webp::WebPEncoder::new_lossless(&mut file);
             encoder
                 .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
                 .with_context(|| format!("failed to encode {}", out_path.display()))?;
         }
-        _ => bail!("unsupported image format for {}", out_path.display()),
+        stbl_core::model::ImageOutputFormat::Avif => {
+            let rgba = image.to_rgba8();
+            let encoder = AvifEncoder::new_with_speed_quality(&mut file, 4, 50);
+            encoder
+                .write_image(&rgba, width, height, ExtendedColorType::Rgba8)
+                .with_context(|| format!("failed to encode {}", out_path.display()))?;
+        }
     }
     Ok(())
 }
@@ -388,6 +546,8 @@ fn transcode_video_mp4(
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("error")
+        .arg("-threads")
+        .arg("4")
         .arg("-y")
         .arg("-i")
         .arg(src_path)
@@ -433,6 +593,8 @@ fn extract_video_poster(
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("error")
+        .arg("-threads")
+        .arg("4")
         .arg("-y")
         .arg("-ss")
         .arg(poster_time_sec.to_string())
@@ -791,6 +953,13 @@ fn render_blog_index_page(
         let options = RenderOptions {
             rel_prefix: &rel,
             video_heights: &project.config.media.video.heights,
+            image_widths: &project.config.media.images.widths,
+            max_body_width: &project.config.theme.max_body_width,
+            desktop_min: &project.config.theme.breakpoints.desktop_min,
+            wide_min: &project.config.theme.breakpoints.wide_min,
+            image_format_mode: project.config.media.images.format_mode,
+            image_alpha: Some(&project.image_alpha),
+            image_variants: Some(&project.image_variants),
         };
         Some(render_markdown_to_html_with_media(
             &source_page.body_markdown,
@@ -938,13 +1107,15 @@ mod tests {
         let mut config = load_site_config(&config_path).expect("load config");
         config.site.url_style = url_style;
         let docs =
-            crate::walk::walk_content(&root, &root.join("articles"), UnknownKeyPolicy::Error)
+            crate::walk::walk_content(&root, &root.join("articles"), UnknownKeyPolicy::Error, false)
                 .expect("walk content");
         let content = assemble_site(docs).expect("assemble site");
         Project {
             root,
             config,
             content,
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         }
     }
 
@@ -954,11 +1125,22 @@ mod tests {
 
     fn build_into_temp(url_style: UrlStyle) -> (TempDir, PathBuf) {
         let project = build_project(url_style);
+        build_project_into_temp(project)
+    }
+
+    fn build_project_into_temp(project: Project) -> (TempDir, PathBuf) {
+        let mut project = project;
         let site_assets_root = project.root.join("assets");
         let (asset_index, asset_lookup) =
             crate::assets::discover_assets(&site_assets_root).expect("discover assets");
         let (image_plan, image_lookup) =
             crate::media::discover_images(&project).expect("discover images");
+        project.image_alpha = image_plan.alpha.clone();
+        project.image_variants = stbl_core::media::build_image_variant_index(
+            &image_plan,
+            &project.config.media.images.widths,
+            project.config.media.images.format_mode,
+        );
         let (video_plan, video_lookup) =
             crate::media::discover_videos(&project).expect("discover videos");
         let asset_manifest = stbl_core::assets::build_asset_manifest(
@@ -976,6 +1158,7 @@ mod tests {
             &image_lookup,
             &video_lookup,
             &asset_manifest,
+            None,
             None,
         )
         .expect("execute plan");
@@ -1022,8 +1205,66 @@ mod tests {
         let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
         let vars_path = out_dir.join("artifacts/css/vars.css");
         let contents = fs::read_to_string(vars_path).expect("read vars css");
-        let expected = ":root {\n  --layout-max-width: 72rem;\n  --bp-desktop-min: 768px;\n  --bp-wide-min: 1400px;\n}\n";
-        assert_eq!(contents, expected);
+        let required = [
+            "--layout-max-width:",
+            "--bp-desktop-min:",
+            "--bp-wide-min:",
+            "--c-bg:",
+            "--c-fg:",
+            "--c-heading:",
+            "--c-muted:",
+            "--c-surface:",
+            "--c-border:",
+            "--c-link:",
+            "--c-link-hover:",
+            "--c-accent:",
+            "--c-nav-bg:",
+            "--c-nav-fg:",
+            "--c-nav-border:",
+            "--c-code-bg:",
+            "--c-code-fg:",
+            "--c-quote-bg:",
+            "--c-quote-border:",
+            "--c-wide-bg:",
+            "--wide-bg-image:",
+            "--wide-bg-repeat:",
+            "--wide-bg-size:",
+            "--wide-bg-position:",
+            "--wide-bg-opacity:",
+        ];
+        for key in required {
+            assert!(contents.contains(key), "missing {}", key);
+        }
+        assert!(contents.contains("--c-bg: #ffffff;"));
+        assert!(contents.contains("--c-fg: #000000;"));
+        assert!(contents.contains("--c-heading: #0b1f3a;"));
+        assert!(contents.contains("--c-nav-bg: #000000;"));
+        assert!(contents.contains("--c-nav-fg: #ffffff;"));
+    }
+
+    #[test]
+    fn vars_css_overrides_heading_and_nav() {
+        let mut project = build_project(UrlStyle::Html);
+        project.config.theme.colors.heading = Some("#112233".to_string());
+        project.config.theme.nav.bg = Some("#abcdef".to_string());
+        let (_temp, out_dir) = build_project_into_temp(project);
+        let vars_path = out_dir.join("artifacts/css/vars.css");
+        let contents = fs::read_to_string(vars_path).expect("read vars css");
+        assert!(contents.contains("--c-heading: #112233;"));
+        assert!(contents.contains("--c-nav-bg: #abcdef;"));
+    }
+
+    #[test]
+    fn vars_css_wide_background_tile_sets_repeat_auto() {
+        let mut project = build_project(UrlStyle::Html);
+        project.config.theme.wide_background.style = Some(
+            stbl_core::model::WideBackgroundStyle::Tile,
+        );
+        let (_temp, out_dir) = build_project_into_temp(project);
+        let vars_path = out_dir.join("artifacts/css/vars.css");
+        let contents = fs::read_to_string(vars_path).expect("read vars css");
+        assert!(contents.contains("--wide-bg-repeat: repeat;"));
+        assert!(contents.contains("--wide-bg-size: auto;"));
     }
 
     #[test]
@@ -1051,6 +1292,7 @@ mod tests {
             &image_lookup,
             &video_lookup,
             &asset_manifest,
+            None,
             None,
         )
         .expect("execute plan");

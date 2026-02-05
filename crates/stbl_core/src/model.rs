@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::assets::{AssetRelPath, AssetSourceId};
-use crate::media::MediaRef;
+use crate::media::{ImageVariantIndex, MediaRef};
 use std::time::SystemTime;
 
 // ----------------------------
@@ -240,6 +240,8 @@ pub struct MediaConfig {
 pub struct ImageConfig {
     pub widths: Vec<u32>,
     pub quality: u8,
+    #[serde(default)]
+    pub format_mode: ImageFormatMode,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -248,16 +250,80 @@ pub struct VideoConfig {
     pub poster_time_sec: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ImageFormatMode {
+    Normal,
+    Fast,
+}
+
+impl Default for ImageFormatMode {
+    fn default() -> Self {
+        ImageFormatMode::Normal
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum ImageOutputFormat {
+    Avif,
+    Webp,
+    Jpeg,
+    Png,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ThemeConfig {
+    pub variant: String,
     pub max_body_width: String,
     pub breakpoints: ThemeBreakpoints,
+    pub colors: ThemeColorOverrides,
+    pub nav: ThemeNavOverrides,
+    pub wide_background: ThemeWideBackgroundOverrides,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ThemeBreakpoints {
     pub desktop_min: String,
     pub wide_min: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ThemeColorOverrides {
+    pub bg: Option<String>,
+    pub fg: Option<String>,
+    pub heading: Option<String>,
+    pub accent: Option<String>,
+    pub link: Option<String>,
+    pub muted: Option<String>,
+    pub surface: Option<String>,
+    pub border: Option<String>,
+    pub link_hover: Option<String>,
+    pub code_bg: Option<String>,
+    pub code_fg: Option<String>,
+    pub quote_bg: Option<String>,
+    pub quote_border: Option<String>,
+    pub wide_bg: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ThemeNavOverrides {
+    pub bg: Option<String>,
+    pub fg: Option<String>,
+    pub border: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub enum WideBackgroundStyle {
+    Cover,
+    Tile,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ThemeWideBackgroundOverrides {
+    pub color: Option<String>,
+    pub image: Option<String>,
+    pub style: Option<WideBackgroundStyle>,
+    pub position: Option<String>,
+    pub opacity: Option<f32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -403,6 +469,8 @@ pub struct Project {
     pub root: PathBuf,
     pub config: SiteConfig,
     pub content: SiteContent,
+    pub image_alpha: BTreeMap<String, bool>,
+    pub image_variants: ImageVariantIndex,
 }
 
 // ----------------------------
@@ -438,6 +506,7 @@ pub enum TaskKind {
         source: AssetSourceId,
         width: u32,
         quality: u8,
+        format: ImageOutputFormat,
         out_rel: String,
     },
     CopyVideoOriginal {

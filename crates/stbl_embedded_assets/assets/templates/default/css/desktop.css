@@ -1,3 +1,12 @@
 /* Desktop presentation: show desktop nav, hide mobile nav */
 .nav-desktop { display: block; }
 .nav-mobile { display: none; }
+
+header {
+  background: var(--c-nav-bg);
+  color: var(--c-nav-fg);
+  border-bottom: 1px solid var(--c-nav-border);
+}
+
+header a { color: var(--c-nav-fg); }
+header a:hover { color: var(--c-nav-fg); }

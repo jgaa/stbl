@@ -17,3 +17,12 @@ fn default_template_assets_roundtrip() {
         assert_eq!(hash.as_bytes(), &entry.hash, "hash mismatch for {}", entry.path);
     }
 }
+
+#[test]
+fn default_template_colors_yaml_is_embedded() {
+    let bytes = embedded::template_colors_yaml("default").expect("default colors yaml");
+    let text = std::str::from_utf8(bytes).expect("utf8 colors yaml");
+    assert!(text.contains("base:"), "missing base section");
+    assert!(text.contains("nav:"), "missing nav section");
+    assert!(text.contains("wide_background:"), "missing wide_background section");
+}

@@ -268,6 +268,7 @@ pub fn build_plan(
         image_plan,
         &project.config.media.images.widths,
         project.config.media.images.quality,
+        project.config.media.images.format_mode,
         ctx.render_config_hash,
     );
     tasks.extend(image_tasks);

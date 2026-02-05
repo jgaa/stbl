@@ -5,4 +5,5 @@ pub mod init;
 pub mod media;
 pub mod preview;
 pub mod upgrade;
+pub mod verify;
 pub mod walk;

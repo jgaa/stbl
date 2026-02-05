@@ -41,7 +41,7 @@ fn image_resize_generates_variants() {
         url_path: "page".to_string(),
         content_hash: blake3::hash(b"page"),
     };
-    let project = Project {
+    let mut project = Project {
         root: root.clone(),
         config: config.clone(),
         content: SiteContent {
@@ -50,13 +50,22 @@ fn image_resize_generates_variants() {
             diagnostics: Vec::new(),
             write_back: Default::default(),
         },
+        image_alpha: std::collections::BTreeMap::new(),
+        image_variants: Default::default(),
     };
 
     let (image_plan, image_lookup) = discover_images(&project).expect("discover images");
+    project.image_alpha = image_plan.alpha.clone();
+    project.image_variants = stbl_core::media::build_image_variant_index(
+        &image_plan,
+        &project.config.media.images.widths,
+        project.config.media.images.format_mode,
+    );
     let tasks = plan_image_tasks(
         &image_plan,
         &config.media.images.widths,
         config.media.images.quality,
+        config.media.images.format_mode,
         blake3::hash(b"config").into(),
     );
     let plan = stbl_core::model::BuildPlan {
@@ -73,14 +82,23 @@ fn image_resize_generates_variants() {
         &VideoSourceLookup::default(),
         &AssetManifest::default(),
         None,
+        None,
     )
     .expect("execute plan");
 
     let original = out_dir.join("artifacts/images/test.jpg");
+    let scaled_200_avif = out_dir.join("artifacts/images/_scale_200/test.avif");
+    let scaled_200_webp = out_dir.join("artifacts/images/_scale_200/test.webp");
     let scaled_200 = out_dir.join("artifacts/images/_scale_200/test.jpg");
+    let scaled_500_avif = out_dir.join("artifacts/images/_scale_500/test.avif");
+    let scaled_500_webp = out_dir.join("artifacts/images/_scale_500/test.webp");
     let scaled_500 = out_dir.join("artifacts/images/_scale_500/test.jpg");
     assert!(original.exists());
+    assert!(scaled_200_avif.exists());
+    assert!(scaled_200_webp.exists());
     assert!(scaled_200.exists());
+    assert!(scaled_500_avif.exists());
+    assert!(scaled_500_webp.exists());
     assert!(scaled_500.exists());
 
     let img_200 = image::open(&scaled_200).expect("open 200");

@@ -51,10 +51,36 @@ site:
   url_style: html   # default, safe for existing sites
 
 theme:
+  variant: string          # default "default"
   max_body_width: string   # default "72rem"
   breakpoints:
     desktop_min: string    # default "768px"
     wide_min: string       # default "1400px"
+  colors:
+    bg: string
+    fg: string
+    heading: string
+    accent: string
+    link: string
+    muted: string
+    surface: string
+    border: string
+    link_hover: string
+    code_bg: string
+    code_fg: string
+    quote_bg: string
+    quote_border: string
+    wide_bg: string
+  nav:
+    bg: string
+    fg: string
+    border: string
+  wide_background:
+    color: string
+    image: string
+    style: cover|tile
+    position: string
+    opacity: float
 
 assets:
   cache_busting: bool  # default false

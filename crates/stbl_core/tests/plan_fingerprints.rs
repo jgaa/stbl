@@ -180,6 +180,8 @@ fn load_fixture_project() -> Project {
         root,
         config,
         content,
+        image_alpha: std::collections::BTreeMap::new(),
+        image_variants: Default::default(),
     }
 }
 

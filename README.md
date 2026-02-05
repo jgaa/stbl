@@ -2,6 +2,20 @@
 > The current implementation is under active development.
 > Some documentation below describes the original C++ version and is being updated incrementally.
 
+## stbl2 (Rust) CLI
+
+Common commands:
+- `stbl_cli scan` (walk content and parse headers, no writes)
+- `stbl_cli plan` (generate a build plan without executing)
+- `stbl_cli build` (build the site)
+- `stbl_cli verify` (validate config and content; use `--strict` to fail on warnings)
+- `stbl_cli clean` (remove cached outputs and database for the site)
+
+Build options:
+- `stbl_cli build --jobs <N>` (control parallelism for image scaling; video tasks run at roughly `N/4` concurrency, ffmpeg is limited to 4 threads per task)
+- `stbl_cli build --preview` (serve output locally, do not open a browser)
+- `stbl_cli build --preview-open` (serve output locally and open a browser)
+
 
 # Introduction to stbl
 
@@ -384,4 +398,3 @@ Note that you have to point the --source-dir option to where the examples/defaul
 - All blog posts tagged with *stbl* from [lastviking.eu](https://lastviking.eu/_tags/stbl.html)
 
 Please open an issue if you know about a blog-post or an article about stbl you would like to see in this list.
-

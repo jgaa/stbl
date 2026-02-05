@@ -175,6 +175,8 @@ fn project_with_config(config: &str) -> (Project, String) {
             root: PathBuf::from("."),
             config,
             content: SiteContent::default(),
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         },
         site_title,
     )

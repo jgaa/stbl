@@ -470,7 +470,8 @@ mod tests {
     use super::*;
     use crate::header::TemplateId;
     use crate::model::{
-        BlogConfig, BlogPaginationConfig, SiteConfig, SiteContent, SiteMeta, UrlStyle,
+        BlogConfig, BlogPaginationConfig, ImageFormatMode, SiteConfig, SiteContent, SiteMeta,
+        ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use crate::url::UrlMapper;
     use std::path::PathBuf;
@@ -491,11 +492,15 @@ mod tests {
             menu: Vec::new(),
             nav: Vec::new(),
             theme: crate::model::ThemeConfig {
+                variant: "default".to_string(),
                 max_body_width: "72rem".to_string(),
                 breakpoints: crate::model::ThemeBreakpoints {
                     desktop_min: "768px".to_string(),
                     wide_min: "1400px".to_string(),
                 },
+                colors: ThemeColorOverrides::default(),
+                nav: ThemeNavOverrides::default(),
+                wide_background: ThemeWideBackgroundOverrides::default(),
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,
@@ -506,6 +511,7 @@ mod tests {
                         94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560,
                     ],
                     quality: 90,
+                    format_mode: ImageFormatMode::Normal,
                 },
                 video: crate::model::VideoConfig {
                     heights: vec![360, 480, 720, 1080],
@@ -551,6 +557,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         }
     }
 
@@ -642,6 +650,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -691,6 +701,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -719,6 +731,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -791,6 +805,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -834,6 +850,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -887,6 +905,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
         let pages = paginate_blog_index(blog_pagination_settings(&project), "blog", 5);
         assert_eq!(pages.len(), 3);
@@ -961,6 +981,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
         let pages = paginate_blog_index(blog_pagination_settings(&project), "index", feed.len());
@@ -1028,6 +1050,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -1108,6 +1132,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -1158,6 +1184,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_tag_feed(&project, "series-only");
@@ -1198,6 +1226,8 @@ mod tests {
                 diagnostics: Vec::new(),
                 write_back: Default::default(),
             },
+            image_alpha: std::collections::BTreeMap::new(),
+            image_variants: Default::default(),
         };
 
         let items = collect_tag_feed(&project, "series-index");
