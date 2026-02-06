@@ -23,6 +23,7 @@ fn build_plan_is_deterministic_and_complete() {
         content,
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     };
 
     let asset_index = AssetIndex::default();

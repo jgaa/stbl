@@ -6,7 +6,7 @@
   {% if redirect_href %}
   <meta http-equiv="refresh" content="0; url={{ redirect_href }}">
   {% endif %}
-  <title>{{ page_title }} · {{ site_title }}</title>
+  <title>{{ page_title }}</title>
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/vars.css"] }}">
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/common.css"] }}">
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/desktop.css"] }}" media="(min-width: 768px)">
@@ -14,10 +14,16 @@
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/wide-desktop.css"] }}" media="(min-width: 1400px)">
 </head>
 <body class="wide-bg">
-  <header>
+  <header class="{{ header_layout_class }} {{ menu_align_class }}">
     <div class="page">
-      <a href="{{ home_href }}">{{ site_title }}</a>
-      <nav aria-label="Primary" class="nav-desktop">
+      <a class="brand" href="{{ home_href }}">
+        {% if site.logo %}<img class="brand-logo" src="{{ site.logo_url }}" alt="{{ site.title }} logo">{% endif %}
+        <span class="brand-text">
+          <span class="brand-title">{{ site.title }}</span>
+          {% if site.tagline %}<span class="brand-tagline">{{ site.tagline }}</span>{% endif %}
+        </span>
+      </a>
+      <nav aria-label="Primary" class="nav-desktop site-nav">
         <ul>
           {% for item in nav_items %}
           <li>

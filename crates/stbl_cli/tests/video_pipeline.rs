@@ -44,6 +44,7 @@ fn video_pipeline_generates_variants_and_posters() {
         content,
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     };
 
     let site_assets_root = root.join("assets");
@@ -59,6 +60,10 @@ fn video_pipeline_generates_variants_and_posters() {
     );
     let (video_plan, video_lookup) =
         stbl_cli::media::discover_videos(&project).expect("discover videos");
+    project.video_variants = stbl_core::media::build_video_variant_index(
+        &video_plan,
+        &project.config.media.video.heights,
+    );
     let asset_manifest =
         stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
@@ -75,6 +80,7 @@ fn video_pipeline_generates_variants_and_posters() {
         &asset_manifest,
         None,
         None,
+        false,
     )
     .expect("execute plan");
 

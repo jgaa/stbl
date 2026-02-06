@@ -11,9 +11,11 @@ An entry is excluded from the blog feed if any of the following hold:
 
 - `exclude_from_blog: true`
 - `template: info`
+- `type: info`
 - `template: blog_index`
 - the entry is the current page being rendered
 - `published: false`
+- it is the frontage (root index.html)
 
 ## Series roll-up
 

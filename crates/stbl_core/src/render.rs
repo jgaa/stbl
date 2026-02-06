@@ -2,8 +2,8 @@ use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd, html};
 use std::collections::BTreeMap;
 
 use crate::media::{
-    ImageVariantIndex, ImageVariantSet, MediaRef, fallback_format, format_extension, format_mime,
-    image_output_formats, parse_media_destination,
+    ImageVariantIndex, ImageVariantSet, MediaRef, VideoVariantIndex, fallback_format,
+    format_extension, format_mime, image_output_formats, parse_media_destination,
 };
 use crate::model::{ImageFormatMode, ImageOutputFormat};
 
@@ -17,6 +17,7 @@ pub struct RenderOptions<'a> {
     pub image_format_mode: ImageFormatMode,
     pub image_alpha: Option<&'a BTreeMap<String, bool>>,
     pub image_variants: Option<&'a ImageVariantIndex>,
+    pub video_variants: Option<&'a VideoVariantIndex>,
 }
 
 pub fn render_markdown_to_html(md: &str) -> String {
@@ -128,7 +129,9 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     let variants = options
         .image_variants
         .and_then(|index| index.get(path));
-    let (src, srcset) = if is_svg {
+    let use_original =
+        !is_svg && options.image_variants.is_some() && variants.map_or(true, |v| v.is_empty());
+    let (src, srcset) = if is_svg || use_original {
         (
             format!("{}artifacts/images/{rel}", options.rel_prefix),
             None,
@@ -177,7 +180,7 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
         html.push('"');
     }
     html.push('>');
-    if !is_svg {
+    if !is_svg && !use_original {
         let formats = image_output_formats(options.image_format_mode, has_alpha);
         for format in formats
             .iter()
@@ -345,7 +348,13 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
         _ => (dest_url.to_string(), 720),
     };
     let requested_prefer = prefer_p;
-    let heights = ordered_heights(options.video_heights, prefer_p);
+    let heights = match options
+        .video_variants
+        .and_then(|variants| variants.get(&video_path))
+    {
+        Some(available) => ordered_heights(available, prefer_p),
+        None => ordered_heights(options.video_heights, prefer_p),
+    };
     let VideoPaths {
         poster_rel,
         sources,
@@ -369,6 +378,11 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
     }
     html.push_str(">");
 
+    let sources = if sources.is_empty() {
+        vec![download_rel.clone()]
+    } else {
+        sources
+    };
     for src in sources {
         html.push_str("<source src=\"");
         html.push_str(options.rel_prefix);

@@ -481,7 +481,8 @@ mod tests {
             site: SiteMeta {
                 id: "demo".to_string(),
                 title: "Demo".to_string(),
-                abstract_text: None,
+                tagline: None,
+                logo: None,
                 copyright: None,
                 base_url: "https://example.com/".to_string(),
                 language: "en".to_string(),
@@ -500,6 +501,12 @@ mod tests {
                 },
                 colors: ThemeColorOverrides::default(),
                 nav: ThemeNavOverrides::default(),
+                header: crate::model::ThemeHeaderConfig {
+                    layout: Default::default(),
+                    menu_align: Default::default(),
+                    title_size: "1.3rem".to_string(),
+                    tagline_size: "1rem".to_string(),
+                },
                 wide_background: ThemeWideBackgroundOverrides::default(),
             },
             assets: crate::model::AssetsConfig {
@@ -559,6 +566,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         }
     }
 
@@ -652,6 +660,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -703,6 +712,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -733,6 +743,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -807,6 +818,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -852,6 +864,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -907,6 +920,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
         let pages = paginate_blog_index(blog_pagination_settings(&project), "blog", 5);
         assert_eq!(pages.len(), 3);
@@ -983,6 +997,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
         let pages = paginate_blog_index(blog_pagination_settings(&project), "index", feed.len());
@@ -1052,6 +1067,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -1134,6 +1150,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let feed = collect_blog_feed(&project, DocId(blake3::hash(b"source")));
@@ -1186,6 +1203,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_tag_feed(&project, "series-only");
@@ -1228,6 +1246,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
 
         let items = collect_tag_feed(&project, "series-index");

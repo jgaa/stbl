@@ -52,6 +52,7 @@ fn image_resize_generates_variants() {
         },
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     };
 
     let (image_plan, image_lookup) = discover_images(&project).expect("discover images");
@@ -66,7 +67,6 @@ fn image_resize_generates_variants() {
         &config.media.images.widths,
         config.media.images.quality,
         config.media.images.format_mode,
-        blake3::hash(b"config").into(),
     );
     let plan = stbl_core::model::BuildPlan {
         tasks,
@@ -83,6 +83,7 @@ fn image_resize_generates_variants() {
         &AssetManifest::default(),
         None,
         None,
+        false,
     )
     .expect("execute plan");
 

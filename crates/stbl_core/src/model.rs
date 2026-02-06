@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use crate::assets::{AssetRelPath, AssetSourceId};
-use crate::media::{ImageVariantIndex, MediaRef};
+use crate::media::{ImageVariantIndex, MediaRef, VideoVariantIndex};
 use std::time::SystemTime;
 
 // ----------------------------
@@ -217,7 +217,8 @@ pub struct SiteMeta {
     /// Stable ID (used for cache folder key).
     pub id: String,
     pub title: String,
-    pub abstract_text: Option<String>,
+    pub tagline: Option<String>,
+    pub logo: Option<String>,
     pub copyright: Option<String>,
     pub base_url: String,
     pub language: String,
@@ -277,6 +278,7 @@ pub struct ThemeConfig {
     pub breakpoints: ThemeBreakpoints,
     pub colors: ThemeColorOverrides,
     pub nav: ThemeNavOverrides,
+    pub header: ThemeHeaderConfig,
     pub wide_background: ThemeWideBackgroundOverrides,
 }
 
@@ -309,6 +311,41 @@ pub struct ThemeNavOverrides {
     pub bg: Option<String>,
     pub fg: Option<String>,
     pub border: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MenuAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl Default for MenuAlign {
+    fn default() -> Self {
+        MenuAlign::Right
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeHeaderLayout {
+    Inline,
+    Stacked,
+}
+
+impl Default for ThemeHeaderLayout {
+    fn default() -> Self {
+        ThemeHeaderLayout::Stacked
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ThemeHeaderConfig {
+    pub layout: ThemeHeaderLayout,
+    pub menu_align: MenuAlign,
+    pub title_size: String,
+    pub tagline_size: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -423,6 +460,7 @@ pub struct PublishConfig {
 pub struct RssConfig {
     pub enabled: bool,
     pub max_items: Option<usize>,
+    pub ttl_channel: Option<u32>,
     pub ttl_days: Option<u32>,
 }
 
@@ -471,6 +509,7 @@ pub struct Project {
     pub content: SiteContent,
     pub image_alpha: BTreeMap<String, bool>,
     pub image_variants: ImageVariantIndex,
+    pub video_variants: VideoVariantIndex,
 }
 
 // ----------------------------

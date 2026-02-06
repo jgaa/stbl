@@ -269,7 +269,6 @@ pub fn build_plan(
         &project.config.media.images.widths,
         project.config.media.images.quality,
         project.config.media.images.format_mode,
-        ctx.render_config_hash,
     );
     tasks.extend(image_tasks);
 
@@ -277,7 +276,6 @@ pub fn build_plan(
         video_plan,
         &project.config.media.video.heights,
         project.config.media.video.poster_time_sec,
-        ctx.render_config_hash,
     );
     tasks.extend(video_tasks);
 

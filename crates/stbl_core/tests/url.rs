@@ -1,6 +1,6 @@
 use stbl_core::model::{
     AssetsConfig, SiteConfig, SiteMeta, ThemeBreakpoints, ThemeConfig, ThemeColorOverrides,
-    ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, ImageFormatMode,
+    ThemeHeaderConfig, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, ImageFormatMode,
 };
 use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path};
 
@@ -9,7 +9,8 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         site: SiteMeta {
             id: "site".to_string(),
             title: "Site".to_string(),
-            abstract_text: None,
+            tagline: None,
+            logo: None,
             copyright: None,
             base_url: "https://example.com/".to_string(),
             language: "en".to_string(),
@@ -28,6 +29,12 @@ fn base_config(style: UrlStyle) -> SiteConfig {
             },
             colors: ThemeColorOverrides::default(),
             nav: ThemeNavOverrides::default(),
+            header: ThemeHeaderConfig {
+                layout: Default::default(),
+                menu_align: Default::default(),
+                title_size: "1.3rem".to_string(),
+                tagline_size: "1rem".to_string(),
+            },
             wide_background: ThemeWideBackgroundOverrides::default(),
         },
         assets: AssetsConfig {

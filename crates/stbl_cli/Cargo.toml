@@ -11,6 +11,8 @@ stbl_embedded_assets = { path = "../stbl_embedded_assets" }
 walkdir = "2"
 anyhow = "1"
 blake3 = "1"
+brotli = "3"
+flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["avif", "jpeg", "png", "webp"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"

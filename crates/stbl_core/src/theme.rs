@@ -8,6 +8,8 @@ pub struct ResolvedThemeVars {
     pub max_body_width: String,
     pub desktop_min: String,
     pub wide_min: String,
+    pub header_title_size: String,
+    pub header_tagline_size: String,
     pub c_bg: String,
     pub c_fg: String,
     pub c_heading: String,
@@ -113,11 +115,11 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
     let border = pick_color_optional(overrides.border.as_ref(), None, "border")?
         .unwrap_or_else(|| blend(fg, bg, 0.85));
     let surface = pick_color_optional(overrides.surface.as_ref(), None, "surface")?
-        .unwrap_or_else(|| blend(bg, fg, 0.96));
+        .unwrap_or_else(|| blend(bg, fg, 0.04));
     let link_hover = pick_color_optional(overrides.link_hover.as_ref(), None, "link_hover")?
         .unwrap_or_else(|| blend(link, fg, 0.15));
     let quote_bg = pick_color_optional(overrides.quote_bg.as_ref(), None, "quote_bg")?
-        .unwrap_or_else(|| blend(bg, fg, 0.98));
+        .unwrap_or_else(|| blend(bg, fg, 0.03));
     let quote_border = pick_color_optional(overrides.quote_border.as_ref(), None, "quote_border")?
         .unwrap_or(border);
 
@@ -153,6 +155,8 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         max_body_width: config.theme.max_body_width.clone(),
         desktop_min: config.theme.breakpoints.desktop_min.clone(),
         wide_min: config.theme.breakpoints.wide_min.clone(),
+        header_title_size: config.theme.header.title_size.clone(),
+        header_tagline_size: config.theme.header.tagline_size.clone(),
         c_bg: bg.to_hex(),
         c_fg: fg.to_hex(),
         c_heading: heading.to_hex(),
@@ -200,19 +204,13 @@ fn resolve_code_colors(overrides: &ThemeColorOverrides, bg: Rgb, fg: Rgb) -> Res
     let code_bg = if let Some(value) = overrides.code_bg.as_ref() {
         parse_color(value, "code_bg")?
     } else {
-        blend(bg, fg, 0.12)
+        blend(bg, fg, 0.08)
     };
 
     let code_fg = if let Some(value) = overrides.code_fg.as_ref() {
         parse_color(value, "code_fg")?
     } else {
-        let fg_ratio = contrast_ratio(code_bg, fg);
-        let bg_ratio = contrast_ratio(code_bg, bg);
-        if fg_ratio >= bg_ratio {
-            fg
-        } else {
-            bg
-        }
+        fg
     };
 
     Ok((code_bg, code_fg))
@@ -362,25 +360,6 @@ fn blend(a: Rgb, b: Rgb, t: f32) -> Rgb {
     let t = t.clamp(0.0, 1.0);
     let mix = |a: u8, b: u8| ((a as f32 * (1.0 - t)) + (b as f32 * t)).round() as u8;
     Rgb::new(mix(a.r, b.r), mix(a.g, b.g), mix(a.b, b.b))
-}
-
-fn contrast_ratio(a: Rgb, b: Rgb) -> f32 {
-    let l1 = relative_luminance(a);
-    let l2 = relative_luminance(b);
-    let (light, dark) = if l1 >= l2 { (l1, l2) } else { (l2, l1) };
-    (light + 0.05) / (dark + 0.05)
-}
-
-fn relative_luminance(color: Rgb) -> f32 {
-    fn channel(value: u8) -> f32 {
-        let v = (value as f32) / 255.0;
-        if v <= 0.03928 {
-            v / 12.92
-        } else {
-            ((v + 0.055) / 1.055).powf(2.4)
-        }
-    }
-    0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b)
 }
 
 fn format_opacity(value: f32) -> String {

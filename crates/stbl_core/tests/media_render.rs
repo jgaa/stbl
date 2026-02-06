@@ -16,6 +16,7 @@ fn managed_video_renders_html5_video_markup() {
         image_format_mode: ImageFormatMode::Normal,
         image_alpha: None,
         image_variants: None,
+        video_variants: None,
     };
     let html = render_markdown_to_html_with_media(md, &options);
 
@@ -53,6 +54,7 @@ fn non_managed_video_links_render_as_images() {
         image_format_mode: ImageFormatMode::Normal,
         image_alpha: None,
         image_variants: None,
+        video_variants: None,
     };
     let html = render_markdown_to_html_with_media(md, &options);
     assert!(html.contains("<img"));

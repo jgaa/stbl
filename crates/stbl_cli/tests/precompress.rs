@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::PathBuf;
 
 use stbl_core::assemble::assemble_site;
@@ -7,7 +6,6 @@ use stbl_core::header::UnknownKeyPolicy;
 use stbl_core::media::VideoPlanInput;
 use stbl_core::model::{ImageFormatMode, Project};
 use tempfile::TempDir;
-use walkdir::WalkDir;
 
 fn fixture_root(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -72,61 +70,46 @@ fn execute_build(project: &mut Project, out_dir: &PathBuf) {
     .expect("execute plan");
 }
 
-fn read_page(out_dir: &PathBuf, name: &str) -> String {
-    fs::read_to_string(out_dir.join(name)).expect("read page")
-}
-
-fn has_avif(out_dir: &PathBuf) -> bool {
-    WalkDir::new(out_dir)
-        .into_iter()
-        .filter_map(Result::ok)
-        .any(|entry| {
-            entry
-                .path()
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("avif"))
-        })
-}
-
 #[test]
-fn normal_mode_emits_avif_sources() {
-    let root = fixture_root("site-media");
-    let mut project = build_project(&root, ImageFormatMode::Normal);
-    let temp = TempDir::new().expect("tempdir");
-    let out_dir = temp.path().join("out");
-    execute_build(&mut project, &out_dir);
-
-    assert!(has_avif(&out_dir), "expected avif outputs in normal mode");
-    let html = read_page(&out_dir, "banner-page.html");
-    assert!(html.contains("type=\"image/avif\""));
-    assert!(html.contains("type=\"image/webp\""));
-}
-
-#[test]
-fn fast_mode_skips_avif_sources() {
+fn precompress_writes_gzip_for_text_assets() {
     let root = fixture_root("site-media");
     let mut project = build_project(&root, ImageFormatMode::Fast);
     let temp = TempDir::new().expect("tempdir");
     let out_dir = temp.path().join("out");
     execute_build(&mut project, &out_dir);
 
-    assert!(!has_avif(&out_dir), "did not expect avif outputs in fast mode");
-    let html = read_page(&out_dir, "banner-page.html");
-    assert!(!html.contains("type=\"image/avif\""));
-    assert!(html.contains("type=\"image/webp\""));
+    stbl_cli::precompress::write_gzip_files(&out_dir, 1, false).expect("precompress");
+
+    assert!(out_dir.join("index.html.gz").exists());
+    assert!(out_dir.join("artifacts/css/common.css.gz").exists());
+    assert!(!out_dir
+        .join("artifacts/images/_scale_720/alpha.png.gz")
+        .exists());
 }
 
 #[test]
-fn alpha_fallback_uses_png() {
+fn brotli_writes_by_default() {
     let root = fixture_root("site-media");
     let mut project = build_project(&root, ImageFormatMode::Fast);
     let temp = TempDir::new().expect("tempdir");
     let out_dir = temp.path().join("out");
     execute_build(&mut project, &out_dir);
 
-    let original = out_dir.join("artifacts/images/alpha.png");
-    assert!(original.exists(), "missing original alpha.png fallback");
-    let html = read_page(&out_dir, "index.html");
-    assert!(html.contains("artifacts/images/alpha.png"));
-    assert!(!html.contains("alpha.jpg"));
+    stbl_cli::precompress::write_gzip_files(&out_dir, 6, false).expect("gzip");
+    stbl_cli::precompress::write_brotli_files(&out_dir, 5, false).expect("brotli");
+
+    assert!(out_dir.join("index.html.br").exists());
+}
+
+#[test]
+fn fast_compress_skips_brotli() {
+    let root = fixture_root("site-media");
+    let mut project = build_project(&root, ImageFormatMode::Fast);
+    let temp = TempDir::new().expect("tempdir");
+    let out_dir = temp.path().join("out");
+    execute_build(&mut project, &out_dir);
+
+    stbl_cli::precompress::write_gzip_files(&out_dir, 1, false).expect("gzip");
+
+    assert!(!out_dir.join("index.html.br").exists());
 }

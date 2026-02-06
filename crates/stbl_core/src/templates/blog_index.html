@@ -3,9 +3,17 @@
 {% block content %}
   <h1>{{ page_title }}</h1>
 
+  {% if banner_html %}
+  <div class="banner">
+    {{ banner_html | safe }}
+  </div>
+  {% endif %}
+
   {% if intro_html %}
   {{ intro_html | safe }}
   {% endif %}
+
+  <h2>Articles</h2>
 
   {% if total_pages > 1 %}
   <div class="pager-meta">Page {{ page_no }} of {{ total_pages }}</div>

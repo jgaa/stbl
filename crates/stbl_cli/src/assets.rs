@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use blake3;
 use stbl_core::assets::{AssetIndex, AssetRelPath, AssetSourceId, ResolvedAsset};
-use stbl_core::model::{BuildTask, TaskKind};
+use stbl_core::model::{BuildTask, SiteConfig, TaskKind};
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
@@ -78,6 +78,56 @@ pub fn discover_assets(site_root: &Path) -> Result<(AssetIndex, AssetSourceLooku
     Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
 }
 
+pub struct LogoAsset {
+    pub rel: AssetRelPath,
+    pub path: PathBuf,
+}
+
+pub fn resolve_site_logo(root: &Path, raw: &str) -> Result<LogoAsset> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        bail!("site.logo must not be empty");
+    }
+    if Path::new(trimmed).is_absolute() || trimmed.starts_with('/') {
+        bail!("site.logo must be a relative path: {trimmed}");
+    }
+    let cleaned = trimmed.strip_prefix("./").unwrap_or(trimmed);
+    let cleaned = cleaned.trim_end_matches('/');
+    if cleaned.is_empty() {
+        bail!("site.logo must not be empty");
+    }
+    let rel = normalize_rel_path(Path::new(cleaned))?;
+
+    let mut candidates = Vec::new();
+    if let Some(stripped) = cleaned.strip_prefix("assets/") {
+        candidates.push(root.join("assets").join(stripped));
+    } else {
+        candidates.push(root.join(cleaned));
+        candidates.push(root.join("assets").join(cleaned));
+    }
+
+    for candidate in candidates {
+        if candidate.is_file() {
+            return Ok(LogoAsset { rel, path: candidate });
+        }
+    }
+
+    bail!("site.logo not found: {}", cleaned);
+}
+
+pub fn include_site_logo(
+    root: &Path,
+    config: &SiteConfig,
+    asset_index: &mut AssetIndex,
+    lookup: &mut AssetSourceLookup,
+) -> Result<()> {
+    let Some(raw) = config.site.logo.as_deref() else {
+        return Ok(());
+    };
+    let logo = resolve_site_logo(root, raw)?;
+    add_file_asset(&logo.rel, &logo.path, asset_index, lookup)
+}
+
 #[allow(dead_code)]
 pub fn execute_copy_tasks(
     tasks: &[BuildTask],
@@ -124,6 +174,30 @@ pub fn copy_asset_to_out(
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
         }
     }
+    Ok(())
+}
+
+fn add_file_asset(
+    rel: &AssetRelPath,
+    path: &Path,
+    asset_index: &mut AssetIndex,
+    lookup: &mut AssetSourceLookup,
+) -> Result<()> {
+    if asset_index.assets.iter().any(|asset| asset.rel == *rel) {
+        return Ok(());
+    }
+    let bytes = std::fs::read(path)
+        .with_context(|| format!("failed to read {}", path.display()))?;
+    let content_hash = blake3::hash(&bytes).to_hex().to_string();
+    let source = AssetSourceId(path.to_string_lossy().to_string());
+    lookup
+        .sources
+        .insert(source.clone(), AssetSource::File(path.to_path_buf()));
+    asset_index.assets.push(ResolvedAsset {
+        rel: rel.clone(),
+        source,
+        content_hash,
+    });
     Ok(())
 }
 

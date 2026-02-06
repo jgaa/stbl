@@ -59,6 +59,7 @@ pub struct ImagePlanInput {
     pub sources: BTreeMap<String, AssetSourceId>,
     pub hashes: BTreeMap<String, Hash>,
     pub alpha: BTreeMap<String, bool>,
+    pub dimensions: BTreeMap<String, MediaDimensions>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -76,11 +77,19 @@ pub struct ImageVariantSet {
 }
 
 pub type ImageVariantIndex = BTreeMap<String, BTreeMap<u32, ImageVariantSet>>;
+pub type VideoVariantIndex = BTreeMap<String, Vec<u32>>;
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MediaDimensions {
+    pub width: u32,
+    pub height: u32,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct VideoPlanInput {
     pub sources: BTreeMap<String, AssetSourceId>,
     pub hashes: BTreeMap<String, Hash>,
+    pub dimensions: BTreeMap<String, MediaDimensions>,
 }
 
 pub fn parse_media_destination(dest: &str, alt: &str) -> Option<MediaRef> {
@@ -179,7 +188,6 @@ pub fn plan_image_tasks(
     widths: &[u32],
     quality: u8,
     format_mode: ImageFormatMode,
-    render_config_hash: [u8; 32],
 ) -> Vec<BuildTask> {
     let mut tasks = Vec::new();
     let mut paths = images.sources.keys().cloned().collect::<Vec<_>>();
@@ -202,7 +210,7 @@ pub fn plan_image_tasks(
         };
         let copy_id = TaskId::new("img_copy", &[path.as_str()]);
         let copy_fingerprint =
-            fingerprint_image_task(&copy_id, "CopyImageOriginal", render_config_hash, input_hash);
+            fingerprint_image_task(&copy_id, "CopyImageOriginal", input_hash);
         tasks.push(BuildTask {
             id: copy_id,
             kind: copy_kind,
@@ -218,9 +226,18 @@ pub fn plan_image_tasks(
             continue;
         }
         let formats = image_output_formats(format_mode, has_alpha);
+        let max_width = images
+            .dimensions
+            .get(&path)
+            .map(|dimensions| dimensions.width);
         for width in &widths {
             if *width == 0 {
                 continue;
+            }
+            if let Some(max_width) = max_width {
+                if *width > max_width {
+                    continue;
+                }
             }
             for format in &formats {
                 let ext = format_extension(*format);
@@ -243,7 +260,7 @@ pub fn plan_image_tasks(
                     &[path.as_str(), &width_label, &quality_label, &format_label],
                 );
                 let fingerprint =
-                    fingerprint_image_task(&id, "ResizeImage", render_config_hash, input_hash);
+                    fingerprint_image_task(&id, "ResizeImage", input_hash);
                 tasks.push(BuildTask {
                     id,
                     kind,
@@ -280,7 +297,16 @@ pub fn build_image_variant_index(
         let formats = image_output_formats(format_mode, has_alpha);
         let fallback = fallback_format(has_alpha);
         let mut per_width = BTreeMap::new();
+        let max_width = images
+            .dimensions
+            .get(&path)
+            .map(|dimensions| dimensions.width);
         for width in widths.iter().copied().filter(|width| *width > 0) {
+            if let Some(max_width) = max_width {
+                if width > max_width {
+                    continue;
+                }
+            }
             let fallback_path = scaled_image_path(rel, width, fallback);
             let mut set = ImageVariantSet {
                 avif: None,
@@ -304,6 +330,35 @@ pub fn build_image_variant_index(
         if !per_width.is_empty() {
             index.insert(path, per_width);
         }
+    }
+    index
+}
+
+pub fn build_video_variant_index(
+    videos: &VideoPlanInput,
+    heights: &[u32],
+) -> VideoVariantIndex {
+    let mut index = BTreeMap::new();
+    let mut heights = heights.to_vec();
+    heights.sort_unstable();
+    heights.dedup();
+    let mut paths = videos.sources.keys().cloned().collect::<Vec<_>>();
+    paths.sort();
+    for path in paths {
+        let max_height = videos
+            .dimensions
+            .get(&path)
+            .map(|dimensions| dimensions.height);
+        let filtered = heights
+            .iter()
+            .copied()
+            .filter(|height| *height > 0)
+            .filter(|height| match max_height {
+                Some(max_height) => *height <= max_height,
+                None => true,
+            })
+            .collect::<Vec<_>>();
+        index.insert(path, filtered);
     }
     index
 }
@@ -370,7 +425,6 @@ pub fn plan_video_tasks(
     videos: &VideoPlanInput,
     heights: &[u32],
     poster_time_sec: u32,
-    render_config_hash: [u8; 32],
 ) -> Vec<BuildTask> {
     let mut tasks = Vec::new();
     let mut paths = videos.sources.keys().cloned().collect::<Vec<_>>();
@@ -392,7 +446,7 @@ pub fn plan_video_tasks(
         };
         let copy_id = TaskId::new("vid_copy", &[path.as_str()]);
         let copy_fingerprint =
-            fingerprint_video_task(&copy_id, "CopyVideoOriginal", render_config_hash, input_hash);
+            fingerprint_video_task(&copy_id, "CopyVideoOriginal", input_hash);
         tasks.push(BuildTask {
             id: copy_id,
             kind: copy_kind,
@@ -414,7 +468,6 @@ pub fn plan_video_tasks(
         let poster_fingerprint = fingerprint_video_task(
             &poster_id,
             "ExtractVideoPoster",
-            render_config_hash,
             input_hash,
         );
         tasks.push(BuildTask {
@@ -427,9 +480,18 @@ pub fn plan_video_tasks(
             }],
         });
 
+        let max_height = videos
+            .dimensions
+            .get(&path)
+            .map(|dimensions| dimensions.height);
         for height in &heights {
             if *height == 0 {
                 continue;
+            }
+            if let Some(max_height) = max_height {
+                if *height > max_height {
+                    continue;
+                }
             }
             let out_rel = format!("artifacts/video/_scale_{height}/{rel}");
             let height_label = format!("h={height}");
@@ -440,7 +502,7 @@ pub fn plan_video_tasks(
             };
             let id = TaskId::new("vid_scale", &[path.as_str(), &height_label]);
             let fingerprint =
-                fingerprint_video_task(&id, "TranscodeVideoMp4", render_config_hash, input_hash);
+                fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
             tasks.push(BuildTask {
                 id,
                 kind,
@@ -458,14 +520,12 @@ pub fn plan_video_tasks(
 fn fingerprint_image_task(
     task_id: &TaskId,
     kind_label: &str,
-    render_config_hash: [u8; 32],
     source_hash: Hash,
 ) -> InputFingerprint {
     let mut hasher = Hasher::new();
     hasher.update(b"stbl2.task.v1");
     add_str(&mut hasher, &task_id.0);
     add_str(&mut hasher, kind_label);
-    hasher.update(&render_config_hash);
     hasher.update(source_hash.as_bytes());
     InputFingerprint(*hasher.finalize().as_bytes())
 }
@@ -473,14 +533,12 @@ fn fingerprint_image_task(
 fn fingerprint_video_task(
     task_id: &TaskId,
     kind_label: &str,
-    render_config_hash: [u8; 32],
     source_hash: Hash,
 ) -> InputFingerprint {
     let mut hasher = Hasher::new();
     hasher.update(b"stbl2.task.v1");
     add_str(&mut hasher, &task_id.0);
     add_str(&mut hasher, kind_label);
-    hasher.update(&render_config_hash);
     hasher.update(source_hash.as_bytes());
     InputFingerprint(*hasher.finalize().as_bytes())
 }

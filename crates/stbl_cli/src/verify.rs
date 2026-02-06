@@ -137,6 +137,7 @@ pub fn run_verify(root: &Path, articles_dir: &Path, strict: bool, verbose: bool)
     verify_duplicate_uuids(&docs, &mut report);
     if config_ok {
         if let Some(config) = &config {
+            verify_site_logo(root, config, &mut report);
             verify_url_collisions(config, &docs, &mut report);
         }
     }
@@ -349,6 +350,15 @@ fn verify_banner(root: &Path, doc: &DocInfo, report: &mut Report) {
             Some(doc.source_path.clone()),
             format!("banner image not found: {err}"),
         );
+    }
+}
+
+fn verify_site_logo(root: &Path, config: &stbl_core::model::SiteConfig, report: &mut Report) {
+    let Some(raw) = config.site.logo.as_deref() else {
+        return;
+    };
+    if let Err(err) = crate::assets::resolve_site_logo(root, raw) {
+        report.warn(Some("stbl.yaml".to_string()), format!("{err}"));
     }
 }
 

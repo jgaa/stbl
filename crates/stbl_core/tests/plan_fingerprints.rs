@@ -182,6 +182,7 @@ fn load_fixture_project() -> Project {
         content,
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     }
 }
 

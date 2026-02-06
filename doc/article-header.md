@@ -36,8 +36,9 @@ part: 2
 
 ### `title`
 
-* **Required**
+* Optional
 * Free text
+* If omitted, page title falls back to the filename in default templates
 
 ---
 
@@ -116,11 +117,54 @@ Rules:
 
 ---
 
+### `abstract`
+
+* Optional
+* Short summary text used for blog listings
+* If missing and blog abstracts are enabled, an abstract is derived from the body
+
+---
+
+### `template`
+
+* Optional
+* String
+* Must be a filename without `/`
+* Unknown values produce a warning or error depending on template policy
+
+Valid values (normalized):
+* `landing`
+* `blog_index`
+* `list-articles` (alias for `blog_index`)
+* `page`
+* `info`
+
+Legacy mappings (accepted inputs → normalized value):
+* `landingpage.html` → `landing`
+* `frontpage.html` → `blog_index`
+* `list-articles.html` → `blog_index`
+* `info.html` → `info`
+
+---
+
 ### `type`
 
 * Optional
 * String
-* Semantics are template-defined (not enforced at header level)
+* Stored as content type, available to templates and tooling
+* Not used by default templates
+
+Special types:
+  - info
+
+---
+
+### `menu`
+
+* Optional
+* String
+* Legacy field, parsed and stored for compatibility
+* Not used by default templates
 
 ---
 
@@ -128,7 +172,35 @@ Rules:
 
 * Optional
 * String
-* Reserved for future use (parsed and stored, not rendered yet)
+* Legacy field, parsed and stored for compatibility
+* Not used by default templates
+
+---
+
+### `banner`
+
+* Optional
+* String
+* Banner image name or `images/...` path
+* Used to render a banner image on supported templates
+
+---
+
+### `banner-credits`
+
+* Optional
+* String
+* Banner attribution text
+* Parsed and stored for template use
+
+---
+
+### `comments`
+
+* Optional
+* String
+* Legacy field, parsed and stored for compatibility
+* Not used by default templates
 
 ---
 
@@ -160,10 +232,20 @@ Behavior:
 ### `uuid`
 
 * Optional
+* UUID string
 * Accepted for backward compatibility
 * Not required
 * Not generated
-* May be ignored internally
+* Not used by default templates
+
+---
+
+### `expires`
+
+* Optional
+* Date/time string
+* Parsed and stored for template or tooling use
+* Not used by default templates
 
 ---
 
@@ -183,10 +265,11 @@ Behavior:
 Invalid sitemap values are **errors**.
 
 
-### exclude_from_blog
+### `exclude_from_blog`
 
 * Optional
 * Defaults to false
+* Boolean values: `true|false`, `yes|no`, `1|0`
 
 If true, the page must not appear in the blog feed regardless of template or location.
 

@@ -15,17 +15,32 @@ fn image_plan_orders_tasks_and_paths() {
     let mut alpha = BTreeMap::new();
     alpha.insert("images/a.jpg".to_string(), false);
     alpha.insert("images/b.jpg".to_string(), false);
+    let mut dimensions = BTreeMap::new();
+    dimensions.insert(
+        "images/a.jpg".to_string(),
+        stbl_core::media::MediaDimensions {
+            width: 1920,
+            height: 1080,
+        },
+    );
+    dimensions.insert(
+        "images/b.jpg".to_string(),
+        stbl_core::media::MediaDimensions {
+            width: 1920,
+            height: 1080,
+        },
+    );
     let input = ImagePlanInput {
         sources,
         hashes,
         alpha,
+        dimensions,
     };
     let tasks = plan_image_tasks(
         &input,
         &[1280, 480],
         90,
         ImageFormatMode::Normal,
-        *blake3::hash(b"config").as_bytes(),
     );
     let out_paths = tasks
         .iter()
@@ -53,17 +68,25 @@ fn fast_mode_skips_avif_outputs() {
     hashes.insert("images/a.jpg".to_string(), blake3::hash(b"a"));
     let mut alpha = BTreeMap::new();
     alpha.insert("images/a.jpg".to_string(), false);
+    let mut dimensions = BTreeMap::new();
+    dimensions.insert(
+        "images/a.jpg".to_string(),
+        stbl_core::media::MediaDimensions {
+            width: 1920,
+            height: 1080,
+        },
+    );
     let input = ImagePlanInput {
         sources,
         hashes,
         alpha,
+        dimensions,
     };
     let tasks = plan_image_tasks(
         &input,
         &[480],
         90,
         ImageFormatMode::Fast,
-        *blake3::hash(b"config").as_bytes(),
     );
     let out_paths = tasks
         .iter()

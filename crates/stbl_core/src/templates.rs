@@ -3,7 +3,7 @@ use chrono::{DateTime, Utc};
 use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
-use crate::model::{NavItem, Page, Project};
+use crate::model::{MenuAlign, NavItem, Page, Project, ThemeHeaderLayout};
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::url::UrlMapper;
 use serde::Serialize;
@@ -124,6 +124,12 @@ pub struct BlogIndexPart {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TagLink {
+    pub label: String,
+    pub href: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BlogIndexItem {
     pub title: String,
     pub href: String,
@@ -131,7 +137,7 @@ pub struct BlogIndexItem {
     pub updated_display: Option<String>,
     pub kind_label: Option<String>,
     pub abstract_text: Option<String>,
-    pub tags: Vec<String>,
+    pub tags: Vec<TagLink>,
     pub latest_parts: Vec<BlogIndexPart>,
 }
 
@@ -165,6 +171,7 @@ pub fn render_blog_index(
     project: &Project,
     title: String,
     intro_html: Option<String>,
+    banner_html: Option<String>,
     items: Vec<BlogIndexItem>,
     prev_href: Option<String>,
     next_href: Option<String>,
@@ -184,16 +191,28 @@ pub fn render_blog_index(
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
     let rel = rel_prefix_for_href(current_href);
 
+    let site = build_site_brand_view(project, asset_manifest, &rel);
+    let menu_align = menu_align_value(project);
+    let menu_align_class = menu_align_class(project);
+    let header_layout = header_layout_value(project);
+    let header_layout_class = header_layout_class(project);
+
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
+            site => site,
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
+            menu_align => menu_align,
+            menu_align_class => menu_align_class,
+            header_layout => header_layout,
+            header_layout_class => header_layout_class,
             page_title => title,
             intro_html => intro_html,
+            banner_html => banner_html,
             items => items,
             prev_href => prev_href,
             next_href => next_href,
@@ -224,15 +243,25 @@ pub fn render_tag_index(
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
     let rel = rel_prefix_for_href(current_href);
+    let site = build_site_brand_view(project, asset_manifest, &rel);
+    let menu_align = menu_align_value(project);
+    let menu_align_class = menu_align_class(project);
+    let header_layout = header_layout_value(project);
+    let header_layout_class = header_layout_class(project);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
+            site => site,
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
+            menu_align => menu_align,
+            menu_align_class => menu_align_class,
+            header_layout => header_layout,
+            header_layout_class => header_layout_class,
             page_title => page_title,
             tag => listing.tag,
             items => listing.items,
@@ -261,6 +290,11 @@ pub fn render_series_index(
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
     let rel = rel_prefix_for_href(current_href);
+    let site = build_site_brand_view(project, asset_manifest, &rel);
+    let menu_align = menu_align_value(project);
+    let menu_align_class = menu_align_class(project);
+    let header_layout = header_layout_value(project);
+    let header_layout_class = header_layout_class(project);
     let page_title = page_title_or_filename(project, index);
     let intro_html = if index.body_markdown.trim().is_empty() {
         None
@@ -275,11 +309,16 @@ pub fn render_series_index(
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
+            site => site,
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
+            menu_align => menu_align,
+            menu_align_class => menu_align_class,
+            header_layout => header_layout,
+            header_layout_class => header_layout_class,
             page_title => page_title,
             intro_html => intro_html,
             parts => parts,
@@ -352,15 +391,25 @@ fn render_with_context(
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
     let rel = rel_prefix_for_href(current_href);
+    let site = build_site_brand_view(project, asset_manifest, &rel);
+    let menu_align = menu_align_value(project);
+    let menu_align_class = menu_align_class(project);
+    let header_layout = header_layout_value(project);
+    let header_layout_class = header_layout_class(project);
 
     template
         .render(context! {
             site_title => project.config.site.title.clone(),
+            site => site,
             site_language => project.config.site.language.clone(),
             home_href => UrlMapper::new(&project.config).map("index").href,
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
+            menu_align => menu_align,
+            menu_align_class => menu_align_class,
+            header_layout => header_layout,
+            header_layout_class => header_layout_class,
             page_title => page_title,
             authors => authors,
             published => published,
@@ -388,11 +437,12 @@ fn render_markdown_with_media(project: &Project, markdown: &str, rel: &str) -> S
         image_format_mode: project.config.media.images.format_mode,
         image_alpha: Some(&project.image_alpha),
         image_variants: Some(&project.image_variants),
+        video_variants: Some(&project.video_variants),
     };
     render_markdown_to_html_with_media(markdown, &options)
 }
 
-fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<String> {
+pub fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<String> {
     let banner = page.banner_name.as_ref()?;
     let mut banner_path = banner.clone();
     if !banner_path.starts_with("images/") {
@@ -411,6 +461,7 @@ fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<Strin
         image_format_mode: project.config.media.images.format_mode,
         image_alpha: Some(&project.image_alpha),
         image_variants: Some(&project.image_variants),
+        video_variants: Some(&project.video_variants),
     };
     let alt = page.header.title.clone().unwrap_or_default();
     Some(crate::render::render_image_html(
@@ -425,6 +476,14 @@ pub struct NavItemView {
     pub label: String,
     pub href: String,
     pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SiteBrandView {
+    title: String,
+    tagline: Option<String>,
+    logo: Option<String>,
+    logo_url: Option<String>,
 }
 
 fn build_nav_view(project: &Project, current_href: &str) -> Vec<NavItemView> {
@@ -465,6 +524,71 @@ fn resolved_nav_items(project: &Project) -> Vec<NavItem> {
             href: "tags".to_string(),
         },
     ]
+}
+
+fn build_site_brand_view(
+    project: &Project,
+    asset_manifest: &AssetManifest,
+    rel: &str,
+) -> SiteBrandView {
+    let title = project.config.site.title.clone();
+    let tagline = project.config.site.tagline.clone();
+    let logo = project
+        .config
+        .site
+        .logo
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let logo_url = logo.as_ref().and_then(|raw| {
+        if is_absolute_or_fragment_href(raw) {
+            return Some(raw.to_string());
+        }
+        let normalized = normalize_href(raw);
+        let resolved = asset_manifest
+            .entries
+            .get(&normalized)
+            .cloned()
+            .unwrap_or(normalized);
+        Some(format!("{rel}{resolved}"))
+    });
+    SiteBrandView {
+        title,
+        tagline,
+        logo,
+        logo_url,
+    }
+}
+
+fn menu_align_class(project: &Project) -> String {
+    match project.config.theme.header.menu_align {
+        MenuAlign::Left => "menu-align-left".to_string(),
+        MenuAlign::Center => "menu-align-center".to_string(),
+        MenuAlign::Right => "menu-align-right".to_string(),
+    }
+}
+
+fn menu_align_value(project: &Project) -> &'static str {
+    match project.config.theme.header.menu_align {
+        MenuAlign::Left => "left",
+        MenuAlign::Center => "center",
+        MenuAlign::Right => "right",
+    }
+}
+
+fn header_layout_class(project: &Project) -> String {
+    match project.config.theme.header.layout {
+        ThemeHeaderLayout::Inline => "header-inline".to_string(),
+        ThemeHeaderLayout::Stacked => "header-stacked".to_string(),
+    }
+}
+
+fn header_layout_value(project: &Project) -> &'static str {
+    match project.config.theme.header.layout {
+        ThemeHeaderLayout::Inline => "inline",
+        ThemeHeaderLayout::Stacked => "stacked",
+    }
 }
 
 fn rel_prefix_for_href(href: &str) -> String {
@@ -535,7 +659,7 @@ fn footer_copyright_text(site: &crate::model::SiteMeta, build_date_ymd: &str) ->
     format!("Copyright {year} by {}", site.title)
 }
 
-fn page_title_or_filename(project: &Project, page: &Page) -> String {
+pub fn page_title_or_filename(project: &Project, page: &Page) -> String {
     if let Some(value) = page
         .header
         .title
@@ -834,6 +958,7 @@ mod tests {
             &project,
             "Blog".to_string(),
             None,
+            None,
             vec![item.clone()],
             None,
             None,
@@ -945,6 +1070,7 @@ mod tests {
             content,
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         }
     }
 

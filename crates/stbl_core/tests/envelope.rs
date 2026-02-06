@@ -21,6 +21,7 @@ fn envelope_blog_index_has_chrome_regions_and_single_h1() {
         &project,
         "Blog".to_string(),
         None,
+        None,
         vec![item],
         None,
         None,
@@ -177,6 +178,7 @@ fn project_with_config(config: &str) -> (Project, String) {
             content: SiteContent::default(),
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         },
         site_title,
     )

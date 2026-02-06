@@ -6,16 +6,17 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 use crate::model::{
-    AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuItem,
-    NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig, SiteMeta,
-    SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeNavOverrides,
-    ThemeWideBackgroundOverrides, UrlStyle, VideoConfig, WideBackgroundStyle,
+    AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuAlign,
+    MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig,
+    SiteMeta, SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeHeaderConfig,
+    ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig,
+    WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
 struct SiteConfigRaw {
     site: SiteMetaRaw,
-    banner: Option<BannerConfig>,
+    banner: Option<BannerConfigRaw>,
     #[serde(default)]
     menu: Vec<MenuItem>,
     theme: Option<ThemeConfigRaw>,
@@ -37,6 +38,8 @@ struct SiteConfigRaw {
 struct SiteMetaRaw {
     id: Option<String>,
     title: Option<String>,
+    tagline: Option<String>,
+    logo: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
     copyright: Option<String>,
@@ -58,12 +61,20 @@ struct AssetsConfigRaw {
 }
 
 #[derive(Debug, Deserialize)]
+struct BannerConfigRaw {
+    widths: Option<Vec<u32>>,
+    quality: Option<u32>,
+    align: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
 struct ThemeConfigRaw {
     variant: Option<String>,
     max_body_width: Option<String>,
     breakpoints: Option<ThemeBreakpointsRaw>,
     colors: Option<ThemeColorsRaw>,
     nav: Option<ThemeNavRaw>,
+    header: Option<ThemeHeaderRaw>,
     wide_background: Option<ThemeWideBackgroundRaw>,
 }
 
@@ -96,6 +107,14 @@ struct ThemeNavRaw {
     bg: Option<String>,
     fg: Option<String>,
     border: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ThemeHeaderRaw {
+    layout: Option<ThemeHeaderLayout>,
+    menu_align: Option<MenuAlign>,
+    title_size: Option<String>,
+    tagline_size: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -174,6 +193,7 @@ struct BlogSeriesConfigRaw {
 struct RssConfigRaw {
     enabled: Option<bool>,
     max_items: Option<usize>,
+    ttl_channel: Option<i64>,
     ttl_days: Option<i64>,
 }
 
@@ -186,7 +206,9 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
     let site = SiteMeta {
         id: required_string(parsed.site.id, "site.id")?,
         title: required_string(parsed.site.title, "site.title")?,
-        abstract_text: parsed.site.abstract_text,
+        tagline: optional_non_empty(parsed.site.tagline, "site.tagline")?
+            .or_else(|| parsed.site.abstract_text),
+        logo: optional_non_empty(parsed.site.logo, "site.logo")?,
         copyright: parsed.site.copyright,
         base_url: required_string(parsed.site.base_url, "site.base_url")?,
         language: required_string(parsed.site.language, "site.language")?,
@@ -292,9 +314,23 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                     Some(u32::try_from(value).context("rss.ttl_days out of range")?)
                 }
             };
+            let ttl_channel = match rss_raw.ttl_channel {
+                None => None,
+                Some(value) => {
+                    if value < 0 {
+                        bail!("rss.ttl_channel must be >= 0");
+                    }
+                    if value == 0 {
+                        None
+                    } else {
+                        Some(u32::try_from(value).context("rss.ttl_channel out of range")?)
+                    }
+                }
+            };
             Some(RssConfig {
                 enabled,
                 max_items: rss_raw.max_items,
+                ttl_channel,
                 ttl_days,
             })
         }
@@ -434,6 +470,30 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                 "theme.nav.border",
             )?,
         },
+        header: ThemeHeaderConfig {
+            layout: theme_raw
+                .and_then(|theme| theme.header.as_ref())
+                .and_then(|header| header.layout)
+                .unwrap_or_default(),
+            menu_align: theme_raw
+                .and_then(|theme| theme.header.as_ref())
+                .and_then(|header| header.menu_align)
+                .unwrap_or_default(),
+            title_size: non_empty_or_default(
+                theme_raw
+                    .and_then(|theme| theme.header.as_ref())
+                    .and_then(|header| header.title_size.clone()),
+                "1.3rem",
+                "theme.header.title_size",
+            )?,
+            tagline_size: non_empty_or_default(
+                theme_raw
+                    .and_then(|theme| theme.header.as_ref())
+                    .and_then(|header| header.tagline_size.clone()),
+                "1rem",
+                "theme.header.tagline_size",
+            )?,
+        },
         wide_background: ThemeWideBackgroundOverrides {
             color: optional_non_empty(
                 theme_raw
@@ -502,7 +562,11 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
 
     Ok(SiteConfig {
         site,
-        banner: parsed.banner,
+        banner: parsed.banner.map(|banner| BannerConfig {
+            widths: banner.widths.unwrap_or_else(default_image_widths),
+            quality: banner.quality.unwrap_or(90),
+            align: banner.align.unwrap_or(0),
+        }),
         menu: parsed.menu,
         nav,
         theme,
@@ -653,6 +717,28 @@ mod tests {
         assert!(config.theme.colors.bg.is_none());
         assert!(config.theme.nav.bg.is_none());
         assert!(config.theme.wide_background.color.is_none());
+        assert_eq!(
+            config.theme.header.layout,
+            crate::model::ThemeHeaderLayout::Stacked
+        );
+        assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Right);
+        assert_eq!(config.theme.header.title_size, "1.3rem");
+        assert_eq!(config.theme.header.tagline_size, "1rem");
+    }
+
+    #[test]
+    fn banner_and_media_quality_default_when_omitted() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n\
+banner: {}\n\
+media:\n  images:\n    widths: [200]\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let banner = config.banner.expect("banner");
+        assert_eq!(banner.quality, 90);
+        assert_eq!(banner.align, 0);
+        assert_eq!(banner.widths, super::default_image_widths());
+        assert_eq!(config.media.images.quality, 90);
     }
 
     #[test]
@@ -680,6 +766,16 @@ mod tests {
         );
         let err = load_site_config(&path).expect_err("expected error");
         assert!(err.to_string().contains("rss.ttl_days"));
+    }
+
+    #[test]
+    fn rss_ttl_channel_zero_is_ignored() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nrss:\n  enabled: true\n  max_items: 10\n  ttl_channel: 0\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let rss = config.rss.expect("rss should be present");
+        assert!(rss.ttl_channel.is_none());
     }
 
     #[test]
@@ -750,5 +846,20 @@ mod tests {
         let blog = config.blog.expect("blog should be present");
         assert!(!blog.abstract_cfg.enabled);
         assert_eq!(blog.abstract_cfg.max_chars, 10);
+    }
+
+    #[test]
+    fn theme_header_layout_and_align_parse() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\ntheme:\n  header:\n    layout: inline\n    menu_align: center\n    title_size: 1.5rem\n    tagline_size: 1.1rem\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(
+            config.theme.header.layout,
+            crate::model::ThemeHeaderLayout::Inline
+        );
+        assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Center);
+        assert_eq!(config.theme.header.title_size, "1.5rem");
+        assert_eq!(config.theme.header.tagline_size, "1.1rem");
     }
 }

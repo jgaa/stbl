@@ -1,0 +1,10 @@
+site:
+  id: "header-layout"
+  title: "Header Layout"
+  base_url: "https://example.com/"
+  language: "en"
+
+theme:
+  header:
+    layout: stacked
+    menu_align: right

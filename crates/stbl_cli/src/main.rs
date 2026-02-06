@@ -3,6 +3,7 @@ mod config_loader;
 mod exec;
 mod init;
 mod media;
+mod precompress;
 mod preview;
 mod upgrade;
 mod verify;
@@ -93,6 +94,12 @@ enum Command {
         cache_path: Option<PathBuf>,
         #[arg(long)]
         fast_images: bool,
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        precompress: bool,
+        #[arg(long)]
+        fast_compress: bool,
+        #[arg(long)]
+        regenerate_content: bool,
         #[arg(long, value_name = "N")]
         jobs: Option<usize>,
         #[arg(long)]
@@ -148,6 +155,9 @@ fn main() -> Result<()> {
             no_cache,
             cache_path,
             fast_images,
+            precompress,
+            fast_compress,
+            regenerate_content,
             jobs,
             preview,
             beep,
@@ -163,6 +173,9 @@ fn main() -> Result<()> {
             *no_cache,
             cache_path.as_ref(),
             *fast_images,
+            *precompress,
+            *fast_compress,
+            *regenerate_content,
             *jobs,
             *preview,
             *beep,
@@ -254,10 +267,13 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
         content,
         image_alpha: BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     };
     let site_assets_root = root.join("assets");
-    let (asset_index, _asset_lookup) = assets::discover_assets(&site_assets_root)
+    let (mut asset_index, mut asset_lookup) = assets::discover_assets(&site_assets_root)
         .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
+        .with_context(|| "failed to resolve site.logo")?;
     let (image_plan, _image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();
@@ -268,6 +284,10 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
     );
     let (video_plan, _video_lookup) =
         media::discover_videos(&project).with_context(|| "failed to discover videos")?;
+    project.video_variants = stbl_core::media::build_video_variant_index(
+        &video_plan,
+        &project.config.media.video.heights,
+    );
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     if let Some(dot_path) = dot {
@@ -327,6 +347,9 @@ fn run_build(
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
     fast_images: bool,
+    precompress: bool,
+    fast_compress: bool,
+    regenerate_content: bool,
     jobs: Option<usize>,
     preview: bool,
     beep: bool,
@@ -371,10 +394,13 @@ fn run_build(
         content,
         image_alpha: BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     };
     let site_assets_root = root.join("assets");
-    let (asset_index, asset_lookup) = assets::discover_assets(&site_assets_root)
+    let (mut asset_index, mut asset_lookup) = assets::discover_assets(&site_assets_root)
         .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
+        .with_context(|| "failed to resolve site.logo")?;
     let (image_plan, image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();
@@ -386,6 +412,10 @@ fn run_build(
     media::resolve_banner_paths(&mut project).with_context(|| "failed to resolve banners")?;
     let (video_plan, video_lookup) =
         media::discover_videos(&project).with_context(|| "failed to discover videos")?;
+    project.video_variants = stbl_core::media::build_video_variant_index(
+        &video_plan,
+        &project.config.media.video.heights,
+    );
     let asset_manifest =
         stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
@@ -401,7 +431,8 @@ fn run_build(
         None => default_out_dir(&project.config)?,
     };
 
-    prune_out_dir(&out_dir, &plan, cli.verbose)?;
+    let enable_brotli = precompress && !fast_compress;
+    prune_out_dir(&out_dir, &plan, precompress, enable_brotli, cli.verbose)?;
 
     let output_count: usize = plan.tasks.iter().map(|task| task.outputs.len()).sum();
 
@@ -417,7 +448,15 @@ fn run_build(
         &asset_manifest,
         cache.as_mut().map(|store| store as &mut dyn CacheStore),
         jobs,
+        regenerate_content,
     )?;
+    if precompress {
+        let level = if fast_compress { 1 } else { 6 };
+        crate::precompress::write_gzip_files(&out_dir, level, cli.verbose)?;
+    }
+    if enable_brotli {
+        crate::precompress::write_brotli_files(&out_dir, 5, cli.verbose)?;
+    }
     println!("tasks: {}", plan.tasks.len());
     println!("edges: {}", plan.edges.len());
     println!("outputs: {}", output_count);
@@ -741,11 +780,23 @@ fn render_dot(plan: &stbl_core::model::BuildPlan) -> String {
     output
 }
 
-fn prune_out_dir(out_dir: &PathBuf, plan: &stbl_core::model::BuildPlan, verbose: bool) -> Result<()> {
+fn prune_out_dir(
+    out_dir: &PathBuf,
+    plan: &stbl_core::model::BuildPlan,
+    precompress: bool,
+    brotli: bool,
+    verbose: bool,
+) -> Result<()> {
     if !out_dir.exists() {
         return Ok(());
     }
-    let expected = collect_expected_outputs(plan);
+    let mut expected = collect_expected_outputs(plan);
+    if precompress {
+        expected.extend(crate::precompress::expected_gzip_outputs(plan));
+    }
+    if brotli {
+        expected.extend(crate::precompress::expected_brotli_outputs(plan));
+    }
     let mut removed_files = 0usize;
     let mut dirs = Vec::new();
     for entry in WalkDir::new(out_dir).min_depth(1) {
@@ -852,6 +903,9 @@ mod tests {
             no_cache: false,
             cache_path: None,
             fast_images: false,
+            precompress: true,
+            fast_compress: false,
+            regenerate_content: false,
             jobs: None,
             preview: true,
             beep: false,

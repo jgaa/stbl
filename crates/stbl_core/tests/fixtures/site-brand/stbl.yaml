@@ -1,0 +1,11 @@
+site:
+  id: "brand"
+  title: "Brand Site"
+  tagline: "Quietly better"
+  logo: "logo.svg"
+  base_url: "https://example.com/"
+  language: "en"
+
+theme:
+  header:
+    menu_align: center

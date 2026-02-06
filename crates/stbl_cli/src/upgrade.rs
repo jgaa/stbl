@@ -65,8 +65,7 @@ struct SiteOut {
     id: String,
     title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(rename = "abstract")]
-    abstract_text: Option<String>,
+    tagline: Option<String>,
     base_url: String,
     language: String,
     url_style: String,
@@ -170,6 +169,8 @@ struct RssOut {
     enabled: bool,
     max_items: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
+    ttl_channel: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     ttl_days: Option<u32>,
 }
 
@@ -209,7 +210,7 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
         None => bail!("missing required legacy field: url"),
     };
     let language = value_of(root, "language").unwrap_or_else(|| "en".to_string());
-    let abstract_text = value_of(root, "abstract");
+    let tagline = value_of(root, "abstract");
     let id = derive_site_id(source_dir, &title);
 
     let max_articles = value_of(root, "max-articles-on-frontpage")
@@ -257,7 +258,7 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
         site: SiteOut {
             id,
             title,
-            abstract_text,
+            tagline,
             base_url,
             language,
             url_style: "html".to_string(),
@@ -446,16 +447,14 @@ fn parse_rss(block: &Node, warnings: &mut Vec<String>) -> Result<RssOut> {
         None => 10,
     };
 
-    if let Some(value) = value_of(block, "ttl") {
-        warnings.push(format!(
-            "rss.ttl '{}' is in minutes and was ignored (use ttl_days in stbl.yaml)",
-            value
-        ));
-    }
+    let ttl_channel = value_of(block, "ttl")
+        .and_then(|value| parse_u32(&value, "rss.ttl", warnings))
+        .filter(|value| *value > 0);
 
     Ok(RssOut {
         enabled,
         max_items,
+        ttl_channel,
         ttl_days: None,
     })
 }

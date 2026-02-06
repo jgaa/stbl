@@ -18,9 +18,10 @@ use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskK
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
-    BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
-    format_timestamp_ymd, render_blog_index, render_markdown_page, render_page,
-    render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
+    BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagLink,
+    TagListingPage, format_timestamp_ymd, page_title_or_filename, render_banner_html,
+    render_blog_index, render_markdown_page, render_page, render_page_with_series_nav,
+    render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 use std::process::Command;
@@ -47,6 +48,7 @@ pub fn execute_plan(
     asset_manifest: &AssetManifest,
     mut cache: Option<&mut dyn CacheStore>,
     jobs: Option<usize>,
+    regenerate_content: bool,
 ) -> Result<ExecSummary> {
     let mut report = ExecSummary::default();
     let mapper = UrlMapper::new(&project.config);
@@ -55,7 +57,7 @@ pub fn execute_plan(
     let mut video_jobs: Vec<BuildTask> = Vec::new();
     for task in &plan.tasks {
         if let TaskKind::GenerateVarsCss { vars: _, out_rel } = &task.kind {
-            if should_skip_task(&mut cache, task, out_dir)? {
+            if should_skip_task(&mut cache, task, out_dir, regenerate_content)? {
                 report.skipped += output_count(task);
                 report.skipped_ids.push(task.id.0.clone());
                 continue;
@@ -85,7 +87,7 @@ pub fn execute_plan(
         if matches!(task.kind, TaskKind::GenerateVarsCss { .. }) {
             continue;
         }
-        if should_skip_task(&mut cache, task, out_dir)? {
+        if should_skip_task(&mut cache, task, out_dir, regenerate_content)? {
             report.skipped += output_count(task);
             report.skipped_ids.push(task.id.0.clone());
             continue;
@@ -316,7 +318,11 @@ fn should_skip_task(
     cache: &mut Option<&mut dyn CacheStore>,
     task: &BuildTask,
     out_dir: &Path,
+    regenerate_content: bool,
 ) -> Result<bool> {
+    if regenerate_content && !is_media_task(&task.kind) {
+        return Ok(false);
+    }
     let Some(cache) = cache.as_mut() else {
         return Ok(false);
     };
@@ -338,6 +344,17 @@ fn should_skip_task(
         }
     }
     Ok(false)
+}
+
+fn is_media_task(kind: &TaskKind) -> bool {
+    matches!(
+        kind,
+        TaskKind::CopyImageOriginal { .. }
+            | TaskKind::ResizeImage { .. }
+            | TaskKind::CopyVideoOriginal { .. }
+            | TaskKind::TranscodeVideoMp4 { .. }
+            | TaskKind::ExtractVideoPoster { .. }
+    )
 }
 
 fn cache_put_inner(cache: &mut dyn CacheStore, task: &BuildTask) {
@@ -364,10 +381,12 @@ fn cache_put(cache: &mut Option<&mut dyn CacheStore>, task: &BuildTask) {
 
 fn render_vars_css(vars: &ResolvedThemeVars) -> String {
     format!(
-        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
+        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --header-title-size: {};\n  --header-tagline-size: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
         vars.max_body_width,
         vars.desktop_min,
         vars.wide_min,
+        vars.header_title_size,
+        vars.header_tagline_size,
         vars.c_bg,
         vars.c_fg,
         vars.c_heading,
@@ -948,8 +967,8 @@ fn render_blog_index_page(
         .map(|item| map_feed_item(item, &mapper))
         .collect::<Vec<_>>();
 
+    let rel = rel_prefix_for_href(current_href);
     let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
-        let rel = rel_prefix_for_href(current_href);
         let options = RenderOptions {
             rel_prefix: &rel,
             video_heights: &project.config.media.video.heights,
@@ -960,6 +979,7 @@ fn render_blog_index_page(
             image_format_mode: project.config.media.images.format_mode,
             image_alpha: Some(&project.image_alpha),
             image_variants: Some(&project.image_variants),
+            video_variants: Some(&project.video_variants),
         };
         Some(render_markdown_to_html_with_media(
             &source_page.body_markdown,
@@ -969,7 +989,8 @@ fn render_blog_index_page(
         None
     };
 
-    let title = "Blog".to_string();
+    let title = page_title_or_filename(project, source_page);
+    let banner_html = render_banner_html(project, source_page, &rel);
     let prev_href = page_range.prev_key.as_ref().map(|key| mapper.map(key).href);
     let next_href = page_range.next_key.as_ref().map(|key| mapper.map(key).href);
 
@@ -977,6 +998,7 @@ fn render_blog_index_page(
         project,
         title,
         intro_html,
+        banner_html,
         items,
         prev_href,
         next_href,
@@ -1060,7 +1082,14 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
             updated_display: format_timestamp_ymd(post.updated),
             kind_label: None,
             abstract_text: post.abstract_text.clone(),
-            tags: post.tags.clone(),
+            tags: post
+                .tags
+                .iter()
+                .map(|tag| TagLink {
+                    label: tag.clone(),
+                    href: mapper.map(&format!("tags/{}", tag)).href,
+                })
+                .collect(),
             latest_parts: Vec::new(),
         },
         FeedItem::Series(series) => BlogIndexItem {
@@ -1070,7 +1099,14 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
             updated_display: format_timestamp_ymd(series.updated),
             kind_label: Some("Series".to_string()),
             abstract_text: series.abstract_text.clone(),
-            tags: series.tags.clone(),
+            tags: series
+                .tags
+                .iter()
+                .map(|tag| TagLink {
+                    label: tag.clone(),
+                    href: mapper.map(&format!("tags/{}", tag)).href,
+                })
+                .collect(),
             latest_parts: series
                 .latest_parts
                 .iter()
@@ -1116,11 +1152,20 @@ mod tests {
             content,
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         }
     }
 
     fn build_project(url_style: UrlStyle) -> Project {
         build_project_at(fixture_root("site1"), url_style)
+    }
+
+    fn build_brand_project(url_style: UrlStyle) -> Project {
+        build_project_at(fixture_root("site-brand"), url_style)
+    }
+
+    fn build_header_layout_project(url_style: UrlStyle) -> Project {
+        build_project_at(fixture_root("site-header-layout"), url_style)
     }
 
     fn build_into_temp(url_style: UrlStyle) -> (TempDir, PathBuf) {
@@ -1131,8 +1176,10 @@ mod tests {
     fn build_project_into_temp(project: Project) -> (TempDir, PathBuf) {
         let mut project = project;
         let site_assets_root = project.root.join("assets");
-        let (asset_index, asset_lookup) =
+        let (mut asset_index, mut asset_lookup) =
             crate::assets::discover_assets(&site_assets_root).expect("discover assets");
+        crate::assets::include_site_logo(&project.root, &project.config, &mut asset_index, &mut asset_lookup)
+            .expect("resolve site.logo");
         let (image_plan, image_lookup) =
             crate::media::discover_images(&project).expect("discover images");
         project.image_alpha = image_plan.alpha.clone();
@@ -1143,6 +1190,10 @@ mod tests {
         );
         let (video_plan, video_lookup) =
             crate::media::discover_videos(&project).expect("discover videos");
+        project.video_variants = stbl_core::media::build_video_variant_index(
+            &video_plan,
+            &project.config.media.video.heights,
+        );
         let asset_manifest = stbl_core::assets::build_asset_manifest(
             &asset_index,
             project.config.assets.cache_busting,
@@ -1160,6 +1211,7 @@ mod tests {
             &asset_manifest,
             None,
             None,
+            false,
         )
         .expect("execute plan");
         (temp, out_dir)
@@ -1209,6 +1261,8 @@ mod tests {
             "--layout-max-width:",
             "--bp-desktop-min:",
             "--bp-wide-min:",
+            "--header-title-size:",
+            "--header-tagline-size:",
             "--c-bg:",
             "--c-fg:",
             "--c-heading:",
@@ -1269,7 +1323,7 @@ mod tests {
 
     #[test]
     fn pagination_fixture_generates_multiple_blog_pages() {
-        let project = build_project_at(fixture_root("site-pagination"), UrlStyle::Html);
+        let mut project = build_project_at(fixture_root("site-pagination"), UrlStyle::Html);
         let site_assets_root = project.root.join("assets");
         let (asset_index, asset_lookup) =
             crate::assets::discover_assets(&site_assets_root).expect("discover assets");
@@ -1277,6 +1331,10 @@ mod tests {
             crate::media::discover_images(&project).expect("discover images");
         let (video_plan, video_lookup) =
             crate::media::discover_videos(&project).expect("discover videos");
+        project.video_variants = stbl_core::media::build_video_variant_index(
+            &video_plan,
+            &project.config.media.video.heights,
+        );
         let asset_manifest = stbl_core::assets::build_asset_manifest(
             &asset_index,
             project.config.assets.cache_busting,
@@ -1294,6 +1352,7 @@ mod tests {
             &asset_manifest,
             None,
             None,
+            false,
         )
         .expect("execute plan");
 
@@ -1345,21 +1404,44 @@ mod tests {
         let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
         let page_html = fs::read_to_string(out_dir.join("page1.html")).expect("read page1");
 
-        assert!(index_html.contains("<header>"));
+        assert!(index_html.contains("<header"));
         assert!(index_html.contains("<main>"));
         assert!(index_html.contains("<footer>"));
-        assert!(page_html.contains("<header>"));
+        assert!(page_html.contains("<header"));
         assert!(page_html.contains("<main>"));
         assert!(page_html.contains("<footer>"));
 
         assert_eq!(count_h1(&index_html), 1);
         assert_eq!(count_h1(&page_html), 1);
 
-        assert!(index_html.contains("<title>Blog · Site One</title>"));
-        assert!(page_html.contains("<title>Page One · Site One</title>"));
+        assert!(index_html.contains("<title>Home</title>"));
+        assert!(page_html.contains("<title>Page One</title>"));
 
         assert_footer_stamp(&index_html);
         assert_footer_stamp(&page_html);
+    }
+
+    #[test]
+    fn brand_block_and_menu_alignment_render() {
+        let project = build_brand_project(UrlStyle::Html);
+        let (_temp, out_dir) = build_project_into_temp(project);
+        let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
+
+        assert!(index_html.contains("class=\"brand\""));
+        assert!(index_html.contains("brand-title"));
+        assert!(index_html.contains("brand-tagline"));
+        assert!(index_html.contains("menu-align-center"));
+        assert!(index_html.contains("<img class=\"brand-logo\""));
+    }
+
+    #[test]
+    fn header_layout_classes_render() {
+        let project = build_header_layout_project(UrlStyle::Html);
+        let (_temp, out_dir) = build_project_into_temp(project);
+        let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
+
+        assert!(index_html.contains("header-stacked"));
+        assert!(index_html.contains("menu-align-right"));
     }
 
     fn count_h1(contents: &str) -> usize {

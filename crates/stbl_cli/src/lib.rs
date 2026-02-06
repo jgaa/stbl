@@ -3,6 +3,7 @@ pub mod config_loader;
 pub mod exec;
 pub mod init;
 pub mod media;
+pub mod precompress;
 pub mod preview;
 pub mod upgrade;
 pub mod verify;

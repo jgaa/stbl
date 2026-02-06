@@ -30,6 +30,10 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         project.config.media.images.format_mode,
     );
     let (video_plan, video_lookup) = media::discover_videos(&project).expect("discover videos");
+    project.video_variants = stbl_core::media::build_video_variant_index(
+        &video_plan,
+        &project.config.media.video.heights,
+    );
     let asset_manifest = stbl_core::assets::build_asset_manifest(
         &asset_index,
         project.config.assets.cache_busting,
@@ -47,6 +51,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &asset_manifest,
         Some(&mut cache),
         None,
+        false,
     )
     .expect("execute plan");
     assert!(report_first.executed > 0);
@@ -61,6 +66,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &asset_manifest,
         Some(&mut cache),
         None,
+        false,
     )
     .expect("execute plan");
     assert_eq!(report_second.executed, 0);
@@ -80,6 +86,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &asset_manifest,
         Some(&mut cache),
         None,
+        false,
     )
     .expect("execute plan");
     assert!(report_third.executed >= 1);
@@ -107,6 +114,7 @@ fn build_project(root: &Path) -> Project {
         content,
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     }
 }
 

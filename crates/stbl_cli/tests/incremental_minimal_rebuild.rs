@@ -158,6 +158,10 @@ fn run_build(source_dir: &Path, out_dir: &Path, cache: &mut SqliteCacheStore) ->
         project.config.media.images.format_mode,
     );
     let (video_plan, video_lookup) = media::discover_videos(&project).expect("discover videos");
+    project.video_variants = stbl_core::media::build_video_variant_index(
+        &video_plan,
+        &project.config.media.video.heights,
+    );
     let asset_manifest = stbl_core::assets::build_asset_manifest(
         &asset_index,
         project.config.assets.cache_busting,
@@ -174,6 +178,7 @@ fn run_build(source_dir: &Path, out_dir: &Path, cache: &mut SqliteCacheStore) ->
         &asset_manifest,
         Some(cache),
         None,
+        false,
     )
     .expect("execute plan")
 }
@@ -190,6 +195,7 @@ fn build_project(root: &Path) -> Project {
         content,
         image_alpha: std::collections::BTreeMap::new(),
         image_variants: Default::default(),
+        video_variants: Default::default(),
     }
 }
 

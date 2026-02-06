@@ -4,7 +4,7 @@
   {% if item.published_display or item.updated_display or item.kind_label %}
   <div class="meta">
     {% if item.published_display %}
-    <span class="meta">{{ item.published_display }}</span>
+    <span class="meta">Published: {{ item.published_display }}</span>
     {% endif %}
     {% if item.updated_display %}
     <span class="meta">Updated {{ item.updated_display }}</span>
@@ -22,7 +22,7 @@
   {% if item.tags and item.tags | length > 0 %}
   <ul class="tags">
     {% for tag in item.tags %}
-    <li>{{ tag }}</li>
+    <li><a href="{{ tag.href }}">{{ tag.label }}</a></li>
     {% endfor %}
   </ul>
   {% endif %}
@@ -39,4 +39,6 @@
     {% endfor %}
   </ul>
   {% endif %}
+
+  <a class="read-on" href="{{ item.href }}">Read on...</a>
 </li>

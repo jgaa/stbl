@@ -1,12 +1,33 @@
 /* Desktop presentation: show desktop nav, hide mobile nav */
-.nav-desktop { display: block; }
-.nav-mobile { display: none; }
-
-header {
+.nav-desktop { 
+  display: block;
   background: var(--c-nav-bg);
   color: var(--c-nav-fg);
-  border-bottom: 1px solid var(--c-nav-border);
+  border-radius: 0.5rem;
+}
+.nav-mobile { display: none; }
+
+.nav-desktop ul {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  gap: 0;
+  justify-content: flex-end;
 }
 
-header a { color: var(--c-nav-fg); }
-header a:hover { color: var(--c-nav-fg); }
+.nav-desktop a {
+  display: inline-block;
+  color: var(--c-nav-fg);
+  text-decoration: none;
+  padding: 0 0.6rem;
+}
+.nav-desktop a:hover { color: var(--c-nav-fg); }
+
+.nav-desktop li + li a {
+  border-left: 1px solid var(--c-nav-border);
+}
+
+.menu-align-left .nav-desktop ul { justify-content: flex-start; }
+.menu-align-center .nav-desktop ul { justify-content: center; }
+.menu-align-right .nav-desktop ul { justify-content: flex-end; }

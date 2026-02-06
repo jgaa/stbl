@@ -4,6 +4,23 @@ use std::time::{Duration, Instant};
 use stbl_cli::preview::{PreviewOpts, spawn_preview};
 use tempfile::TempDir;
 
+struct TerminalRestore;
+
+impl Drop for TerminalRestore {
+    fn drop(&mut self) {
+        let _ = std::process::Command::new("stty")
+            .arg("sane")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        let _ = std::process::Command::new("tput")
+            .arg("cnorm")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+}
+
 fn wait_for_ready(url: &str) {
     let start = Instant::now();
     loop {
@@ -22,6 +39,7 @@ fn wait_for_ready(url: &str) {
 
 #[test]
 fn preview_serves_files() {
+    let _terminal_restore = TerminalRestore;
     let temp = TempDir::new().expect("tempdir");
     let out_dir = temp.path().join("out");
     fs::create_dir_all(out_dir.join("artifacts/css")).expect("create dirs");

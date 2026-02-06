@@ -13,6 +13,7 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let cutoff = rss_config
         .ttl_days
         .map(|days| Utc::now() - Duration::days(i64::from(days)));
+    let channel_ttl = rss_config.ttl_channel.filter(|value| *value > 0);
 
     let mut items: Vec<FeedItem> = collect_feed_pages(project)
         .into_iter()
@@ -30,7 +31,7 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     items.truncate(max_items);
 
     let site_title = escape_xml(&project.config.site.title);
-    let site_desc = escape_xml(project.config.site.abstract_text.as_deref().unwrap_or(""));
+    let site_desc = escape_xml(project.config.site.tagline.as_deref().unwrap_or(""));
     let site_link = escape_xml(&project.config.site.base_url);
     let site_language = escape_xml(&project.config.site.language);
 
@@ -42,6 +43,9 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     out.push_str(&format!("<link>{site_link}</link>\n"));
     out.push_str(&format!("<description>{site_desc}</description>\n"));
     out.push_str(&format!("<language>{site_language}</language>\n"));
+    if let Some(ttl) = channel_ttl {
+        out.push_str(&format!("<ttl>{ttl}</ttl>\n"));
+    }
 
     for item in items {
         out.push_str("<item>\n");
@@ -309,7 +313,8 @@ mod tests {
             site: SiteMeta {
                 id: "demo".to_string(),
                 title: "Demo".to_string(),
-                abstract_text: None,
+                tagline: None,
+                logo: None,
                 copyright: None,
                 base_url: "https://example.com/".to_string(),
                 language: "en".to_string(),
@@ -328,6 +333,12 @@ mod tests {
                 },
                 colors: ThemeColorOverrides::default(),
                 nav: ThemeNavOverrides::default(),
+                header: crate::model::ThemeHeaderConfig {
+                    layout: Default::default(),
+                    menu_align: Default::default(),
+                    title_size: "1.3rem".to_string(),
+                    tagline_size: "1rem".to_string(),
+                },
                 wide_background: ThemeWideBackgroundOverrides::default(),
             },
             assets: crate::model::AssetsConfig {
@@ -354,6 +365,7 @@ mod tests {
             rss: Some(crate::model::RssConfig {
                 enabled: true,
                 max_items: Some(10),
+                ttl_channel: None,
                 ttl_days: None,
             }),
             seo: None,
@@ -403,6 +415,7 @@ mod tests {
             },
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         };
         let mapper = UrlMapper::new(&project.config);
         let rss = render_rss(&project, &mapper);
@@ -511,6 +524,7 @@ mod tests {
         config.rss = Some(crate::model::RssConfig {
             enabled: rss_enabled,
             max_items: Some(10),
+            ttl_channel: None,
             ttl_days: None,
         });
         let docs = scan_fixture(&root).expect("scan fixture");
@@ -521,6 +535,7 @@ mod tests {
             content,
             image_alpha: std::collections::BTreeMap::new(),
             image_variants: Default::default(),
+            video_variants: Default::default(),
         }
     }
 

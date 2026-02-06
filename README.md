@@ -13,6 +13,9 @@ Common commands:
 
 Build options:
 - `stbl_cli build --jobs <N>` (control parallelism for image scaling; video tasks run at roughly `N/4` concurrency, ffmpeg is limited to 4 threads per task)
+- `stbl_cli build --regenerate-content` (rebuild all non-media outputs, ignoring cache for pages/feeds/assets)
+- `stbl_cli build --precompress=false` (disable generating `.gz` for text assets)
+- `stbl_cli build --fast-compress` (use gzip level 1 and skip brotli for precompression)
 - `stbl_cli build --preview` (serve output locally, do not open a browser)
 - `stbl_cli build --preview-open` (serve output locally and open a browser)
 

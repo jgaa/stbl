@@ -256,10 +256,14 @@ fn normalize_template(
     }
     let normalized = match value {
         "landingpage.html" => TemplateId::Landing,
+        "landingpage" => TemplateId::Landing,
         "frontpage.html" => TemplateId::BlogIndex,
+        "frontpage" => TemplateId::BlogIndex,
+        "list-articles.html" => TemplateId::BlogIndex,
         "info.html" => TemplateId::Info,
         "landing" => TemplateId::Landing,
         "blog_index" => TemplateId::BlogIndex,
+        "list-articles" => TemplateId::BlogIndex,
         "page" => TemplateId::Page,
         "info" => TemplateId::Info,
         _ => {
@@ -541,6 +545,44 @@ mod tests {
     }
 
     #[test]
+    fn template_frontpage_normalizes() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/page.md",
+                "articles",
+                "page.md",
+                header_with_template("frontpage"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::BlogIndex));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn template_list_articles_normalizes() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/blog.md",
+                "articles",
+                "blog.md",
+                header_with_template("list-articles.html"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::BlogIndex));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
     fn template_normalized_id_passes_through() {
         let docs = vec![
             DiscoveredDoc {
@@ -588,6 +630,25 @@ mod tests {
             assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
         assert_eq!(site.pages.len(), 1);
         assert_eq!(site.pages[0].header.template, Some(TemplateId::Info));
+        assert!(site.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn template_landingpage_normalizes() {
+        let doc = DiscoveredDoc {
+            parsed: parsed(
+                "articles/landing.md",
+                "articles",
+                "landing.md",
+                header_with_template("landingpage"),
+            ),
+            kind: DocKind::Page,
+            series_dir: None,
+        };
+        let site =
+            assemble_site_with_template_policy(vec![doc], TemplatePolicy::Warn).expect("assemble");
+        assert_eq!(site.pages.len(), 1);
+        assert_eq!(site.pages[0].header.template, Some(TemplateId::Landing));
         assert!(site.diagnostics.is_empty());
     }
 
