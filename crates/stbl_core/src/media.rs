@@ -1,4 +1,4 @@
-use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 use std::collections::BTreeMap;
 
 use crate::assets::AssetSourceId;
@@ -38,6 +38,8 @@ pub struct ImageRef {
     pub path: MediaPath,
     pub alt: String,
     pub attrs: Vec<ImageAttr>,
+    pub maxw: Option<String>,
+    pub maxh: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,6 +48,8 @@ pub struct VideoRef {
     pub alt: String,
     pub prefer_p: u16,
     pub attrs: Vec<VideoAttr>,
+    pub maxw: Option<String>,
+    pub maxh: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -93,14 +97,99 @@ pub struct VideoPlanInput {
 }
 
 pub fn parse_media_destination(dest: &str, alt: &str) -> Option<MediaRef> {
+    parse_media_destination_internal(dest, alt, None)
+}
+
+pub fn collect_media_refs_with_errors(markdown: &str) -> (Vec<MediaRef>, Vec<String>) {
+    let parser = Parser::new_ext(markdown, Options::empty());
+    let mut refs = Vec::new();
+    let mut errors = Vec::new();
+    let mut stack: Vec<(String, String)> = Vec::new();
+
+    for event in parser {
+        match event {
+            Event::Start(Tag::Image {
+                dest_url,
+                title: _,
+                id: _,
+                link_type: _,
+            }) => {
+                stack.push((dest_url.to_string(), String::new()));
+            }
+            Event::End(TagEnd::Image) => {
+                if let Some((dest, alt)) = stack.pop() {
+                    if let Some(media_ref) =
+                        parse_media_destination_internal(&dest, &alt, Some(&mut errors))
+                    {
+                        refs.push(media_ref);
+                    }
+                }
+            }
+            Event::Text(text) | Event::Code(text) => {
+                if let Some((_, alt)) = stack.last_mut() {
+                    alt.push_str(&text);
+                }
+            }
+            Event::SoftBreak | Event::HardBreak => {
+                if let Some((_, alt)) = stack.last_mut() {
+                    if !alt.ends_with(' ') {
+                        alt.push(' ');
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (refs, errors)
+}
+
+pub fn collect_media_refs(markdown: &str) -> Vec<MediaRef> {
+    collect_media_refs_with_errors(markdown).0
+}
+
+fn parse_media_destination_internal(
+    dest: &str,
+    alt: &str,
+    mut errors: Option<&mut Vec<String>>,
+) -> Option<MediaRef> {
     let mut parts = dest.split(';');
     let path = parts.next()?.trim();
     if path.starts_with("images/") {
         let mut attrs = Vec::new();
+        let mut maxw = None;
+        let mut maxh = None;
         for attr in parts {
             let attr = attr.trim();
             if attr.eq_ignore_ascii_case("banner") {
                 attrs.push(ImageAttr::Banner);
+                continue;
+            }
+            if let Some(value) = attr.strip_prefix("maxw=") {
+                match parse_media_length(value) {
+                    Some(value) => maxw = Some(value),
+                    None => {
+                        if let Some(errors) = errors.as_deref_mut() {
+                            errors.push(format!(
+                                "invalid maxw value '{value}' in '{dest}'; expected <number><unit> with unit in px, rem, em, %, vw, vh"
+                            ));
+                        }
+                        return None;
+                    }
+                }
+                continue;
+            }
+            if let Some(value) = attr.strip_prefix("maxh=") {
+                match parse_media_length(value) {
+                    Some(value) => maxh = Some(value),
+                    None => {
+                        if let Some(errors) = errors.as_deref_mut() {
+                            errors.push(format!(
+                                "invalid maxh value '{value}' in '{dest}'; expected <number><unit> with unit in px, rem, em, %, vw, vh"
+                            ));
+                        }
+                        return None;
+                    }
+                }
                 continue;
             }
             if let Some(percent) = attr.strip_suffix('%') {
@@ -121,16 +210,48 @@ pub fn parse_media_destination(dest: &str, alt: &str) -> Option<MediaRef> {
             },
             alt: alt.to_string(),
             attrs,
+            maxw,
+            maxh,
         }));
     }
     if path.starts_with("video/") {
         let mut attrs = Vec::new();
         let mut prefer_p: u16 = 720;
+        let mut maxw = None;
+        let mut maxh = None;
         for attr in parts {
             let attr = attr.trim();
             if let Some(value) = parse_video_prefer(attr) {
                 prefer_p = value;
                 attrs.push(VideoAttr::PreferP(value));
+                continue;
+            }
+            if let Some(value) = attr.strip_prefix("maxw=") {
+                match parse_media_length(value) {
+                    Some(value) => maxw = Some(value),
+                    None => {
+                        if let Some(errors) = errors.as_deref_mut() {
+                            errors.push(format!(
+                                "invalid maxw value '{value}' in '{dest}'; expected <number><unit> with unit in px, rem, em, %, vw, vh"
+                            ));
+                        }
+                        return None;
+                    }
+                }
+                continue;
+            }
+            if let Some(value) = attr.strip_prefix("maxh=") {
+                match parse_media_length(value) {
+                    Some(value) => maxh = Some(value),
+                    None => {
+                        if let Some(errors) = errors.as_deref_mut() {
+                            errors.push(format!(
+                                "invalid maxh value '{value}' in '{dest}'; expected <number><unit> with unit in px, rem, em, %, vw, vh"
+                            ));
+                        }
+                        return None;
+                    }
+                }
                 continue;
             }
             if !attr.is_empty() {
@@ -144,44 +265,53 @@ pub fn parse_media_destination(dest: &str, alt: &str) -> Option<MediaRef> {
             alt: alt.to_string(),
             prefer_p,
             attrs,
+            maxw,
+            maxh,
         }));
     }
     None
 }
 
-pub fn collect_media_refs(markdown: &str) -> Vec<MediaRef> {
-    let parser = Parser::new(markdown);
-    let mut refs = Vec::new();
-    let mut stack: Vec<(String, String)> = Vec::new();
-    for event in parser {
-        match event {
-            Event::Start(Tag::Image { dest_url, .. }) => {
-                stack.push((dest_url.to_string(), String::new()));
+fn parse_media_length(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let units = ["px", "rem", "em", "%", "vw", "vh"];
+    let unit = units.iter().find(|unit| value.ends_with(*unit))?;
+    let number = value[..value.len() - unit.len()].trim();
+    if number.is_empty() {
+        return None;
+    }
+    let mut chars = number.chars();
+    let first = chars.next()?;
+    if !first.is_ascii_digit() {
+        return None;
+    }
+    let mut seen_dot = false;
+    let mut seen_digit_after_dot = false;
+    for ch in chars {
+        if ch == '.' {
+            if seen_dot {
+                return None;
             }
-            Event::End(TagEnd::Image) => {
-                if let Some((dest, alt)) = stack.pop() {
-                    if let Some(media_ref) = parse_media_destination(&dest, &alt) {
-                        refs.push(media_ref);
-                    }
-                }
-            }
-            Event::Text(text) | Event::Code(text) => {
-                if let Some((_, alt)) = stack.last_mut() {
-                    alt.push_str(&text);
-                }
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if let Some((_, alt)) = stack.last_mut() {
-                    if !alt.ends_with(' ') {
-                        alt.push(' ');
-                    }
-                }
-            }
-            _ => {}
+            seen_dot = true;
+            continue;
+        }
+        if !ch.is_ascii_digit() {
+            return None;
+        }
+        if seen_dot {
+            seen_digit_after_dot = true;
         }
     }
-    refs
+    if seen_dot && !seen_digit_after_dot {
+        return None;
+    }
+    Some(value.to_string())
 }
+
+// (collect_media_refs defined earlier with error support)
 
 pub fn plan_image_tasks(
     images: &ImagePlanInput,

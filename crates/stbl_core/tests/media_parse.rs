@@ -1,5 +1,6 @@
 use stbl_core::media::{
-    ImageAttr, MediaRef, VideoAttr, collect_media_refs, parse_media_destination,
+    ImageAttr, MediaRef, VideoAttr, collect_media_refs, collect_media_refs_with_errors,
+    parse_media_destination,
 };
 
 #[test]
@@ -23,6 +24,8 @@ fn parse_image_plain() {
         MediaRef::Image(image) => {
             assert_eq!(image.path.raw, "images/foo.jpg");
             assert!(image.attrs.is_empty());
+            assert!(image.maxw.is_none());
+            assert!(image.maxh.is_none());
         }
         _ => panic!("expected image"),
     }
@@ -35,6 +38,8 @@ fn parse_video_default_prefer() {
         MediaRef::Video(video) => {
             assert_eq!(video.path.raw, "video/v.mp4");
             assert_eq!(video.prefer_p, 720);
+            assert!(video.maxw.is_none());
+            assert!(video.maxh.is_none());
         }
         _ => panic!("expected video"),
     }
@@ -76,6 +81,37 @@ fn unknown_attrs_preserved() {
         }
         _ => panic!("expected image"),
     }
+}
+
+#[test]
+fn parse_media_with_max_constraints() {
+    let media = parse_media_destination("images/foo.jpg;maxw=50%;maxh=12.5rem", "Alt")
+        .expect("media");
+    match media {
+        MediaRef::Image(image) => {
+            assert_eq!(image.maxw.as_deref(), Some("50%"));
+            assert_eq!(image.maxh.as_deref(), Some("12.5rem"));
+        }
+        _ => panic!("expected image"),
+    }
+    let media = parse_media_destination("video/v.mp4;maxw=640px;maxh=37.5vh", "Alt")
+        .expect("media");
+    match media {
+        MediaRef::Video(video) => {
+            assert_eq!(video.maxw.as_deref(), Some("640px"));
+            assert_eq!(video.maxh.as_deref(), Some("37.5vh"));
+        }
+        _ => panic!("expected video"),
+    }
+}
+
+#[test]
+fn invalid_max_constraint_reports_error() {
+    let (refs, errors) =
+        collect_media_refs_with_errors("![A](images/a.jpg;maxw=900pt)");
+    assert!(refs.is_empty());
+    assert_eq!(errors.len(), 1);
+    assert!(errors[0].contains("invalid maxw value"));
 }
 
 #[test]

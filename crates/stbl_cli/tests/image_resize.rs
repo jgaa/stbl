@@ -37,6 +37,8 @@ fn image_resize_generates_variants() {
             },
             alt: "Alt".to_string(),
             attrs: Vec::new(),
+            maxw: None,
+            maxh: None,
         })],
         url_path: "page".to_string(),
         content_hash: blake3::hash(b"page"),

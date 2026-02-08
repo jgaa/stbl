@@ -103,22 +103,23 @@ banner:
   widths: [int]   # default [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
   # quality: 90
   # align: 0
+  # Note: banner images are full-bleed; `maxw`/`maxh` media constraints do not apply.
 
 menu:
   - title: string
     href: string
 
 people:
-  default: string
+  default: "person1"
   entries:
-    <id>:
-      name: string
-      email: string
+    person1:
+      name: "John Doe"
+      email: "jdoe@example.com"
       links:
-        - id: string
-          name: string
-          url: string
-          icon: string
+        - id: "website"
+          name: "John Doe"
+          url: "https://example.com/"
+          icon: "icons/website.svg"
 
 system:
   date:
@@ -233,30 +234,30 @@ menu:
   - title: "Freelancing"
     href: "https://cpp-freelancer.com/"
   - title: "Github"
-    href: "https://github.com/jgaa"
+    href: "https://github.com/john.doe"
   - title: "Contact"
     href: "./contact.html"
   - title: "About"
     href: "./about.html"
 
 people:
-  default: "jgaa"
+  default: "jdoe"
   entries:
-    jgaa:
-      name: "Jarle Aase"
-      email: "jgaa@jgaa.com"
+    jdoe:
+      name: "John Doe"
+      email: "jdoe@example.com"
       links:
         - id: "e-mail"
-          name: "jgaa"
-          url: "mailto:contact@lastviking.eu"
+          name: "jdoe"
+          url: "mailto:jdoe@example.com"
           icon: "{{rel}}artifacts/feather/mail.svg"
         - id: "github"
           name: "jgaa"
-          url: "https://github.com/jgaa"
+          url: "https://github.com/john.doe"
           icon: "{{rel}}artifacts/feather/github.svg"
         - id: "linkedin"
           name: "Jarle Aase"
-          url: "https://www.linkedin.com/in/jgaa-from-north"
+          url: "https://www.linkedin.com/in/john.doe"
           icon: "{{rel}}artifacts/li123.svg"
 
 system:

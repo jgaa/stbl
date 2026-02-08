@@ -23,6 +23,22 @@ a:hover { color: var(--c-link-hover); text-decoration: underline; }
 
 img, video { max-width: 100%; height: auto; }
 
+/* Media constraints (images + videos) */
+.media-frame {
+  display: flex;
+  justify-content: center;
+  margin: 1.25rem 0;
+}
+
+.media-frame > picture,
+.media-frame > img,
+.media-frame > video {
+  max-width: min(100%, var(--media-maxw, 100%));
+  max-height: var(--media-maxh, none);
+  width: auto;
+  height: auto;
+}
+
 .page {
   max-width: var(--layout-max-width, 72rem);
   margin: 0 auto;

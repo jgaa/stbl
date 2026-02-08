@@ -55,7 +55,15 @@ pub fn assemble_site_with_template_policy(
             &mut diagnostics,
             &doc.parsed.src.source_path,
         );
-        let media_refs = crate::media::collect_media_refs(&doc.parsed.body_markdown);
+        let (media_refs, media_errors) =
+            crate::media::collect_media_refs_with_errors(&doc.parsed.body_markdown);
+        for message in media_errors {
+            diagnostics.push(Diagnostic {
+                level: DiagnosticLevel::Error,
+                source_path: Some(doc.parsed.src.source_path.clone()),
+                message,
+            });
+        }
         let banner_name = header.banner.clone();
         let page_doc = Page {
             id: DocId(doc_id_hash),

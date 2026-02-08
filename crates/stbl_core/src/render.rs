@@ -173,6 +173,31 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     let alt = escape_attr(alt.trim());
 
     let mut html = String::new();
+    let is_banner = image
+        .attrs
+        .iter()
+        .any(|attr| matches!(attr, crate::media::ImageAttr::Banner));
+    let apply_constraints = !is_banner && (image.maxw.is_some() || image.maxh.is_some());
+    if apply_constraints {
+        html.push_str("<figure class=\"media-frame\"");
+        let mut style = String::new();
+        if let Some(maxw) = image.maxw.as_ref() {
+            style.push_str("--media-maxw: ");
+            style.push_str(maxw);
+            style.push_str("; ");
+        }
+        if let Some(maxh) = image.maxh.as_ref() {
+            style.push_str("--media-maxh: ");
+            style.push_str(maxh);
+            style.push_str("; ");
+        }
+        if !style.is_empty() {
+            html.push_str(" style=\"");
+            html.push_str(style.trim());
+            html.push('"');
+        }
+        html.push('>');
+    }
     html.push_str("<picture");
     if let Some(class_attr) = class_attr.as_ref() {
         html.push_str(" class=\"");
@@ -229,6 +254,9 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     }
     html.push_str(" loading=\"lazy\" decoding=\"async\">");
     html.push_str("</picture>");
+    if apply_constraints {
+        html.push_str("</figure>");
+    }
     html
 }
 
@@ -343,9 +371,9 @@ fn render_plain_image(dest_url: &str, alt: &str) -> String {
 }
 
 fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
-    let (video_path, prefer_p) = match parse_media_destination(dest_url, alt) {
-        Some(MediaRef::Video(video)) => (video.path.raw, video.prefer_p),
-        _ => (dest_url.to_string(), 720),
+    let (video_path, prefer_p, maxw, maxh) = match parse_media_destination(dest_url, alt) {
+        Some(MediaRef::Video(video)) => (video.path.raw, video.prefer_p, video.maxw, video.maxh),
+        _ => (dest_url.to_string(), 720, None, None),
     };
     let requested_prefer = prefer_p;
     let heights = match options
@@ -362,7 +390,31 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
     } = video_paths(&video_path, &heights);
 
     let mut html = String::new();
-    html.push_str("<figure class=\"video\" data-stbl-video data-prefer=\"p");
+    html.push_str("<figure");
+    if maxw.is_some() || maxh.is_some() {
+        html.push_str(" class=\"media-frame video\"");
+    } else {
+        html.push_str(" class=\"video\"");
+    }
+    if maxw.is_some() || maxh.is_some() {
+        let mut style = String::new();
+        if let Some(maxw) = maxw.as_ref() {
+            style.push_str("--media-maxw: ");
+            style.push_str(maxw);
+            style.push_str("; ");
+        }
+        if let Some(maxh) = maxh.as_ref() {
+            style.push_str("--media-maxh: ");
+            style.push_str(maxh);
+            style.push_str("; ");
+        }
+        if !style.is_empty() {
+            html.push_str(" style=\"");
+            html.push_str(style.trim());
+            html.push('"');
+        }
+    }
+    html.push_str(" data-stbl-video data-prefer=\"p");
     html.push_str(&requested_prefer.to_string());
     html.push_str("\">");
 

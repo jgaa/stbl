@@ -3,7 +3,7 @@ use stbl_core::model::ImageFormatMode;
 
 #[test]
 fn managed_video_renders_html5_video_markup() {
-    let md = "![Landscape sample](video/5786143-hd_1920_1080_30fps.mp4;p360)\n\n![Portrait sample](video/13029714_1080_1920_60fps.mp4)";
+    let md = "![Landscape sample](video/5786143-hd_1920_1080_30fps.mp4;p360;maxh=80vh)\n\n![Portrait sample](video/13029714_1080_1920_60fps.mp4)";
     let heights = vec![360, 480, 720];
     let widths = vec![360, 720];
     let options = RenderOptions {
@@ -26,6 +26,8 @@ fn managed_video_renders_html5_video_markup() {
     assert!(html.contains("data-stbl-video"));
     assert!(html.contains("data-prefer=\"p360\""));
     assert!(html.contains("data-prefer=\"p720\""));
+    assert!(html.contains("class=\"media-frame video\""));
+    assert!(html.contains("--media-maxh: 80vh"));
     assert!(html.contains("aria-label=\"Landscape sample\""));
     assert!(html.contains("poster=\"artifacts/video/_poster_/5786143-hd_1920_1080_30fps.jpg\""));
     assert!(html.contains("href=\"artifacts/video/5786143-hd_1920_1080_30fps.mp4\""));
@@ -37,6 +39,51 @@ fn managed_video_renders_html5_video_markup() {
         .find("artifacts/video/_scale_480/5786143-hd_1920_1080_30fps.mp4")
         .expect("secondary source missing");
     assert!(first < second, "preferred source should be first");
+}
+
+#[test]
+fn image_with_max_constraints_wraps_media_frame() {
+    let md = "![Hero](images/hero.jpg;maxw=900px;maxh=80vh)";
+    let heights = vec![360, 480];
+    let widths = vec![360, 720];
+    let options = RenderOptions {
+        rel_prefix: "",
+        video_heights: &heights,
+        image_widths: &widths,
+        max_body_width: "72rem",
+        desktop_min: "768px",
+        wide_min: "1400px",
+        image_format_mode: ImageFormatMode::Normal,
+        image_alpha: None,
+        image_variants: None,
+        video_variants: None,
+    };
+    let html = render_markdown_to_html_with_media(md, &options);
+    assert!(html.contains("class=\"media-frame\""));
+    assert!(html.contains("--media-maxw: 900px"));
+    assert!(html.contains("--media-maxh: 80vh"));
+}
+
+#[test]
+fn banner_ignores_max_constraints() {
+    let md = "![Banner](images/banner.jpg;banner;maxw=900px)";
+    let heights = vec![360, 480];
+    let widths = vec![360, 720];
+    let options = RenderOptions {
+        rel_prefix: "",
+        video_heights: &heights,
+        image_widths: &widths,
+        max_body_width: "72rem",
+        desktop_min: "768px",
+        wide_min: "1400px",
+        image_format_mode: ImageFormatMode::Normal,
+        image_alpha: None,
+        image_variants: None,
+        video_variants: None,
+    };
+    let html = render_markdown_to_html_with_media(md, &options);
+    assert!(!html.contains("class=\"media-frame\""));
+    assert!(!html.contains("--media-maxw: 900px"));
 }
 
 #[test]
