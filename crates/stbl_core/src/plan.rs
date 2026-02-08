@@ -143,10 +143,10 @@ pub fn build_plan(
 
     let frontpage_items: Vec<&crate::model::Page> = published_pages.iter().copied().collect();
     let mut frontpage_task_id: Option<TaskId> = None;
-    let has_blog_frontpage = blog_index_pages
+    let has_index_page = published_pages
         .iter()
         .any(|page| logical_key_from_source_path(&page.source_path).as_str() == "index");
-    if !has_blog_frontpage {
+    if !has_index_page {
         let front_kind = TaskKind::RenderFrontPage;
         let front_id = task_id_render_frontpage();
         let front_fingerprint = fingerprint_render_frontpage(&front_id, &ctx, &frontpage_items);

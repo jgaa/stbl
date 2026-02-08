@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use stbl_core::assemble::assemble_site;
 use stbl_core::assets::AssetIndex;
 use stbl_core::config::load_site_config;
-use stbl_core::header::{Header, UnknownKeyPolicy, parse_header};
+use stbl_core::header::{Header, TemplateId, UnknownKeyPolicy, parse_header};
 use stbl_core::media::{ImagePlanInput, VideoPlanInput};
 use stbl_core::model::{DiscoveredDoc, DocKind, ParsedDoc, Project, SourceDoc, TaskKind};
 use stbl_core::plan::build_plan;
@@ -76,6 +76,42 @@ fn build_plan_is_deterministic_and_complete() {
             );
         }
     }
+}
+
+#[test]
+fn build_plan_skips_frontpage_when_index_is_landing() {
+    let root = fixture_root();
+    let config = load_site_config(&root.join("stbl.yaml")).expect("load config");
+    let docs = scan_fixture(&root).expect("scan fixture");
+    let mut content = assemble_site(docs).expect("assemble site");
+    let index = content
+        .pages
+        .iter_mut()
+        .find(|page| page.source_path == "articles/index.md")
+        .expect("index page");
+    index.header.template = Some(TemplateId::Landing);
+
+    let project = Project {
+        root,
+        config,
+        content,
+        image_alpha: std::collections::BTreeMap::new(),
+        image_variants: Default::default(),
+        video_variants: Default::default(),
+    };
+
+    let asset_index = AssetIndex::default();
+    let image_plan = ImagePlanInput::default();
+    let video_plan = VideoPlanInput::default();
+    let plan = build_plan(&project, &asset_index, &image_plan, &video_plan);
+
+    assert!(
+        !plan
+            .tasks
+            .iter()
+            .any(|task| matches!(task.kind, TaskKind::RenderFrontPage)),
+        "render frontpage task should be skipped when index exists"
+    );
 }
 
 fn fixture_root() -> PathBuf {

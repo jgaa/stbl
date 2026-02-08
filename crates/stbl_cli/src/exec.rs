@@ -19,9 +19,9 @@ use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagLink,
-    TagListingPage, format_timestamp_ymd, page_title_or_filename, render_banner_html,
-    render_blog_index, render_markdown_page, render_page, render_page_with_series_nav,
-    render_redirect_page, render_series_index, render_tag_index,
+    TagListingPage, format_timestamp_long_date, format_timestamp_ymd, page_title_or_filename,
+    render_banner_html, render_blog_index, render_markdown_page, render_page,
+    render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 use std::process::Command;
@@ -1046,7 +1046,8 @@ fn build_date_ymd_now() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    format_timestamp_ymd(Some(timestamp)).unwrap_or_else(|| "1970-01-01".to_string())
+    format_timestamp_long_date(Some(timestamp))
+        .unwrap_or_else(|| "January 1, 1970".to_string())
 }
 
 fn rel_prefix_for_href(href: &str) -> String {

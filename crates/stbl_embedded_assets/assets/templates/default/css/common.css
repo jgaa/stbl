@@ -30,9 +30,15 @@ img, video { max-width: 100%; height: auto; }
   margin: 1.25rem 0;
 }
 
-.media-frame > picture,
-.media-frame > img,
-.media-frame > video {
+/* picture is just a wrapper */
+.media-frame > picture {
+  display: block;
+  max-width: min(100%, var(--media-maxw, 100%));
+}
+
+/* constrain the actual rendered elements */
+.media-frame img,
+.media-frame video {
   max-width: min(100%, var(--media-maxw, 100%));
   max-height: var(--media-maxh, none);
   width: auto;
@@ -45,7 +51,7 @@ img, video { max-width: 100%; height: auto; }
   padding: 0 1rem;
 }
 
-header, footer { padding: 1rem 0; }
+header { padding: 1rem 0; }
 
 header .page { padding: 0.75rem 1rem; }
 
@@ -289,3 +295,29 @@ blockquote {
 .pager span {
   color: var(--c-muted);
 }
+
+footer {
+  margin-top: 3rem;
+  padding: 1.5rem 0 2rem;
+  border-top: 1px solid var(--c-border);
+  background: transparent;
+}
+
+footer .page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+footer p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--c-muted);
+}
+
+/* Optional: visually de-emphasize the stbl line further */
+footer p:last-child {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
