@@ -133,7 +133,7 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
         !is_svg && options.image_variants.is_some() && variants.map_or(true, |v| v.is_empty());
     let (src, srcset) = if is_svg || use_original {
         (
-            format!("{}artifacts/images/{rel}", options.rel_prefix),
+            format!("{}images/{rel}", options.rel_prefix),
             None,
         )
     } else if let Some(variants) = variants {
@@ -313,7 +313,7 @@ fn srcset_for_format(
         .filter(|width| *width > 0)
         .map(|width| {
             format!(
-                "{}artifacts/images/_scale_{width}/{} {width}w",
+                "{}images/_scale_{width}/{} {width}w",
                 rel_prefix,
                 replace_extension(rel, ext),
             )
@@ -330,11 +330,11 @@ fn src_for_format(rel: &str, widths: &[u32], ext: &str, rel_prefix: &str) -> Str
     let max_width = widths.iter().copied().filter(|width| *width > 0).max();
     match max_width {
         Some(width) => format!(
-            "{}artifacts/images/_scale_{width}/{}",
+            "{}images/_scale_{width}/{}",
             rel_prefix,
             replace_extension(rel, ext),
         ),
-        None => format!("{}artifacts/images/{}", rel_prefix, rel),
+        None => format!("{}images/{}", rel_prefix, rel),
     }
 }
 
@@ -473,11 +473,11 @@ fn video_paths(dest_url: &str, heights: &[u32]) -> VideoPaths {
     } else {
         format!("{parent}/{stem}")
     };
-    let download_rel = format!("artifacts/video/{base}.mp4");
-    let poster_rel = format!("artifacts/video/_poster_/{base}.jpg");
+    let download_rel = format!("video/{base}.mp4");
+    let poster_rel = format!("video/_poster_/{base}.jpg");
     let sources = heights
         .iter()
-        .map(|height| format!("artifacts/video/_scale_{height}/{base}.mp4"))
+        .map(|height| format!("video/_scale_{height}/{base}.mp4"))
         .collect();
     VideoPaths {
         poster_rel,

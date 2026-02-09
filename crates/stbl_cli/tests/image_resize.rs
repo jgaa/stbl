@@ -89,13 +89,13 @@ fn image_resize_generates_variants() {
     )
     .expect("execute plan");
 
-    let original = out_dir.join("artifacts/images/test.jpg");
-    let scaled_200_avif = out_dir.join("artifacts/images/_scale_200/test.avif");
-    let scaled_200_webp = out_dir.join("artifacts/images/_scale_200/test.webp");
-    let scaled_200 = out_dir.join("artifacts/images/_scale_200/test.jpg");
-    let scaled_500_avif = out_dir.join("artifacts/images/_scale_500/test.avif");
-    let scaled_500_webp = out_dir.join("artifacts/images/_scale_500/test.webp");
-    let scaled_500 = out_dir.join("artifacts/images/_scale_500/test.jpg");
+    let original = out_dir.join("images/test.jpg");
+    let scaled_200_avif = out_dir.join("images/_scale_200/test.avif");
+    let scaled_200_webp = out_dir.join("images/_scale_200/test.webp");
+    let scaled_200 = out_dir.join("images/_scale_200/test.jpg");
+    let scaled_500_avif = out_dir.join("images/_scale_500/test.avif");
+    let scaled_500_webp = out_dir.join("images/_scale_500/test.webp");
+    let scaled_500 = out_dir.join("images/_scale_500/test.jpg");
     assert!(original.exists());
     assert!(scaled_200_avif.exists());
     assert!(scaled_200_webp.exists());

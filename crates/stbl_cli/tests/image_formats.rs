@@ -124,9 +124,9 @@ fn alpha_fallback_uses_png() {
     let out_dir = temp.path().join("out");
     execute_build(&mut project, &out_dir);
 
-    let original = out_dir.join("artifacts/images/alpha.png");
+    let original = out_dir.join("images/alpha.png");
     assert!(original.exists(), "missing original alpha.png fallback");
     let html = read_page(&out_dir, "index.html");
-    assert!(html.contains("artifacts/images/alpha.png"));
+    assert!(html.contains("images/alpha.png"));
     assert!(!html.contains("alpha.jpg"));
 }

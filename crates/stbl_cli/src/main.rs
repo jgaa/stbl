@@ -10,7 +10,8 @@ mod verify;
 mod walk;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -432,7 +433,15 @@ fn run_build(
     };
 
     let enable_brotli = precompress && !fast_compress;
-    prune_out_dir(&out_dir, &plan, precompress, enable_brotli, cli.verbose)?;
+    let files_expected = collect_files_outputs(&root)?;
+    prune_out_dir(
+        &out_dir,
+        &plan,
+        precompress,
+        enable_brotli,
+        cli.verbose,
+        &files_expected,
+    )?;
 
     let output_count: usize = plan.tasks.iter().map(|task| task.outputs.len()).sum();
 
@@ -450,6 +459,10 @@ fn run_build(
         jobs,
         regenerate_content,
     )?;
+    let copied_files = copy_files_dir(&root, &out_dir)?;
+    if cli.verbose && copied_files > 0 {
+        println!("copied {} files", copied_files);
+    }
     if precompress {
         let level = if fast_compress { 1 } else { 6 };
         crate::precompress::write_gzip_files(&out_dir, level, cli.verbose)?;
@@ -786,11 +799,13 @@ fn prune_out_dir(
     precompress: bool,
     brotli: bool,
     verbose: bool,
+    extra_expected: &std::collections::HashSet<String>,
 ) -> Result<()> {
     if !out_dir.exists() {
         return Ok(());
     }
     let mut expected = collect_expected_outputs(plan);
+    expected.extend(extra_expected.iter().cloned());
     if precompress {
         expected.extend(crate::precompress::expected_gzip_outputs(plan));
     }
@@ -838,6 +853,49 @@ fn collect_expected_outputs(plan: &stbl_core::model::BuildPlan) -> std::collecti
         }
     }
     expected
+}
+
+fn collect_files_outputs(source_dir: &Path) -> Result<std::collections::HashSet<String>> {
+    let mut expected = std::collections::HashSet::new();
+    let files_dir = source_dir.join("files");
+    if !files_dir.exists() {
+        return Ok(expected);
+    }
+    for entry in WalkDir::new(&files_dir).min_depth(1) {
+        let entry = entry?;
+        if entry.file_type().is_dir() {
+            continue;
+        }
+        let rel = entry.path().strip_prefix(source_dir).unwrap_or(entry.path());
+        expected.insert(normalize_path(rel));
+    }
+    Ok(expected)
+}
+
+fn copy_files_dir(source_dir: &Path, out_dir: &Path) -> Result<usize> {
+    let files_dir = source_dir.join("files");
+    if !files_dir.exists() {
+        return Ok(0);
+    }
+    let mut copied = 0usize;
+    for entry in WalkDir::new(&files_dir).min_depth(0) {
+        let entry = entry?;
+        let rel = entry.path().strip_prefix(source_dir).unwrap_or(entry.path());
+        let out_path = out_dir.join(rel);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&out_path)
+                .with_context(|| format!("failed to create {}", out_path.display()))?;
+            continue;
+        }
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("failed to create {}", parent.display()))?;
+        }
+        fs::copy(entry.path(), &out_path)
+            .with_context(|| format!("failed to copy {}", entry.path().display()))?;
+        copied += 1;
+    }
+    Ok(copied)
 }
 
 fn normalize_path(path: &std::path::Path) -> String {
@@ -958,6 +1016,23 @@ mod tests {
 
         let after = read_fixture(temp.path());
         assert_eq!(before, after);
+    }
+
+    #[test]
+    fn copy_files_dir_copies_recursively() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+        let out_dir = root.join("out");
+        fs::create_dir_all(root.join("files/subdir")).expect("create files");
+        fs::create_dir_all(root.join("files/empty")).expect("create empty dir");
+        fs::write(root.join("files/a.txt"), "a").expect("write a");
+        fs::write(root.join("files/subdir/b.txt"), "b").expect("write b");
+
+        let copied = copy_files_dir(root, &out_dir).expect("copy files");
+        assert_eq!(copied, 2);
+        assert!(out_dir.join("files/a.txt").exists());
+        assert!(out_dir.join("files/subdir/b.txt").exists());
+        assert!(out_dir.join("files/empty").is_dir());
     }
 
     fn write_fixture(root: &Path) {

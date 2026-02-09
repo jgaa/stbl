@@ -83,7 +83,7 @@ fn precompress_writes_gzip_for_text_assets() {
     assert!(out_dir.join("index.html.gz").exists());
     assert!(out_dir.join("artifacts/css/common.css.gz").exists());
     assert!(!out_dir
-        .join("artifacts/images/_scale_720/alpha.png.gz")
+        .join("images/_scale_720/alpha.png.gz")
         .exists());
 }
 

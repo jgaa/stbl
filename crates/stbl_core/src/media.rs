@@ -333,7 +333,7 @@ pub fn plan_image_tasks(
             .expect("image hash exists");
         let has_alpha = images.alpha.get(&path).copied().unwrap_or(false);
         let rel = path.strip_prefix("images/").unwrap_or(path.as_str());
-        let original_out = format!("artifacts/images/{rel}");
+        let original_out = format!("images/{rel}");
         let copy_kind = TaskKind::CopyImageOriginal {
             source: source.clone(),
             out_rel: original_out.clone(),
@@ -371,10 +371,8 @@ pub fn plan_image_tasks(
             }
             for format in &formats {
                 let ext = format_extension(*format);
-                let out_rel = format!(
-                    "artifacts/images/_scale_{width}/{}",
-                    replace_extension(rel, ext)
-                );
+                let out_rel =
+                    format!("images/_scale_{width}/{}", replace_extension(rel, ext));
                 let width_label = format!("w={width}");
                 let quality_label = format!("q={quality}");
                 let format_label = format!("f={}", ext);
@@ -545,10 +543,7 @@ fn replace_extension(path: &str, ext: &str) -> String {
 
 fn scaled_image_path(rel: &str, width: u32, format: ImageOutputFormat) -> String {
     let ext = format_extension(format);
-    format!(
-        "artifacts/images/_scale_{width}/{}",
-        replace_extension(rel, ext)
-    )
+    format!("images/_scale_{width}/{}", replace_extension(rel, ext))
 }
 
 pub fn plan_video_tasks(
@@ -569,7 +564,7 @@ pub fn plan_video_tasks(
             .copied()
             .expect("video hash exists");
         let rel = path.strip_prefix("video/").unwrap_or(path.as_str());
-        let original_out = format!("artifacts/video/{rel}");
+        let original_out = format!("video/{rel}");
         let copy_kind = TaskKind::CopyVideoOriginal {
             source: source.clone(),
             out_rel: original_out.clone(),
@@ -623,7 +618,7 @@ pub fn plan_video_tasks(
                     continue;
                 }
             }
-            let out_rel = format!("artifacts/video/_scale_{height}/{rel}");
+            let out_rel = format!("video/_scale_{height}/{rel}");
             let height_label = format!("h={height}");
             let kind = TaskKind::TranscodeVideoMp4 {
                 source: source.clone(),
@@ -702,8 +697,8 @@ fn poster_output_rel(rel: &str) -> String {
         .unwrap_or("")
         .replace('\\', "/");
     if parent.is_empty() || parent == "." {
-        format!("artifacts/video/_poster_/{stem}.jpg")
+        format!("video/_poster_/{stem}.jpg")
     } else {
-        format!("artifacts/video/_poster_/{parent}/{stem}.jpg")
+        format!("video/_poster_/{parent}/{stem}.jpg")
     }
 }

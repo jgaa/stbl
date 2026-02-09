@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% if show_page_title %}
   <h1>{{ page_title }}</h1>
+  {% endif %}
 
   {% if authors or published or updated or (tags and tags | length > 0) %}
   <div class="meta">

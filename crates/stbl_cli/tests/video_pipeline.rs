@@ -90,11 +90,11 @@ fn video_pipeline_generates_variants_and_posters() {
     ];
 
     for video in videos {
-        let original = out_dir.join("artifacts/video").join(video);
-        let scale_360 = out_dir.join("artifacts/video/_scale_360").join(video);
-        let scale_480 = out_dir.join("artifacts/video/_scale_480").join(video);
+        let original = out_dir.join("video").join(video);
+        let scale_360 = out_dir.join("video/_scale_360").join(video);
+        let scale_480 = out_dir.join("video/_scale_480").join(video);
         let poster = out_dir
-            .join("artifacts/video/_poster_")
+            .join("video/_poster_")
             .join(video.replace(".mp4", ".jpg"));
 
         assert!(original.exists(), "missing original {video}");

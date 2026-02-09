@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
+  {% if show_page_title %}
   <h1>{{ page_title }}</h1>
+  {% endif %}
 
   {% if banner_html %}
   <div class="banner">

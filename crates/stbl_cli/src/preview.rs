@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -184,16 +184,64 @@ fn handle_request(
 
     let mut file = File::open(&full_path)
         .with_context(|| format!("failed to open {}", full_path.display()))?;
+    let file_size = file
+        .metadata()
+        .with_context(|| format!("failed to stat {}", full_path.display()))?
+        .len();
+
+    let content_type = content_type_header(&full_path);
+    let accept_ranges = Header::from_bytes("Accept-Ranges", "bytes").expect("valid header");
+
+    if let Some((start, end)) = parse_range_header(request, file_size)? {
+        let length = end.saturating_sub(start).saturating_add(1);
+        let content_range = Header::from_bytes(
+            "Content-Range",
+            format!("bytes {start}-{end}/{file_size}"),
+        )
+        .expect("valid header");
+        let headers = vec![content_type, accept_ranges, content_range];
+
+        if request.method() == &Method::Head {
+            let response = Response::new(
+                StatusCode(206),
+                headers,
+                std::io::empty(),
+                Some(length as usize),
+                None,
+            )
+            .boxed();
+            return Ok(response);
+        }
+
+        file.seek(SeekFrom::Start(start))
+            .with_context(|| format!("failed to seek {}", full_path.display()))?;
+        let reader = file.take(length);
+        let response = Response::new(
+            StatusCode(206),
+            headers,
+            Box::new(reader) as Box<dyn Read + Send>,
+            Some(length as usize),
+            None,
+        )
+        .boxed();
+        return Ok(response);
+    }
 
     if request.method() == &Method::Head {
-        let _ = file.read(&mut [0; 0]);
-        return Ok(Response::empty(200)
-            .with_header(content_type_header(&full_path))
-            .boxed());
+        let headers = vec![content_type, accept_ranges];
+        return Ok(Response::new(
+            StatusCode(200),
+            headers,
+            std::io::empty(),
+            Some(file_size as usize),
+            None,
+        )
+        .boxed());
     }
 
     let response = Response::from_file(file)
-        .with_header(content_type_header(&full_path))
+        .with_header(content_type)
+        .with_header(accept_ranges)
         .boxed();
     Ok(response)
 }
@@ -242,4 +290,57 @@ fn content_type_for(path: &Path) -> &'static str {
 
 fn content_type_header(path: &Path) -> Header {
     Header::from_bytes("Content-Type", content_type_for(path)).expect("valid header")
+}
+
+fn parse_range_header(
+    request: &tiny_http::Request,
+    file_size: u64,
+) -> Result<Option<(u64, u64)>> {
+    let header = match request.headers().iter().find(|h| h.field.equiv("Range")) {
+        Some(header) => header,
+        None => return Ok(None),
+    };
+    let value = header.value.as_str().trim();
+    let ranges = match value.strip_prefix("bytes=") {
+        Some(ranges) => ranges,
+        None => return Ok(None),
+    };
+    let (start_raw, end_raw) = match ranges.split_once('-') {
+        Some(parts) => parts,
+        None => return Ok(None),
+    };
+
+    let (start, end) = if start_raw.is_empty() {
+        let suffix: u64 = match end_raw.parse() {
+            Ok(value) => value,
+            Err(_) => return Ok(None),
+        };
+        if suffix == 0 {
+            return Ok(None);
+        }
+        if suffix >= file_size {
+            (0, file_size.saturating_sub(1))
+        } else {
+            (file_size - suffix, file_size.saturating_sub(1))
+        }
+    } else {
+        let start: u64 = match start_raw.parse() {
+            Ok(value) => value,
+            Err(_) => return Ok(None),
+        };
+        let end = if end_raw.is_empty() {
+            file_size.saturating_sub(1)
+        } else {
+            match end_raw.parse() {
+                Ok(value) => value,
+                Err(_) => return Ok(None),
+            }
+        };
+        (start, end.min(file_size.saturating_sub(1)))
+    };
+
+    if file_size == 0 || start >= file_size || end < start {
+        return Ok(None);
+    }
+    Ok(Some((start, end)))
 }

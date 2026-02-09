@@ -50,6 +50,26 @@ fn upgrade_refuses_overwrite() {
     assert!(err.to_string().contains("stbl.yaml already exists"));
 }
 
+#[test]
+fn upgrade_removes_legacy_scaled_media_dirs() {
+    let temp = TempDir::new().expect("tempdir");
+    let root = temp.path();
+    write_legacy_config(root, "Demo Site", "https://example.com/");
+
+    let images_scale = root.join("images/_scale_200");
+    let video_scale = root.join("video/_scale_360");
+    let video_poster = root.join("video/_poster_");
+    fs::create_dir_all(&images_scale).expect("create images scale");
+    fs::create_dir_all(&video_scale).expect("create video scale");
+    fs::create_dir_all(&video_poster).expect("create video poster");
+
+    upgrade_site(root, false).expect("upgrade");
+
+    assert!(!images_scale.exists());
+    assert!(!video_scale.exists());
+    assert!(!video_poster.exists());
+}
+
 fn write_legacy_config(root: &Path, title: &str, url: &str) {
     let contents = format!("name \"{}\"\nurl \"{}\"\nlanguage en\n", title, url);
     fs::write(root.join("stbl.conf"), contents).expect("write legacy config");

@@ -146,8 +146,9 @@ Fast mode (`--fast-images`) skips AVIF and emits **WebP + JPEG/PNG fallback**.
 
 ### Output
 
-* Variants are written to `out/artifacts/img/`
-* Filenames include width and content hash
+* Originals are copied to `out/images/`
+* Variants are written to `out/images/_scale_<width>/`
+* Filenames include width and content hash for generated variants
 
 ### HTML output
 
@@ -180,8 +181,8 @@ A poster image is always generated.
 
 ### Output
 
-* Video variants: `out/artifacts/video/`
-* Posters: `out/artifacts/poster/`
+* Video originals and variants: `out/video/` and `out/video/_scale_<height>/`
+* Posters: `out/video/_poster_/`
 
 ---
 

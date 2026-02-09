@@ -106,9 +106,10 @@ In order to build, clone the project. Then:
 The top directory of a site has this layout:
 
 - articles (Directory for content)
-- artifacts (Directory for css, icons, banner images, logos etc.)
+- artifacts (Directory for css, icons, logos etc.)
 - files (Optional directory where you can put files you want copied to your website).
 - images (Optional directory for images you refer to in your documents)
+- video (Optional directory for videos you refer to in your documents)
 - templates (Templates to generate the pages in the static site)
 - stbl.conf (Site specific configuration)
 
@@ -376,7 +377,7 @@ The easiest is to let stbl bootstrap a project, and then just edit the config fi
 ~$ stbl --init
 [2017-11-30 09:54:58.061377] [0x00007ffa0a6c5b80] [info]    Initializing new site: "/home/jgaa/myblog"
 ~$ ls
-articles  artifacts  files  images  stbl.conf  templates
+articles  artifacts  files  images  video  stbl.conf  templates
 
 ```
 

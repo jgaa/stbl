@@ -48,13 +48,13 @@ fn image_plan_orders_tasks_and_paths() {
         .collect::<Vec<_>>();
     let mut expected = Vec::new();
     for prefix in ["a", "b"] {
-        expected.push(format!("artifacts/images/{prefix}.jpg"));
+        expected.push(format!("images/{prefix}.jpg"));
         for width in [480, 1280] {
             if cfg!(feature = "avif") {
-                expected.push(format!("artifacts/images/_scale_{width}/{prefix}.avif"));
+                expected.push(format!("images/_scale_{width}/{prefix}.avif"));
             }
-            expected.push(format!("artifacts/images/_scale_{width}/{prefix}.webp"));
-            expected.push(format!("artifacts/images/_scale_{width}/{prefix}.jpg"));
+            expected.push(format!("images/_scale_{width}/{prefix}.webp"));
+            expected.push(format!("images/_scale_{width}/{prefix}.jpg"));
         }
     }
     assert_eq!(out_paths, expected);

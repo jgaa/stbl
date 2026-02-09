@@ -5,6 +5,7 @@ use minijinja::{AutoEscape, Environment, context};
 use crate::assets::AssetManifest;
 use crate::model::{MenuAlign, NavItem, Page, Project, ThemeHeaderLayout};
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
+use crate::visibility::is_blog_index_excluded;
 use crate::url::UrlMapper;
 use serde::Serialize;
 
@@ -17,7 +18,7 @@ const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html
 
 pub fn templates_hash() -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"stbl2.templates.v1");
+    hasher.update(b"stbl2.templates.v2");
     add_template_hash(&mut hasher, "base", BASE_TEMPLATE);
     add_template_hash(&mut hasher, "page", PAGE_TEMPLATE);
     add_template_hash(&mut hasher, "blog_index", BLOG_INDEX_TEMPLATE);
@@ -66,6 +67,7 @@ pub fn render_page_with_series_nav(
     let body_html = render_markdown_with_media(project, &page.body_markdown, &rel);
     let banner_html = render_banner_html(project, page, &rel);
     let page_title = page_title_or_filename(project, page);
+    let show_page_title = !is_blog_index_excluded(page, None);
     let authors = page.header.authors.clone();
     let tags = page.header.tags.clone();
     let published = format_timestamp_rfc3339(page.header.published);
@@ -74,6 +76,7 @@ pub fn render_page_with_series_nav(
     render_with_context(
         project,
         page_title,
+        show_page_title,
         authors,
         published,
         updated,
@@ -96,12 +99,14 @@ pub fn render_markdown_page(
     current_href: &str,
     build_date_ymd: &str,
     redirect_href: Option<&str>,
+    show_page_title: bool,
 ) -> Result<String> {
     let rel = rel_prefix_for_href(current_href);
     let body_html = render_markdown_with_media(project, body_markdown, &rel);
     render_with_context(
         project,
         title.to_string(),
+        show_page_title,
         None,
         None,
         None,
@@ -180,6 +185,7 @@ pub fn render_blog_index(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    show_page_title: bool,
 ) -> Result<String> {
     let env = template_env().context("failed to initialize templates")?;
     let template = env
@@ -211,6 +217,7 @@ pub fn render_blog_index(
             header_layout => header_layout,
             header_layout_class => header_layout_class,
             page_title => title,
+            show_page_title => show_page_title,
             intro_html => intro_html,
             banner_html => banner_html,
             items => items,
@@ -346,6 +353,7 @@ pub fn render_redirect_page(
         current_href,
         build_date_ymd,
         Some(target_href),
+        true,
     )
 }
 
@@ -370,6 +378,7 @@ fn template_env() -> Result<Environment<'static>> {
 fn render_with_context(
     project: &Project,
     page_title: String,
+    show_page_title: bool,
     authors: Option<Vec<String>>,
     published: Option<String>,
     updated: Option<String>,
@@ -411,6 +420,7 @@ fn render_with_context(
             header_layout => header_layout,
             header_layout_class => header_layout_class,
             page_title => page_title,
+            show_page_title => show_page_title,
             authors => authors,
             published => published,
             updated => updated,
@@ -996,6 +1006,7 @@ mod tests {
             &default_manifest(),
             "index.html",
             "2026-01-29",
+            false,
         )
         .expect("render blog");
         assert!(html.contains("class=\"list-item\""));

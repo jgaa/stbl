@@ -37,7 +37,51 @@ pub fn upgrade_site(source_dir: &Path, force: bool) -> Result<UpgradeOutput> {
     fs::write(&yaml_path, &yaml)
         .with_context(|| format!("failed to write {}", yaml_path.display()))?;
 
+    remove_legacy_scaled_media(source_dir)?;
+
     Ok(UpgradeOutput { yaml, warnings })
+}
+
+fn remove_legacy_scaled_media(source_dir: &Path) -> Result<()> {
+    let images_dir = source_dir.join("images");
+    if images_dir.exists() {
+        for entry in fs::read_dir(&images_dir)
+            .with_context(|| format!("failed to read {}", images_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("_scale") {
+                fs::remove_dir_all(&path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            }
+        }
+    }
+
+    let video_dir = source_dir.join("video");
+    if video_dir.exists() {
+        for entry in fs::read_dir(&video_dir)
+            .with_context(|| format!("failed to read {}", video_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name.starts_with("_scale") || name == "_poster_" {
+                fs::remove_dir_all(&path)
+                    .with_context(|| format!("failed to remove {}", path.display()))?;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]

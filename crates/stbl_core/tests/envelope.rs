@@ -30,10 +30,11 @@ fn envelope_blog_index_has_chrome_regions_and_single_h1() {
         &default_manifest(),
         "index.html",
         BUILD_DATE,
+        false,
     )
     .expect("render blog index");
 
-    assert_envelope(&html, &site_title);
+    assert_envelope(&html, &site_title, 0);
     assert!(html.contains(&format!("<title>Blog · {site_title}</title>")));
 }
 
@@ -50,7 +51,7 @@ fn envelope_article_has_chrome_regions_and_single_h1() {
     )
     .expect("render page");
 
-    assert_envelope(&html, &site_title);
+    assert_envelope(&html, &site_title, 1);
     assert!(html.contains(&format!("<title>Article One · {site_title}</title>")));
 }
 
@@ -70,7 +71,7 @@ fn envelope_tag_page_has_chrome_regions_and_single_h1() {
     )
     .expect("render tag index");
 
-    assert_envelope(&html, &site_title);
+    assert_envelope(&html, &site_title, 1);
     assert!(html.contains(&format!("<title>Tag: rust · {site_title}</title>")));
 }
 
@@ -93,7 +94,7 @@ fn envelope_series_index_has_chrome_regions_and_single_h1() {
     )
     .expect("render series index");
 
-    assert_envelope(&html, &site_title);
+    assert_envelope(&html, &site_title, 1);
     assert!(html.contains(&format!("<title>Series Alpha · {site_title}</title>")));
 }
 
@@ -122,7 +123,7 @@ fn envelope_series_part_has_chrome_regions_and_single_h1() {
     )
     .expect("render series part");
 
-    assert_envelope(&html, &site_title);
+    assert_envelope(&html, &site_title, 1);
     assert!(html.contains(&format!("<title>Series Part · {site_title}</title>")));
 }
 
@@ -155,12 +156,12 @@ fn footer_show_stbl_toggle_controls_generator_stamp() {
     assert!(html.contains("<footer>"));
 }
 
-fn assert_envelope(html: &str, site_title: &str) {
+fn assert_envelope(html: &str, site_title: &str, h1_count: usize) {
     assert!(html.contains("<header"));
     assert!(html.contains("<main>"));
     assert!(html.contains("<footer>"));
     assert!(html.contains("<nav aria-label=\"Primary\""));
-    assert_eq!(count_substr(html, "<h1"), 1);
+    assert_eq!(count_substr(html, "<h1"), h1_count);
     assert!(html.contains("<title>"));
     assert!(html.contains(&format!("· {site_title}</title>")));
 }
