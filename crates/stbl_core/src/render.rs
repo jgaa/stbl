@@ -6,7 +6,9 @@ use crate::media::{
     ImageVariantIndex, ImageVariantSet, MediaRef, VideoVariantIndex, fallback_format,
     format_extension, format_mime, image_output_formats, parse_media_destination,
 };
-use crate::macros::{IncludeProvider, MacroContext, MarkdownRenderer, expand_macros};
+use crate::macros::{
+    IncludeProvider, MacroContext, MarkdownRenderer, MediaRenderer, RenderedMedia, expand_macros,
+};
 use crate::model::{ImageFormatMode, ImageOutputFormat, Page, Project};
 use crate::syntax_highlight::highlight_code_html_classed;
 
@@ -59,6 +61,16 @@ impl MarkdownRenderer for CalloutRenderer<'_> {
     }
 }
 
+struct MacroMediaRenderer<'a> {
+    options: &'a RenderOptions<'a>,
+}
+
+impl MediaRenderer for MacroMediaRenderer<'_> {
+    fn render(&self, dest_url: &str, alt: &str) -> RenderedMedia {
+        render_media_element_html(dest_url, alt, self.options)
+    }
+}
+
 pub fn render_markdown_to_html(md: &str) -> String {
     let options = Options::empty();
     let parser = Parser::new_ext(md, options);
@@ -71,11 +83,13 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
     let expanded = match options.macro_project {
         Some(project) => {
             let renderer = CalloutRenderer { options };
+            let media_renderer = MacroMediaRenderer { options };
             let ctx = MacroContext {
                 project,
                 page: options.macro_page,
                 include_provider: options.include_provider,
                 render_markdown: Some(&renderer),
+                render_media: Some(&media_renderer),
             };
             if options.macros_enabled {
                 expand_macros(md, &ctx).unwrap_or_else(|_| md.to_string())
@@ -257,10 +271,68 @@ struct HeadingPending<'a> {
     events: Vec<Event<'a>>,
 }
 
+pub fn render_media_element_html(
+    dest_url: &str,
+    alt: &str,
+    options: &RenderOptions<'_>,
+) -> RenderedMedia {
+    match parse_media_destination(dest_url, alt) {
+        Some(MediaRef::Image(image)) => RenderedMedia {
+            html: render_image_picture_html(&image, options),
+            maxw: image.maxw,
+            maxh: image.maxh,
+        },
+        Some(MediaRef::Video(video)) => RenderedMedia {
+            html: render_video_element_html(&video, options),
+            maxw: video.maxw,
+            maxh: video.maxh,
+        },
+        None => RenderedMedia {
+            html: render_plain_image(dest_url, alt),
+            maxw: None,
+            maxh: None,
+        },
+    }
+}
+
 pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
     let Some(MediaRef::Image(image)) = parse_media_destination(dest_url, alt) else {
         return render_plain_image(dest_url, alt);
     };
+    let mut html = render_image_picture_html(&image, options);
+    let is_banner = image
+        .attrs
+        .iter()
+        .any(|attr| matches!(attr, crate::media::ImageAttr::Banner));
+    let apply_constraints = !is_banner && (image.maxw.is_some() || image.maxh.is_some());
+    if apply_constraints {
+        let mut wrapped = String::new();
+        wrapped.push_str("<figure class=\"media-frame\"");
+        let mut style = String::new();
+        if let Some(maxw) = image.maxw.as_ref() {
+            style.push_str("--media-maxw: ");
+            style.push_str(maxw);
+            style.push_str("; ");
+        }
+        if let Some(maxh) = image.maxh.as_ref() {
+            style.push_str("--media-maxh: ");
+            style.push_str(maxh);
+            style.push_str("; ");
+        }
+        if !style.is_empty() {
+            wrapped.push_str(" style=\"");
+            wrapped.push_str(style.trim());
+            wrapped.push('"');
+        }
+        wrapped.push('>');
+        wrapped.push_str(&html);
+        wrapped.push_str("</figure>");
+        html = wrapped;
+    }
+    html
+}
+
+fn render_image_picture_html(image: &crate::media::ImageRef, options: &RenderOptions<'_>) -> String {
     let path = image.path.raw.as_str();
     let rel = path.strip_prefix("images/").unwrap_or(path);
     let is_svg = rel.to_lowercase().ends_with(".svg");
@@ -310,34 +382,9 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     };
     let sizes = image_sizes(&image.attrs, options);
     let (class_attr, style_attr) = image_class_style(&image.attrs);
-    let alt = escape_attr(alt.trim());
+    let alt = escape_attr(image.alt.trim());
 
     let mut html = String::new();
-    let is_banner = image
-        .attrs
-        .iter()
-        .any(|attr| matches!(attr, crate::media::ImageAttr::Banner));
-    let apply_constraints = !is_banner && (image.maxw.is_some() || image.maxh.is_some());
-    if apply_constraints {
-        html.push_str("<figure class=\"media-frame\"");
-        let mut style = String::new();
-        if let Some(maxw) = image.maxw.as_ref() {
-            style.push_str("--media-maxw: ");
-            style.push_str(maxw);
-            style.push_str("; ");
-        }
-        if let Some(maxh) = image.maxh.as_ref() {
-            style.push_str("--media-maxh: ");
-            style.push_str(maxh);
-            style.push_str("; ");
-        }
-        if !style.is_empty() {
-            html.push_str(" style=\"");
-            html.push_str(style.trim());
-            html.push('"');
-        }
-        html.push('>');
-    }
     html.push_str("<picture");
     if let Some(class_attr) = class_attr.as_ref() {
         html.push_str(" class=\"");
@@ -394,9 +441,6 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     }
     html.push_str(" loading=\"lazy\" decoding=\"async\">");
     html.push_str("</picture>");
-    if apply_constraints {
-        html.push_str("</figure>");
-    }
     html
 }
 
@@ -511,30 +555,37 @@ fn render_plain_image(dest_url: &str, alt: &str) -> String {
 }
 
 fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
-    let (video_path, prefer_p, maxw, maxh) = match parse_media_destination(dest_url, alt) {
-        Some(MediaRef::Video(video)) => (video.path.raw, video.prefer_p, video.maxw, video.maxh),
-        _ => (dest_url.to_string(), 720, None, None),
+    let (video, maxw, maxh, prefer_p) = match parse_media_destination(dest_url, alt) {
+        Some(MediaRef::Video(video)) => {
+            let prefer = video.prefer_p;
+            let maxw = video.maxw.clone();
+            let maxh = video.maxh.clone();
+            (Some(video), maxw, maxh, prefer)
+        }
+        _ => (None, None, None, 720),
     };
-    let requested_prefer = prefer_p;
-    let heights = match options
-        .video_variants
-        .and_then(|variants| variants.get(&video_path))
-    {
-        Some(available) => ordered_heights(available, prefer_p),
-        None => ordered_heights(options.video_heights, prefer_p),
-    };
-    let VideoPaths {
-        poster_rel,
-        sources,
-        download_rel,
-    } = video_paths(&video_path, &heights);
 
-    let mut html = String::new();
-    html.push_str("<figure");
+    let (html, requested_prefer) = match video.as_ref() {
+        Some(video) => (render_video_element_html(video, options), video.prefer_p),
+        None => {
+            let mut fallback = String::new();
+            fallback.push_str("<video class=\"video__el\" controls preload=\"metadata\">");
+            fallback.push_str("<source src=\"");
+            fallback.push_str(options.rel_prefix);
+            fallback.push_str(dest_url);
+            fallback.push_str("\" type=\"video/mp4\">");
+            fallback.push_str("Your browser doesn't support HTML5 video.");
+            fallback.push_str("</video>");
+            (fallback, prefer_p)
+        }
+    };
+
+    let mut wrapped = String::new();
+    wrapped.push_str("<figure");
     if maxw.is_some() || maxh.is_some() {
-        html.push_str(" class=\"media-frame video\"");
+        wrapped.push_str(" class=\"media-frame video\"");
     } else {
-        html.push_str(" class=\"video\"");
+        wrapped.push_str(" class=\"video\"");
     }
     if maxw.is_some() || maxh.is_some() {
         let mut style = String::new();
@@ -549,20 +600,40 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
             style.push_str("; ");
         }
         if !style.is_empty() {
-            html.push_str(" style=\"");
-            html.push_str(style.trim());
-            html.push('"');
+            wrapped.push_str(" style=\"");
+            wrapped.push_str(style.trim());
+            wrapped.push('"');
         }
     }
-    html.push_str(" data-stbl-video data-prefer=\"p");
-    html.push_str(&requested_prefer.to_string());
-    html.push_str("\">");
+    wrapped.push_str(" data-stbl-video data-prefer=\"p");
+    wrapped.push_str(&requested_prefer.to_string());
+    wrapped.push_str("\">");
+    wrapped.push_str(&html);
+    wrapped.push_str("</figure>");
+    wrapped
+}
 
+fn render_video_element_html(video: &crate::media::VideoRef, options: &RenderOptions<'_>) -> String {
+    let video_path = video.path.raw.as_str();
+    let heights = match options
+        .video_variants
+        .and_then(|variants| variants.get(video_path))
+    {
+        Some(available) => ordered_heights(available, video.prefer_p),
+        None => ordered_heights(options.video_heights, video.prefer_p),
+    };
+    let VideoPaths {
+        poster_rel,
+        sources,
+        download_rel,
+    } = video_paths(video_path, &heights);
+
+    let mut html = String::new();
     html.push_str("<video class=\"video__el\" controls preload=\"metadata\" poster=\"");
     html.push_str(options.rel_prefix);
     html.push_str(&poster_rel);
     html.push('"');
-    let alt_trimmed = alt.trim();
+    let alt_trimmed = video.alt.trim();
     if !alt_trimmed.is_empty() {
         html.push_str(" aria-label=\"");
         html.push_str(&escape_attr(alt_trimmed));
@@ -586,7 +657,7 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
     html.push_str(options.rel_prefix);
     html.push_str(&download_rel);
     html.push_str("\">download it</a>.");
-    html.push_str("</video></figure>");
+    html.push_str("</video>");
     html
 }
 

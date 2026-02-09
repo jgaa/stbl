@@ -218,28 +218,40 @@ Results are deterministic.
 
 ---
 
-## `@[figure]` — Image with caption
+## `@[figure]` — Media with caption
 
-Inserts an image wrapped in a semantic `<figure>` with caption.
+Inserts an image or video wrapped in a semantic `<figure>` with caption.
 
 ### Syntax
 
 ```
-@[figure](src="img/diagram.png", caption="System overview")
+@[figure](src="images/diagram.png", caption="System overview")
+@[figure](src="video/demo.mp4", caption="Demo clip", maxw="900px")
 ```
 
 ### Arguments
 
-| Name    | Type   | Required | Description            |
-| ------- | ------ | -------- | ---------------------- |
-| src     | string | yes      | Image path             |
-| caption | string | no       | Caption text           |
-| alt     | string | no       | Alt text               |
-| class   | string | no       | Additional CSS classes |
+| Name    | Type   | Required | Description                                        |
+| ------- | ------ | -------- | -------------------------------------------------- |
+| src     | string | yes      | Media path (`images/...` or `video/...`)           |
+| caption | string | no       | Caption text                                       |
+| alt     | string | no       | Alt/aria label                                     |
+| class   | string | no       | Adds `figure-{token}` classes for each token       |
+| maxw    | string | no       | Max width (e.g. `900px`, `80%`)                    |
+| maxh    | string | no       | Max height (e.g. `480px`)                          |
+
+### HTML semantics
+
+```
+<figure class="figure figure-wide">
+  <picture>…</picture> / <video>…</video>
+  <figcaption>System overview</figcaption>
+</figure>
+```
 
 ---
 
-## `@[kbd]` — Keyboard keys
+## `@[kbd]` and `@[key]` — Keyboard keys
 
 Renders keyboard keys or shortcuts.
 
@@ -248,12 +260,15 @@ Renders keyboard keys or shortcuts.
 ```
 @[kbd]Ctrl[/kbd]
 @[kbd]Ctrl+C[/kbd]
+@[kbd](text="Ctrl")
+@[key]Enter[/key]
 ```
 
 ### Behavior
 
 * Inline macro
 * Useful for documentation and tutorials
+* Emits `<kbd class="kbd">…</kbd>` for `kbd` and `<kbd class="key">…</kbd>` for `key`
 
 ---
 
@@ -277,6 +292,15 @@ The best way to predict the future is to invent it.
 | source | string | no       | Source or context |
 | href   | string | no       | Optional link     |
 
+### HTML semantics
+
+```
+<figure class="quote">
+  <blockquote class="quote-body">…</blockquote>
+  <figcaption class="quote-caption">— Author, <a href="...">Source</a></figcaption>
+</figure>
+```
+
 ---
 
 ## Notes & rules
@@ -285,4 +309,3 @@ The best way to predict the future is to invent it.
 * Unknown macros are left unchanged
 * Macro expansion is depth-limited to prevent infinite recursion
 * Macros work inside included files
-

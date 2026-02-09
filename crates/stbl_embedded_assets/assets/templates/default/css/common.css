@@ -45,6 +45,30 @@ img, video { max-width: 100%; height: auto; }
   height: auto;
 }
 
+.figure {
+  margin: 1.5rem 0;
+}
+
+.figure picture {
+  display: block;
+  max-width: min(100%, var(--media-maxw, 100%));
+}
+
+.figure img,
+.figure video {
+  display: block;
+  max-width: min(100%, var(--media-maxw, 100%));
+  max-height: var(--media-maxh, none);
+  width: auto;
+  height: auto;
+}
+
+.figure figcaption {
+  margin: 0.5rem 0 0;
+  color: var(--c-muted);
+  font-size: 0.95rem;
+}
+
 .page {
   max-width: var(--layout-max-width, 72rem);
   margin: 0 auto;
@@ -178,6 +202,20 @@ pre {
   border: 1px solid var(--c-border);
 }
 
+.kbd,
+.key {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  border: 1px solid var(--c-border);
+  border-bottom-width: 2px;
+  background: var(--c-surface);
+  color: var(--c-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.9em;
+  line-height: 1.2;
+}
+
 hr {
   border: 0;
   border-top: 1px solid var(--c-border);
@@ -205,6 +243,29 @@ blockquote {
   padding: 0.75rem 1rem;
   background: var(--c-quote-bg);
   border-left: 4px solid var(--c-quote-border);
+}
+
+/* Quote macro */
+.quote {
+  margin: 1.5rem 0;
+}
+
+.quote-body {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--c-quote-bg);
+  border-left: 4px solid var(--c-quote-border);
+  font-style: italic;
+}
+
+.quote-body p {
+  margin: 0;
+}
+
+.quote-caption {
+  margin: 0.5rem 0 0;
+  color: var(--c-muted);
+  font-size: 0.95rem;
 }
 
 /* Callouts */

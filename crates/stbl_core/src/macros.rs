@@ -15,10 +15,21 @@ pub struct MacroContext<'a> {
     pub page: Option<&'a Page>,
     pub include_provider: Option<&'a dyn IncludeProvider>,
     pub render_markdown: Option<&'a dyn MarkdownRenderer>,
+    pub render_media: Option<&'a dyn MediaRenderer>,
 }
 
 pub trait MarkdownRenderer {
     fn render(&self, md: &str) -> String;
+}
+
+pub struct RenderedMedia {
+    pub html: String,
+    pub maxw: Option<String>,
+    pub maxh: Option<String>,
+}
+
+pub trait MediaRenderer {
+    fn render(&self, dest_url: &str, alt: &str) -> RenderedMedia;
 }
 
 pub fn expand_macros(input_md: &str, ctx: &MacroContext<'_>) -> Result<String> {
@@ -218,6 +229,10 @@ fn expand_macro(
         "note" | "tip" | "info" | "warning" | "danger" => {
             expand_callout(invocation, &name, ctx)
         }
+        "quote" => expand_quote(invocation, ctx),
+        "figure" => Some(expand_figure(invocation.args(), ctx)),
+        "kbd" => Some(expand_kbd_key(invocation, "kbd")),
+        "key" => Some(expand_kbd_key(invocation, "key")),
         "tags" => Some(expand_tags(invocation.args(), ctx)),
         "series" => Some(expand_series(invocation.args(), ctx)),
         "related" => Some(expand_related(invocation.args(), ctx)),
@@ -376,6 +391,244 @@ fn expand_callout(
     Some(out)
 }
 
+fn expand_quote(invocation: &MacroInvocation<'_>, ctx: &MacroContext<'_>) -> Option<String> {
+    let body = invocation.body()?;
+    let mut author = None;
+    let mut source = None;
+    let mut href = None;
+    let mut unknown_keys = Vec::new();
+    for (key, value) in parse_args(invocation.args().unwrap_or_default()) {
+        match key.as_str() {
+            "author" => {
+                if !value.is_empty() {
+                    author = Some(value);
+                }
+            }
+            "source" => {
+                if !value.is_empty() {
+                    source = Some(value);
+                }
+            }
+            "href" => {
+                if !value.is_empty() {
+                    href = Some(value);
+                }
+            }
+            _ => unknown_keys.push(key),
+        }
+    }
+    for key in unknown_keys {
+        eprintln!("macro quote: unknown key '{key}' ignored");
+    }
+
+    let renderer = match ctx.render_markdown {
+        Some(renderer) => renderer,
+        None => {
+            eprintln!("macro quote: render_markdown missing");
+            return Some(warning_block("quote macro requires a markdown renderer"));
+        }
+    };
+
+    let body_html = renderer.render(body);
+    let mut out = String::new();
+    out.push_str("<figure class=\"quote\">");
+    out.push_str("<blockquote class=\"quote-body\">");
+    out.push_str(&body_html);
+    out.push_str("</blockquote>");
+
+    let author_text = author.as_deref();
+    let source_text = source.as_deref();
+    let href_text = href.as_deref();
+    if author_text.is_some() || source_text.is_some() || href_text.is_some() {
+        out.push_str("<figcaption class=\"quote-caption\">&mdash; ");
+        if let Some(author) = author_text {
+            out.push_str(&escape_html_text(author));
+        }
+        if source_text.is_some() || href_text.is_some() {
+            if author_text.is_some() {
+                out.push_str(", ");
+            }
+            let label = source_text.or(href_text);
+            if let Some(label) = label {
+                if let Some(href) = href_text {
+                    out.push_str("<a href=\"");
+                    out.push_str(&escape_attr(href));
+                    out.push_str("\">");
+                    out.push_str(&escape_html_text(label));
+                    out.push_str("</a>");
+                } else {
+                    out.push_str(&escape_html_text(label));
+                }
+            }
+        }
+        out.push_str("</figcaption>");
+    }
+
+    out.push_str("</figure>");
+    Some(out)
+}
+
+fn expand_figure(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
+    let mut src = None;
+    let mut caption = None;
+    let mut alt = None;
+    let mut class = None;
+    let mut maxw = None;
+    let mut maxh = None;
+    let mut unknown_keys = Vec::new();
+    for (key, value) in parse_args(args.unwrap_or_default()) {
+        match key.as_str() {
+            "src" => {
+                if !value.is_empty() {
+                    src = Some(value);
+                }
+            }
+            "caption" => {
+                if !value.is_empty() {
+                    caption = Some(value);
+                }
+            }
+            "alt" => {
+                if !value.is_empty() {
+                    alt = Some(value);
+                }
+            }
+            "class" => {
+                if !value.is_empty() {
+                    class = Some(value);
+                }
+            }
+            "maxw" => {
+                if !value.is_empty() {
+                    maxw = Some(value);
+                }
+            }
+            "maxh" => {
+                if !value.is_empty() {
+                    maxh = Some(value);
+                }
+            }
+            _ => unknown_keys.push(key),
+        }
+    }
+    for key in unknown_keys {
+        eprintln!("macro figure: unknown key '{key}' ignored");
+    }
+
+    let Some(src) = src else {
+        eprintln!("macro figure: missing required src");
+        return warning_block("figure macro requires a src argument");
+    };
+
+    let renderer = match ctx.render_media {
+        Some(renderer) => renderer,
+        None => {
+            eprintln!("macro figure: render_media missing");
+            return warning_block("figure macro requires a media renderer");
+        }
+    };
+
+    let mut dest = src.clone();
+    if let Some(maxw) = maxw.as_ref() {
+        dest.push_str(";maxw=");
+        dest.push_str(maxw);
+    }
+    if let Some(maxh) = maxh.as_ref() {
+        dest.push_str(";maxh=");
+        dest.push_str(maxh);
+    }
+
+    let alt = alt.unwrap_or_default();
+    let rendered = renderer.render(&dest, &alt);
+
+    let mut class_parts = Vec::new();
+    class_parts.push("figure".to_string());
+    if let Some(class) = class.as_deref() {
+        for token in class.split_whitespace() {
+            if token.is_empty() {
+                continue;
+            }
+            class_parts.push(format!("figure-{token}"));
+        }
+    }
+    let class_attr = escape_attr(&class_parts.join(" "));
+
+    let mut out = String::new();
+    out.push_str("<figure class=\"");
+    out.push_str(&class_attr);
+    out.push('"');
+
+    if rendered.maxw.is_some() || rendered.maxh.is_some() {
+        let mut style = String::new();
+        if let Some(maxw) = rendered.maxw.as_ref() {
+            style.push_str("--media-maxw: ");
+            style.push_str(maxw);
+            style.push_str("; ");
+        }
+        if let Some(maxh) = rendered.maxh.as_ref() {
+            style.push_str("--media-maxh: ");
+            style.push_str(maxh);
+            style.push_str("; ");
+        }
+        if !style.is_empty() {
+            out.push_str(" style=\"");
+            out.push_str(style.trim());
+            out.push('"');
+        }
+    }
+    out.push('>');
+    out.push_str(&rendered.html);
+    if let Some(caption) = caption {
+        let caption = caption.trim();
+        if !caption.is_empty() {
+            out.push_str("<figcaption>");
+            out.push_str(&escape_html_text(caption));
+            out.push_str("</figcaption>");
+        }
+    }
+    out.push_str("</figure>");
+    out
+}
+
+fn expand_kbd_key(invocation: &MacroInvocation<'_>, class: &str) -> String {
+    let mut text = None;
+    let mut unknown_keys = Vec::new();
+    for (key, value) in parse_args(invocation.args().unwrap_or_default()) {
+        match key.as_str() {
+            "text" => {
+                if !value.is_empty() {
+                    text = Some(value);
+                }
+            }
+            _ => unknown_keys.push(key),
+        }
+    }
+    for key in unknown_keys {
+        eprintln!("macro {class}: unknown key '{key}' ignored");
+    }
+
+    if text.is_none() {
+        if let Some(body) = invocation.body() {
+            let body = body.trim();
+            if !body.is_empty() {
+                text = Some(body.to_string());
+            }
+        }
+    }
+
+    let Some(text) = text else {
+        return String::new();
+    };
+
+    let mut out = String::new();
+    out.push_str("<kbd class=\"");
+    out.push_str(class);
+    out.push_str("\">");
+    out.push_str(&escape_html_text(&text));
+    out.push_str("</kbd>");
+    out
+}
+
 fn find_args_end(input: &str, open_paren: usize) -> Option<usize> {
     let mut idx = open_paren + 1;
     let mut in_quotes = false;
@@ -411,8 +664,10 @@ fn find_args_end(input: &str, open_paren: usize) -> Option<usize> {
 
 fn block_body_start(input: &str, after_open: usize) -> Option<usize> {
     let mut idx = after_open;
+    let mut saw_whitespace = false;
     while let Some((ch, len)) = next_char(input, idx) {
         if ch == ' ' || ch == '\t' {
+            saw_whitespace = true;
             idx += len;
             continue;
         }
@@ -426,6 +681,9 @@ fn block_body_start(input: &str, after_open: usize) -> Option<usize> {
                 }
             }
             return Some(body_start);
+        }
+        if saw_whitespace || ch != '\n' {
+            return Some(idx);
         }
         break;
     }
@@ -1334,6 +1592,35 @@ mod tests {
         }
     }
 
+    struct DummyMediaRenderer;
+
+    impl MediaRenderer for DummyMediaRenderer {
+        fn render(&self, dest_url: &str, alt: &str) -> RenderedMedia {
+            let mut maxw = None;
+            let mut maxh = None;
+            let mut src = dest_url;
+            if let Some((path, attrs)) = dest_url.split_once(';') {
+                src = path;
+                for attr in attrs.split(';') {
+                    if let Some(value) = attr.strip_prefix("maxw=") {
+                        maxw = Some(value.to_string());
+                    } else if let Some(value) = attr.strip_prefix("maxh=") {
+                        maxh = Some(value.to_string());
+                    }
+                }
+            }
+            RenderedMedia {
+                html: format!(
+                    "<img src=\"{}\" alt=\"{}\">",
+                    src,
+                    escape_attr(alt.trim())
+                ),
+                maxw,
+                maxh,
+            }
+        }
+    }
+
     #[test]
     fn expands_known_macro_and_leaves_unknown() {
         let mut header = Header::default();
@@ -1347,6 +1634,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let input = "@[blogitems](items=1)\n\n@[unknown]";
@@ -1371,6 +1659,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[blogitems]", &ctx).expect("expand");
@@ -1398,6 +1687,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[blogitems](items=5)", &ctx).expect("expand");
@@ -1417,6 +1707,7 @@ mod tests {
             page: Some(&page),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[tags]", &ctx).expect("expand");
@@ -1440,6 +1731,7 @@ mod tests {
             page: Some(&page),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[tags]", &ctx).expect("expand");
@@ -1460,6 +1752,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[series]", &ctx).expect("expand");
@@ -1482,6 +1775,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[series]", &ctx).expect("expand");
@@ -1503,6 +1797,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[series]", &ctx).expect("expand");
@@ -1524,6 +1819,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[series](list=true)", &ctx).expect("expand");
@@ -1559,6 +1855,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[related](items=1, by=tags)", &ctx).expect("expand");
@@ -1588,6 +1885,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[related](items=1)", &ctx).expect("expand");
@@ -1619,6 +1917,7 @@ mod tests {
             page: Some(&current),
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
 
         let output = expand_macros("@[related](items=2, by=tags)", &ctx).expect("expand");
@@ -1635,6 +1934,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
         let input = "Text @[blogitems(items=2]\nMore";
         let output = expand_macros(input, &ctx).expect("expand");
@@ -1700,6 +2000,55 @@ mod tests {
         assert!(html.contains("post-5.html"));
         assert!(html.contains("post-4.html"));
         assert!(!html.contains("post-3.html"));
+    }
+
+    #[test]
+    fn render_pipeline_expands_kbd_quote_figure() {
+        let mut header = Header::default();
+        header.is_published = true;
+        header.title = Some("Macro Page".to_string());
+        let page = make_page("macro-page", "articles/macro.md", header);
+
+        let project = project_with_pages(vec![page.clone()]);
+
+        let options = crate::render::RenderOptions {
+            macro_project: Some(&project),
+            macro_page: Some(&page),
+            macros_enabled: true,
+            include_provider: None,
+            rel_prefix: "",
+            video_heights: &project.config.media.video.heights,
+            image_widths: &project.config.media.images.widths,
+            max_body_width: &project.config.theme.max_body_width,
+            desktop_min: &project.config.theme.breakpoints.desktop_min,
+            wide_min: &project.config.theme.breakpoints.wide_min,
+            image_format_mode: project.config.media.images.format_mode,
+            image_alpha: None,
+            image_variants: None,
+            video_variants: None,
+            syntax_highlight: true,
+            syntax_theme: "GitHub",
+            syntax_line_numbers: true,
+        };
+
+        let md = r#"@[kbd]Ctrl@[/kbd]
+
+@[quote](author="Alan Kay", source="Talk")
+Hello *world*.
+@[/quote]
+
+@[figure](src="images/diagram.png", caption="System overview", alt="Diagram", class="wide", maxw="900px")
+"#;
+
+        let html = crate::render::render_markdown_to_html_with_media(md, &options);
+        assert!(html.contains("<kbd class=\"kbd\">Ctrl</kbd>"));
+        assert!(html.contains("<figure class=\"quote\">"));
+        assert!(html.contains("<blockquote class=\"quote-body\">"));
+        assert!(html.contains("<em>world</em>"));
+        assert!(html.contains("<figure class=\"figure figure-wide\""));
+        assert!(html.contains("<picture>"));
+        assert!(html.contains("<figcaption>System overview</figcaption>"));
+        assert!(!html.contains("@["));
     }
 
     #[test]
@@ -1771,6 +2120,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: Some(&renderer),
+            render_media: None,
         };
         let input = "@[note](title=\"Heads up\")\nBody **markdown**.\n@[/note]";
         let output = expand_macros(input, &ctx).expect("expand");
@@ -1788,10 +2138,121 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: Some(&renderer),
+            render_media: None,
         };
         let input = "@[note](title=\"Heads up\")";
         let output = expand_macros(input, &ctx).expect("expand");
         assert_eq!(output, input);
+    }
+
+    #[test]
+    fn kbd_macro_renders_with_text_arg_and_escapes() {
+        let project = project_with_pages(Vec::new());
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+        let output = expand_macros("@[kbd](text=\"Ctrl\")", &ctx).expect("expand");
+        assert_eq!(output, "<kbd class=\"kbd\">Ctrl</kbd>");
+
+        let output = expand_macros("@[kbd](text=\"<b>\")", &ctx).expect("expand");
+        assert!(output.contains("&lt;b&gt;"));
+        assert!(!output.contains("<b>"));
+    }
+
+    #[test]
+    fn key_macro_supports_inline_body() {
+        let project = project_with_pages(Vec::new());
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+        let output = expand_macros("@[key]Enter@[/key]", &ctx).expect("expand");
+        assert_eq!(output, "<kbd class=\"key\">Enter</kbd>");
+    }
+
+    #[test]
+    fn quote_macro_renders_body_and_caption_variants() {
+        let project = project_with_pages(Vec::new());
+        let renderer = DummyRenderer;
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: Some(&renderer),
+            render_media: None,
+        };
+
+        let output = expand_macros(
+            "@[quote](author=\"Alan Kay\")\nBest **idea**.\n@[/quote]",
+            &ctx,
+        )
+        .expect("expand");
+        assert!(output.contains("<blockquote class=\"quote-body\"><p>Best **idea**.</p></blockquote>"));
+        assert!(output.contains("<figcaption class=\"quote-caption\">&mdash; Alan Kay</figcaption>"));
+
+        let output = expand_macros(
+            "@[quote](source=\"Talk\")\nBest **idea**.\n@[/quote]",
+            &ctx,
+        )
+        .expect("expand");
+        assert!(output.contains("<figcaption class=\"quote-caption\">&mdash; Talk</figcaption>"));
+
+        let output = expand_macros(
+            "@[quote](author=\"Alan Kay\", source=\"Talk\", href=\"https://example.com\")\nBest **idea**.\n@[/quote]",
+            &ctx,
+        )
+        .expect("expand");
+        assert!(output.contains("&mdash; Alan Kay, <a href=\"https://example.com\">Talk</a>"));
+    }
+
+    #[test]
+    fn figure_macro_renders_media_and_caption() {
+        let project = project_with_pages(Vec::new());
+        let media_renderer = DummyMediaRenderer;
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: Some(&media_renderer),
+        };
+
+        let output = expand_macros(
+            "@[figure](src=\"images/foo.jpg\", caption=\"System overview\", alt=\"Diagram\", class=\"wide\")",
+            &ctx,
+        )
+        .expect("expand");
+        assert!(output.contains("<figure class=\"figure figure-wide\">"));
+        assert!(output.contains("<img src=\"images/foo.jpg\" alt=\"Diagram\">"));
+        assert!(output.contains("<figcaption>System overview</figcaption>"));
+    }
+
+    #[test]
+    fn figure_macro_escapes_caption_and_applies_constraints() {
+        let project = project_with_pages(Vec::new());
+        let media_renderer = DummyMediaRenderer;
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: Some(&media_renderer),
+        };
+
+        let output = expand_macros(
+            "@[figure](src=\"images/foo.jpg\", caption=\"<b>Hi</b>\", maxw=\"900px\")",
+            &ctx,
+        )
+        .expect("expand");
+        assert!(output.contains("&lt;b&gt;Hi&lt;/b&gt;"));
+        assert!(output.contains("--media-maxw: 900px;"));
     }
 
     #[test]
@@ -1802,6 +2263,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
         let input = "# Title\n\n@[toc]\n\n## Section\n\n### Sub\n";
         let output = expand_macros(input, &ctx).expect("expand");
@@ -1818,6 +2280,7 @@ mod tests {
             page: None,
             include_provider: None,
             render_markdown: None,
+            render_media: None,
         };
         let output = expand_macros("@[include](path=\"partials/a.md\")", &ctx).expect("expand");
         assert!(output.contains("include macro is not enabled"));
@@ -1834,6 +2297,7 @@ mod tests {
             page: None,
             include_provider: Some(&provider),
             render_markdown: None,
+            render_media: None,
         };
         let output = expand_macros("@[include](path=\"partials/a.md\")", &ctx).expect("expand");
         assert!(output.contains("Hello include"));
@@ -1850,6 +2314,7 @@ mod tests {
             page: None,
             include_provider: Some(&provider),
             render_markdown: None,
+            render_media: None,
         };
         let output = expand_macros("@[include](path=\"loop.md\")", &ctx).expect("expand");
         assert!(output.contains("include macro recursion detected"));
@@ -1866,6 +2331,7 @@ mod tests {
             page: None,
             include_provider: Some(&provider),
             render_markdown: None,
+            render_media: None,
         };
         let input =
             "@[include](path=\"once.md\", once=true)\n@[include](path=\"once.md\", once=true)";
