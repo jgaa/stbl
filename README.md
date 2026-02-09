@@ -366,6 +366,9 @@ Example: `@&#91;blogitems&#93;(items=5)` will list the 5 newest blog posts in an
 
 Macros: 
 - **blogitems** — shows a list of the latest blog posts. Args: items=*n* where *n* is the number of items to list. Default is 3.
+- **tags** — renders tags for the current page. Args: style=inline|pills (default inline), prefix="Tags:" (optional), sort=site|alpha (default site). Example: `@&#91;tags&#93;(style=pills, prefix="Tags:", sort=alpha)`.
+- **series** — renders series navigation for the current page (when part of a series). Args: nav=true|false (default true), list=true|false (default false), title="Series" (optional). Example: `@&#91;series&#93;(list=true)`.
+- **related** — shows related posts based on tags and/or series. Args: items=5 (default 5), by=tags|series|both (default both), title="Related" (optional). Example: `@&#91;related&#93;(items=3, by=tags, title="More like this")`.
 
 ## How to create a new blog
 

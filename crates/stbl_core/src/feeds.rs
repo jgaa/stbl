@@ -1,5 +1,4 @@
-use crate::blog_index::collect_tag_list;
-use crate::header::TemplateId;
+use crate::blog_index::{collect_tag_list, iter_visible_posts};
 use crate::model::{Page, Project};
 use crate::url::{UrlMapper, logical_key_from_source_path};
 use chrono::{DateTime, Duration, Utc};
@@ -116,26 +115,21 @@ struct FeedPage<'a> {
 
 fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
     let mut pages = Vec::new();
-    for page in &project.content.pages {
-        if page.header.template == Some(TemplateId::BlogIndex) {
-            continue;
-        }
-        if crate::visibility::is_published_page(page) {
-            pages.push(FeedPage {
-                page,
-                logical_key: logical_key_from_source_path(&page.source_path),
-            });
-        }
+    for page in iter_visible_posts(project, None) {
+        pages.push(FeedPage {
+            page,
+            logical_key: logical_key_from_source_path(&page.source_path),
+        });
     }
     for series in &project.content.series {
-        if crate::visibility::is_published_page(&series.index) {
+        if !crate::visibility::is_blog_index_excluded(&series.index, None) {
             pages.push(FeedPage {
                 page: &series.index,
                 logical_key: logical_key_from_source_path(&series.dir_path),
             });
         }
         for part in &series.parts {
-            if crate::visibility::is_published_page(&part.page) {
+            if !crate::visibility::is_blog_index_excluded(&part.page, None) {
                 pages.push(FeedPage {
                     page: &part.page,
                     logical_key: logical_key_from_source_path(&part.page.source_path),
@@ -236,8 +230,8 @@ mod tests {
     use crate::config::load_site_config;
     use crate::header::UnknownKeyPolicy;
     use crate::model::{
-        ImageFormatMode, Page, Project, SiteConfig, SiteContent, SiteMeta, ThemeColorOverrides,
-        ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+        ImageFormatMode, MacrosConfig, Page, Project, SiteConfig, SiteContent, SiteMeta,
+        ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use std::path::{Path, PathBuf};
     use std::time::SystemTime;
@@ -320,6 +314,7 @@ mod tests {
                 language: "en".to_string(),
                 timezone: None,
                 url_style: UrlStyle::Html,
+                macros: MacrosConfig { enabled: true },
             },
             banner: None,
             menu: Vec::new(),
@@ -340,6 +335,11 @@ mod tests {
                     tagline_size: "1rem".to_string(),
                 },
                 wide_background: ThemeWideBackgroundOverrides::default(),
+            },
+            syntax: crate::model::SyntaxConfig {
+                highlight: true,
+                theme: "GitHub".to_string(),
+                line_numbers: true,
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,

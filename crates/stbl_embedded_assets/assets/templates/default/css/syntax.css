@@ -1,0 +1,48 @@
+.code-block {
+  overflow: auto;
+}
+
+.code-block code {
+  background: transparent;
+  padding: 0;
+}
+
+.code-block code.has-line-numbers {
+  counter-reset: line;
+  display: block;
+}
+
+.code-block code.has-line-numbers .code-line {
+  display: block;
+  padding-left: 3rem;
+  position: relative;
+}
+
+.code-block code.has-line-numbers .code-line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 0;
+  width: 2.4rem;
+  text-align: right;
+  color: var(--c-muted);
+  opacity: 0.6;
+}
+
+.code-block code.syntect {
+  color: #24292f;
+}
+
+.code-block code.syntect .comment { color: #6a737d; }
+.code-block code.syntect .constant { color: #005cc5; }
+.code-block code.syntect .string { color: #032f62; }
+.code-block code.syntect .keyword { color: #d73a49; }
+.code-block code.syntect .storage { color: #d73a49; }
+.code-block code.syntect .entity { color: #6f42c1; }
+.code-block code.syntect .support { color: #005cc5; }
+.code-block code.syntect .variable { color: #e36209; }
+.code-block code.syntect .punctuation { color: #24292f; }
+.code-block code.syntect .markup { color: #22863a; }
+.code-block code.syntect .invalid { color: #b31d28; background: #ffeef0; }
+.code-block code.syntect .meta { color: #6a737d; }
+.code-block code.syntect .function { color: #6f42c1; }

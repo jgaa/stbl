@@ -155,13 +155,45 @@ pub fn collect_tag_list(project: &Project) -> Vec<String> {
     tags.into_iter().collect()
 }
 
+pub fn iter_visible_posts<'a>(
+    project: &'a Project,
+    source_page_id: Option<DocId>,
+) -> impl Iterator<Item = &'a Page> + 'a {
+    project
+        .content
+        .pages
+        .iter()
+        .filter(move |page| include_page(page, source_page_id))
+}
+
+pub fn visible_posts_sorted<'a>(
+    project: &'a Project,
+    source_page_id: Option<DocId>,
+) -> Vec<&'a Page> {
+    let mut posts: Vec<(&Page, i64, String)> = iter_visible_posts(project, source_page_id)
+        .map(|page| {
+            (
+                page,
+                page_sort_date(page),
+                logical_key_from_source_path(&page.source_path),
+            )
+        })
+        .collect();
+    posts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.2.cmp(&b.2)));
+    posts.into_iter().map(|(page, _, _)| page).collect()
+}
+
+pub fn collect_blog_posts(project: &Project, source_page_id: Option<DocId>) -> Vec<FeedPost> {
+    visible_posts_sorted(project, source_page_id)
+        .into_iter()
+        .map(|page| feed_post(project, page))
+        .collect()
+}
+
 fn collect_blog_feed_internal(project: &Project, source_page_id: Option<DocId>) -> Vec<FeedItem> {
     let mut items = Vec::new();
 
-    for page in &project.content.pages {
-        if !include_page(page, source_page_id) {
-            continue;
-        }
+    for page in iter_visible_posts(project, source_page_id) {
         items.push(FeedItem::Post(feed_post(project, page)));
     }
 
@@ -470,8 +502,8 @@ mod tests {
     use super::*;
     use crate::header::TemplateId;
     use crate::model::{
-        BlogConfig, BlogPaginationConfig, ImageFormatMode, SiteConfig, SiteContent, SiteMeta,
-        ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+        BlogConfig, BlogPaginationConfig, ImageFormatMode, MacrosConfig, SiteConfig, SiteContent,
+        SiteMeta, ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use crate::url::UrlMapper;
     use std::path::PathBuf;
@@ -488,6 +520,7 @@ mod tests {
                 language: "en".to_string(),
                 timezone: None,
                 url_style: UrlStyle::Html,
+                macros: MacrosConfig { enabled: true },
             },
             banner: None,
             menu: Vec::new(),
@@ -508,6 +541,11 @@ mod tests {
                     tagline_size: "1rem".to_string(),
                 },
                 wide_background: ThemeWideBackgroundOverrides::default(),
+            },
+            syntax: crate::model::SyntaxConfig {
+                highlight: true,
+                theme: "GitHub".to_string(),
+                line_numbers: true,
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,

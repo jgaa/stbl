@@ -198,6 +198,7 @@ pub struct SiteConfig {
     pub menu: Vec<MenuItem>,
     pub nav: Vec<NavItem>,
     pub theme: ThemeConfig,
+    pub syntax: SyntaxConfig,
     pub assets: AssetsConfig,
     pub media: MediaConfig,
     pub footer: FooterConfig,
@@ -224,11 +225,24 @@ pub struct SiteMeta {
     pub language: String,
     pub timezone: Option<String>,
     pub url_style: UrlStyle,
+    pub macros: MacrosConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MacrosConfig {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AssetsConfig {
     pub cache_busting: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SyntaxConfig {
+    pub highlight: bool,
+    pub theme: String,
+    pub line_numbers: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

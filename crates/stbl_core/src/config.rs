@@ -8,9 +8,9 @@ use serde::Deserialize;
 use crate::model::{
     AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuAlign,
     MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig,
-    SiteMeta, SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeHeaderConfig,
-    ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig,
-    WideBackgroundStyle,
+    SiteMeta, SyntaxConfig, SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig,
+    ThemeHeaderConfig, ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+    VideoConfig, WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -20,6 +20,7 @@ struct SiteConfigRaw {
     #[serde(default)]
     menu: Vec<MenuItem>,
     theme: Option<ThemeConfigRaw>,
+    syntax: Option<SyntaxConfigRaw>,
     assets: Option<AssetsConfigRaw>,
     media: Option<MediaConfigRaw>,
     footer: Option<FooterConfigRaw>,
@@ -47,12 +48,25 @@ struct SiteMetaRaw {
     language: Option<String>,
     timezone: Option<String>,
     url_style: Option<UrlStyle>,
+    macros: Option<MacrosConfigRaw>,
     nav: Option<Vec<NavItemRaw>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct FooterConfigRaw {
     show_stbl: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct MacrosConfigRaw {
+    enabled: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SyntaxConfigRaw {
+    highlight: Option<bool>,
+    theme: Option<String>,
+    line_numbers: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -214,6 +228,9 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         language: required_string(parsed.site.language, "site.language")?,
         timezone: parsed.site.timezone,
         url_style: parsed.site.url_style.unwrap_or_default(),
+        macros: crate::model::MacrosConfig {
+            enabled: parsed.site.macros.and_then(|macros| macros.enabled).unwrap_or(true),
+        },
     };
 
     let nav = match parsed.site.nav {
@@ -526,6 +543,31 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         },
     };
 
+    let syntax = {
+        let highlight = parsed
+            .syntax
+            .as_ref()
+            .and_then(|syntax| syntax.highlight)
+            .unwrap_or(true);
+        let theme = non_empty_or_fallback(
+            parsed
+                .syntax
+                .as_ref()
+                .and_then(|syntax| syntax.theme.clone()),
+            "GitHub",
+        );
+        let line_numbers = parsed
+            .syntax
+            .as_ref()
+            .and_then(|syntax| syntax.line_numbers)
+            .unwrap_or(true);
+        SyntaxConfig {
+            highlight,
+            theme,
+            line_numbers,
+        }
+    };
+
     let media = MediaConfig {
         images: ImageConfig {
             widths: parsed
@@ -570,6 +612,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         menu: parsed.menu,
         nav,
         theme,
+        syntax,
         assets: AssetsConfig {
             cache_busting: parsed
                 .assets
@@ -633,6 +676,13 @@ fn optional_non_empty(value: Option<String>, field: &str) -> Result<Option<Strin
             Ok(Some(text))
         }
         None => Ok(None),
+    }
+}
+
+fn non_empty_or_fallback(value: Option<String>, default: &str) -> String {
+    match value {
+        Some(text) if !text.trim().is_empty() => text,
+        _ => default.to_string(),
     }
 }
 
@@ -724,6 +774,26 @@ mod tests {
         assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Right);
         assert_eq!(config.theme.header.title_size, "1.3rem");
         assert_eq!(config.theme.header.tagline_size, "1rem");
+    }
+
+    #[test]
+    fn syntax_defaults_apply_when_missing() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert!(config.syntax.highlight);
+        assert_eq!(config.syntax.theme, "GitHub");
+        assert!(config.syntax.line_numbers);
+    }
+
+    #[test]
+    fn syntax_theme_empty_defaults_to_github() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nsyntax:\n  theme: \"\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.syntax.theme, "GitHub");
     }
 
     #[test]

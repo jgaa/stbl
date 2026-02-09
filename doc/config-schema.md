@@ -88,6 +88,11 @@ theme:
     position: string
     opacity: float
 
+syntax:
+  highlight: bool     # default true
+  theme: string       # default "GitHub"
+  line_numbers: bool  # default true
+
 assets:
   cache_busting: bool  # default false
 
@@ -192,6 +197,31 @@ This enables safe long-term caching on static hosting.
 * Type: integer 1–100
 * Default: `90`
 * Applies to JPEG/WebP encoders; ignored for PNG.
+
+---
+
+### syntax
+
+Controls fenced code block highlighting and styling.
+
+`syntax.highlight`
+
+* Type: boolean
+* Default: `true`
+* When `false`, fenced code blocks are rendered as plain escaped code.
+
+`syntax.theme`
+
+* Type: string
+* Default: `"GitHub"`
+* If empty, defaults to `"GitHub"`.
+* If the theme is unknown, highlighting falls back to plain code blocks.
+
+`syntax.line_numbers`
+
+* Type: boolean
+* Default: `true`
+* When `true`, code blocks include line number markup (styled by `css/syntax.css`).
 
 ---
 

@@ -4,6 +4,7 @@ use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
 use crate::model::{MenuAlign, NavItem, Page, Project, ThemeHeaderLayout};
+use crate::macros::IncludeProvider;
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::visibility::is_blog_index_excluded;
 use crate::url::UrlMapper;
@@ -44,6 +45,7 @@ pub fn render_page(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: Option<&dyn IncludeProvider>,
 ) -> Result<String> {
     render_page_with_series_nav(
         project,
@@ -52,6 +54,7 @@ pub fn render_page(
         None,
         current_href,
         build_date_ymd,
+        include_provider,
     )
 }
 
@@ -62,9 +65,16 @@ pub fn render_page_with_series_nav(
     series_nav: Option<SeriesNavView>,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: Option<&dyn IncludeProvider>,
 ) -> Result<String> {
     let rel = rel_prefix_for_href(current_href);
-    let body_html = render_markdown_with_media(project, &page.body_markdown, &rel);
+    let body_html = render_markdown_with_media(
+        project,
+        Some(page),
+        &page.body_markdown,
+        &rel,
+        include_provider,
+    );
     let banner_html = render_banner_html(project, page, &rel);
     let page_title = page_title_or_filename(project, page);
     let show_page_title = !is_blog_index_excluded(page, None);
@@ -100,9 +110,16 @@ pub fn render_markdown_page(
     build_date_ymd: &str,
     redirect_href: Option<&str>,
     show_page_title: bool,
+    include_provider: Option<&dyn IncludeProvider>,
 ) -> Result<String> {
     let rel = rel_prefix_for_href(current_href);
-    let body_html = render_markdown_with_media(project, body_markdown, &rel);
+    let body_html = render_markdown_with_media(
+        project,
+        None,
+        body_markdown,
+        &rel,
+        include_provider,
+    );
     render_with_context(
         project,
         title.to_string(),
@@ -287,6 +304,7 @@ pub fn render_series_index(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: Option<&dyn IncludeProvider>,
 ) -> Result<String> {
     let env = template_env().context("failed to initialize templates")?;
     let template = env
@@ -308,8 +326,10 @@ pub fn render_series_index(
     } else {
         Some(render_markdown_with_media(
             project,
+            Some(index),
             &index.body_markdown,
             &rel,
+            include_provider,
         ))
     };
 
@@ -354,6 +374,7 @@ pub fn render_redirect_page(
         build_date_ymd,
         Some(target_href),
         true,
+        None,
     )
 }
 
@@ -436,8 +457,18 @@ fn render_with_context(
         .context("failed to render page template")
 }
 
-fn render_markdown_with_media(project: &Project, markdown: &str, rel: &str) -> String {
+fn render_markdown_with_media(
+    project: &Project,
+    page: Option<&Page>,
+    markdown: &str,
+    rel: &str,
+    include_provider: Option<&dyn IncludeProvider>,
+) -> String {
     let options = RenderOptions {
+        macro_project: Some(project),
+        macro_page: page,
+        macros_enabled: project.config.site.macros.enabled,
+        include_provider,
         rel_prefix: rel,
         video_heights: &project.config.media.video.heights,
         image_widths: &project.config.media.images.widths,
@@ -448,6 +479,9 @@ fn render_markdown_with_media(project: &Project, markdown: &str, rel: &str) -> S
         image_alpha: Some(&project.image_alpha),
         image_variants: Some(&project.image_variants),
         video_variants: Some(&project.video_variants),
+        syntax_highlight: project.config.syntax.highlight,
+        syntax_theme: &project.config.syntax.theme,
+        syntax_line_numbers: project.config.syntax.line_numbers,
     };
     render_markdown_to_html_with_media(markdown, &options)
 }
@@ -462,6 +496,10 @@ pub fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<S
         banner_path = format!("images/{banner_path}");
     }
     let options = RenderOptions {
+        macro_project: None,
+        macro_page: None,
+        macros_enabled: false,
+        include_provider: None,
         rel_prefix: rel,
         video_heights: &project.config.media.video.heights,
         image_widths: &project.config.media.images.widths,
@@ -472,6 +510,9 @@ pub fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<S
         image_alpha: Some(&project.image_alpha),
         image_variants: Some(&project.image_variants),
         video_variants: Some(&project.video_variants),
+        syntax_highlight: project.config.syntax.highlight,
+        syntax_theme: &project.config.syntax.theme,
+        syntax_line_numbers: project.config.syntax.line_numbers,
     };
     let alt = page.header.title.clone().unwrap_or_default();
     Some(crate::render::render_image_html(
@@ -859,6 +900,7 @@ mod tests {
             &default_manifest(),
             "meta-test.html",
             "2026-01-29",
+            None,
         )
         .expect("render");
         assert!(!html.contains("<div class=\"meta\">"));
@@ -877,6 +919,7 @@ mod tests {
             &default_manifest(),
             "meta-test.html",
             "2026-01-29",
+            None,
         )
         .expect("render");
         assert!(html.contains("<div class=\"meta\">"));
@@ -897,6 +940,7 @@ mod tests {
             &default_manifest(),
             "footer.html",
             "2026-01-25",
+            None,
         )
         .expect("render");
         assert!(html.contains("Copyright 2026 by Demo"));
@@ -914,6 +958,7 @@ mod tests {
             &default_manifest(),
             "footer.html",
             "2026-01-25",
+            None,
         )
         .expect("render");
         assert!(html.contains("Copyright ACME"));
@@ -943,6 +988,7 @@ mod tests {
             &default_manifest(),
             "index.html",
             "2026-01-30",
+            None,
         )
         .expect("render");
         assert!(html.contains("<title>Demo · Demo</title>"));
@@ -971,6 +1017,7 @@ mod tests {
             &default_manifest(),
             "download.html",
             "2026-01-30",
+            None,
         )
         .expect("render");
         assert!(html.contains("<title>Download · Demo</title>"));
@@ -1039,6 +1086,7 @@ mod tests {
             &default_manifest(),
             "part1.html",
             "2026-01-29",
+            None,
         )
         .expect("render page");
         assert!(!html.contains("class=\"series-nav\""));
@@ -1061,6 +1109,7 @@ mod tests {
             Some(nav),
             "part1.html",
             "2026-01-29",
+            None,
         )
         .expect("render page");
         assert!(html.contains("class=\"series-nav\""));
@@ -1094,6 +1143,7 @@ mod tests {
             &default_manifest(),
             "series.html",
             "2026-01-29",
+            None,
         )
         .expect("render series");
         let part1 = html.find("Part 1").expect("part1");
@@ -1173,6 +1223,10 @@ mod tests {
         entries.insert(
             "css/common.css".to_string(),
             "artifacts/css/common.css".to_string(),
+        );
+        entries.insert(
+            "css/syntax.css".to_string(),
+            "artifacts/css/syntax.css".to_string(),
         );
         entries.insert(
             "css/desktop.css".to_string(),

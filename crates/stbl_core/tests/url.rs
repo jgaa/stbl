@@ -1,6 +1,7 @@
 use stbl_core::model::{
-    AssetsConfig, SiteConfig, SiteMeta, ThemeBreakpoints, ThemeConfig, ThemeColorOverrides,
-    ThemeHeaderConfig, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, ImageFormatMode,
+    AssetsConfig, ImageFormatMode, MacrosConfig, SiteConfig, SiteMeta, SyntaxConfig,
+    ThemeBreakpoints, ThemeConfig, ThemeColorOverrides, ThemeHeaderConfig, ThemeNavOverrides,
+    ThemeWideBackgroundOverrides, UrlStyle,
 };
 use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path};
 
@@ -16,6 +17,7 @@ fn base_config(style: UrlStyle) -> SiteConfig {
             language: "en".to_string(),
             timezone: None,
             url_style: style,
+            macros: MacrosConfig { enabled: true },
         },
         banner: None,
         menu: Vec::new(),
@@ -36,6 +38,11 @@ fn base_config(style: UrlStyle) -> SiteConfig {
                 tagline_size: "1rem".to_string(),
             },
             wide_background: ThemeWideBackgroundOverrides::default(),
+        },
+        syntax: SyntaxConfig {
+            highlight: true,
+            theme: "GitHub".to_string(),
+            line_numbers: true,
         },
         assets: AssetsConfig {
             cache_busting: false,

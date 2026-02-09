@@ -14,6 +14,7 @@ use stbl_core::blog_index::{
     collect_tag_feed, paginate_blog_index,
 };
 use stbl_core::feeds::{render_rss, render_sitemap};
+use stbl_core::macros::{IncludeProvider, IncludeRequest, IncludeResponse};
 use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
@@ -36,6 +37,50 @@ pub struct ExecSummary {
     pub skipped: usize,
     pub executed_ids: Vec<String>,
     pub skipped_ids: Vec<String>,
+}
+
+struct FsIncludeProvider {
+    site_root: PathBuf,
+    canonical_root: PathBuf,
+}
+
+impl FsIncludeProvider {
+    fn new(site_root: &Path) -> Result<Self> {
+        let canonical_root = fs::canonicalize(site_root)
+            .with_context(|| format!("failed to canonicalize site root {}", site_root.display()))?;
+        Ok(Self {
+            site_root: site_root.to_path_buf(),
+            canonical_root,
+        })
+    }
+}
+
+impl IncludeProvider for FsIncludeProvider {
+    fn include(&self, request: &IncludeRequest<'_>) -> Result<IncludeResponse> {
+        let raw_path = Path::new(request.path);
+        if raw_path.is_absolute() {
+            bail!("include path must be relative");
+        }
+
+        let base_dir = match request.current_source_path.and_then(|path| path.parent()) {
+            Some(parent) => self.site_root.join(parent),
+            None => self.site_root.clone(),
+        };
+        let target = base_dir.join(raw_path);
+        let canonical = fs::canonicalize(&target)
+            .with_context(|| format!("failed to resolve include {}", target.display()))?;
+        if !canonical.starts_with(&self.canonical_root) {
+            bail!("include path escapes site root");
+        }
+
+        let content = fs::read_to_string(&canonical)
+            .with_context(|| format!("failed to read include {}", canonical.display()))?;
+
+        Ok(IncludeResponse {
+            content,
+            resolved_id: canonical.to_string_lossy().to_string(),
+        })
+    }
 }
 
 pub fn execute_plan(
@@ -695,6 +740,7 @@ fn render_primary_html(
     asset_manifest: &AssetManifest,
     build_date_ymd: &str,
 ) -> Result<String> {
+    let include_provider = FsIncludeProvider::new(&project.root)?;
     let current_href = current_href_for_task(project, mapper, kind)?;
     match kind {
         TaskKind::RenderPage { page } => render_page_by_id(
@@ -703,6 +749,7 @@ fn render_primary_html(
             asset_manifest,
             &current_href,
             build_date_ymd,
+            &include_provider,
         ),
         TaskKind::RenderBlogIndex {
             source_page,
@@ -714,6 +761,7 @@ fn render_primary_html(
             asset_manifest,
             &current_href,
             build_date_ymd,
+            &include_provider,
         ),
         TaskKind::RenderSeries { series } => render_series(
             project,
@@ -721,9 +769,17 @@ fn render_primary_html(
             asset_manifest,
             &current_href,
             build_date_ymd,
+            &include_provider,
         ),
         TaskKind::RenderTagIndex { tag } => {
-            render_tag_index_page(project, tag, asset_manifest, &current_href, build_date_ymd)
+            render_tag_index_page(
+                project,
+                tag,
+                asset_manifest,
+                &current_href,
+                build_date_ymd,
+                &include_provider,
+            )
         }
         TaskKind::RenderTagsIndex => render_markdown_page(
             project,
@@ -734,6 +790,7 @@ fn render_primary_html(
             build_date_ymd,
             None,
             true,
+            Some(&include_provider),
         ),
         TaskKind::RenderFrontPage => {
             let title = project.config.site.title.clone();
@@ -746,6 +803,7 @@ fn render_primary_html(
                 build_date_ymd,
                 None,
                 false,
+                Some(&include_provider),
             )
         }
         _ => render_markdown_page(
@@ -757,6 +815,7 @@ fn render_primary_html(
             build_date_ymd,
             None,
             true,
+            Some(&include_provider),
         ),
     }
 }
@@ -767,6 +826,7 @@ fn render_page_by_id(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: &FsIncludeProvider,
 ) -> Result<String> {
     let page =
         find_page(project, page_id).ok_or_else(|| anyhow!("page not found for render task"))?;
@@ -780,9 +840,17 @@ fn render_page_by_id(
             series_nav,
             current_href,
             build_date_ymd,
+            Some(include_provider),
         )
     } else {
-        render_page(project, page, asset_manifest, current_href, build_date_ymd)
+        render_page(
+            project,
+            page,
+            asset_manifest,
+            current_href,
+            build_date_ymd,
+            Some(include_provider),
+        )
     }
 }
 
@@ -792,6 +860,7 @@ fn render_series(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: &FsIncludeProvider,
 ) -> Result<String> {
     let series = find_series(project, series_id)
         .ok_or_else(|| anyhow!("series not found for render task"))?;
@@ -819,6 +888,7 @@ fn render_series(
         asset_manifest,
         current_href,
         build_date_ymd,
+        Some(include_provider),
     )
 }
 
@@ -951,6 +1021,7 @@ fn render_blog_index_page(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    include_provider: &FsIncludeProvider,
 ) -> Result<String> {
     let mapper = UrlMapper::new(&project.config);
     let source_page =
@@ -973,6 +1044,10 @@ fn render_blog_index_page(
     let rel = rel_prefix_for_href(current_href);
     let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
         let options = RenderOptions {
+            macro_project: Some(project),
+            macro_page: Some(source_page),
+            macros_enabled: project.config.site.macros.enabled,
+            include_provider: Some(include_provider),
             rel_prefix: &rel,
             video_heights: &project.config.media.video.heights,
             image_widths: &project.config.media.images.widths,
@@ -983,6 +1058,9 @@ fn render_blog_index_page(
             image_alpha: Some(&project.image_alpha),
             image_variants: Some(&project.image_variants),
             video_variants: Some(&project.video_variants),
+            syntax_highlight: project.config.syntax.highlight,
+            syntax_theme: &project.config.syntax.theme,
+            syntax_line_numbers: project.config.syntax.line_numbers,
         };
         Some(render_markdown_to_html_with_media(
             &source_page.body_markdown,
@@ -1020,6 +1098,7 @@ fn render_tag_index_page(
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
+    _include_provider: &FsIncludeProvider,
 ) -> Result<String> {
     let mapper = UrlMapper::new(&project.config);
     let feed_items = collect_tag_feed(project, tag);

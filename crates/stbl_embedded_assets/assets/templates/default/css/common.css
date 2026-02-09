@@ -207,6 +207,30 @@ blockquote {
   border-left: 4px solid var(--c-quote-border);
 }
 
+/* Callouts */
+.callout {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+}
+
+.callout-title {
+  font-weight: 600;
+  margin: 0 0 0.35rem;
+  color: var(--c-heading);
+}
+
+.callout-body > :first-child { margin-top: 0; }
+.callout-body > :last-child { margin-bottom: 0; }
+
+.callout-note { border-left: 4px solid #2f6fdb; }
+.callout-tip { border-left: 4px solid #1b8f5a; }
+.callout-info { border-left: 4px solid #3b7fb5; }
+.callout-warning { border-left: 4px solid #b7791f; }
+.callout-danger { border-left: 4px solid #c53030; }
+
 /* Blog listing */
 .post-list {
   list-style: none;
@@ -271,7 +295,8 @@ blockquote {
   margin: 0;
 }
 
-.tags a {
+.tags a,
+.tags .tag {
   display: inline-block;
   padding: 0.1rem 0.45rem;
   border-radius: 999px;
@@ -285,10 +310,167 @@ blockquote {
 }
 
 .tags a:hover,
-.tags a:focus-visible {
+.tags a:focus-visible,
+.tags .tag:hover,
+.tags .tag:focus-visible {
   background: var(--c-fg);
   border-color: var(--c-fg);
   color: var(--c-bg);
+}
+
+.tags-inline .tag {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--c-fg);
+  font-size: 0.95rem;
+  opacity: 1;
+}
+
+.tags-inline .tag:hover,
+.tags-inline .tag:focus-visible {
+  text-decoration: underline;
+  background: transparent;
+  border-color: transparent;
+  color: var(--c-fg);
+}
+
+.tags-pills .tag {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--c-border);
+  background: var(--c-muted);
+  color: var(--c-bg);
+  font-size: 0.85rem;
+  line-height: 1.3;
+  text-decoration: none;
+  opacity: 0.85;
+}
+
+/* -------------------------------------------------------------------
+   Blog Items Macro — blogitems
+   ------------------------------------------------------------------- */
+
+.blogitems {
+  list-style: none;
+  margin: 1.5rem 0;
+  padding: 0 0 0 1.5rem;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.blogitem {
+  padding-left: 0;
+}
+
+.blogitem > a {
+  font-weight: 600;
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: var(--text, #000);
+}
+
+.blogitem > a:hover {
+  text-decoration: underline;
+}
+
+.blogitem-excerpt {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted, #666);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------------------------
+   Series Macro — series
+   ------------------------------------------------------------------- */
+
+.series-nav {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--c-border);
+  border-radius: 0.75rem;
+  background: var(--c-bg);
+  display: grid;
+  gap: 0.6rem;
+}
+
+.series-title {
+  font-weight: 600;
+  color: var(--c-heading);
+}
+
+.series-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.series-links a {
+  text-decoration: none;
+  color: var(--c-fg);
+  border-bottom: 1px solid transparent;
+}
+
+.series-links a:hover,
+.series-links a:focus-visible {
+  border-bottom-color: var(--c-fg);
+}
+
+.series-parts {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.series-parts li {
+  margin: 0.2rem 0;
+}
+
+/* -------------------------------------------------------------------
+   Related Macro — related
+   ------------------------------------------------------------------- */
+
+.related {
+  margin: 2rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--c-border);
+}
+
+.related h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.2rem;
+}
+
+.related ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.related li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.related a {
+  text-decoration: none;
+  color: var(--c-fg);
+  font-weight: 600;
+}
+
+.related a:hover,
+.related a:focus-visible {
+  text-decoration: underline;
+}
+
+.related .meta {
+  color: var(--c-muted);
+  font-size: 0.9rem;
 }
 
 .pager a,
@@ -320,4 +502,3 @@ footer p:last-child {
   font-size: 0.85rem;
   opacity: 0.85;
 }
-

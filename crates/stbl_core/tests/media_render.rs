@@ -7,6 +7,10 @@ fn managed_video_renders_html5_video_markup() {
     let heights = vec![360, 480, 720];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        macro_project: None,
+        macro_page: None,
+        macros_enabled: false,
+        include_provider: None,
         rel_prefix: "",
         video_heights: &heights,
         image_widths: &widths,
@@ -17,6 +21,9 @@ fn managed_video_renders_html5_video_markup() {
         image_alpha: None,
         image_variants: None,
         video_variants: None,
+        syntax_highlight: true,
+        syntax_theme: "GitHub",
+        syntax_line_numbers: true,
     };
     let html = render_markdown_to_html_with_media(md, &options);
 
@@ -47,6 +54,10 @@ fn image_with_max_constraints_wraps_media_frame() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        macro_project: None,
+        macro_page: None,
+        macros_enabled: false,
+        include_provider: None,
         rel_prefix: "",
         video_heights: &heights,
         image_widths: &widths,
@@ -57,6 +68,9 @@ fn image_with_max_constraints_wraps_media_frame() {
         image_alpha: None,
         image_variants: None,
         video_variants: None,
+        syntax_highlight: true,
+        syntax_theme: "GitHub",
+        syntax_line_numbers: true,
     };
     let html = render_markdown_to_html_with_media(md, &options);
     assert!(html.contains("class=\"media-frame\""));
@@ -70,6 +84,10 @@ fn banner_ignores_max_constraints() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        macro_project: None,
+        macro_page: None,
+        macros_enabled: false,
+        include_provider: None,
         rel_prefix: "",
         video_heights: &heights,
         image_widths: &widths,
@@ -80,6 +98,9 @@ fn banner_ignores_max_constraints() {
         image_alpha: None,
         image_variants: None,
         video_variants: None,
+        syntax_highlight: true,
+        syntax_theme: "GitHub",
+        syntax_line_numbers: true,
     };
     let html = render_markdown_to_html_with_media(md, &options);
     assert!(!html.contains("class=\"media-frame\""));
@@ -92,6 +113,10 @@ fn non_managed_video_links_render_as_images() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        macro_project: None,
+        macro_page: None,
+        macros_enabled: false,
+        include_provider: None,
         rel_prefix: "",
         video_heights: &heights,
         image_widths: &widths,
@@ -102,6 +127,9 @@ fn non_managed_video_links_render_as_images() {
         image_alpha: None,
         image_variants: None,
         video_variants: None,
+        syntax_highlight: true,
+        syntax_theme: "GitHub",
+        syntax_line_numbers: true,
     };
     let html = render_markdown_to_html_with_media(md, &options);
     assert!(html.contains("<img"));
