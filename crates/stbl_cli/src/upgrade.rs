@@ -342,7 +342,7 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
             page_size,
         },
         None => BlogPaginationOut {
-            enabled: false,
+            enabled: true,
             page_size: 10,
         },
     };

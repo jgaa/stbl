@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::blog_index::{collect_blog_posts, iter_visible_posts};
+use crate::blog_index::{canonical_tag_map, collect_blog_posts, iter_visible_posts, tag_key};
 use crate::model::{Page, Project};
 use crate::url::{UrlMapper, logical_key_from_source_path};
 use crate::templates::format_timestamp_ymd;
@@ -812,6 +812,7 @@ fn expand_tags(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
     if page.header.tags.is_empty() {
         return String::new();
     }
+    let canonical_tags = canonical_tag_map(ctx.project);
 
     let mut style = "inline".to_string();
     let mut sort = "site".to_string();
@@ -846,9 +847,21 @@ fn expand_tags(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
         _ => "tags-inline",
     };
 
-    let mut tags = page.header.tags.clone();
+    let mut tags = Vec::new();
+    let mut seen = HashSet::new();
+    for tag in &page.header.tags {
+        let key = tag_key(tag);
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        let label = canonical_tags
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| tag.clone());
+        tags.push(label);
+    }
     if sort == "alpha" {
-        tags.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        tags.sort_by(|a, b| tag_key(a).cmp(&tag_key(b)));
     }
 
     let mapper = UrlMapper::new(&ctx.project.config);
@@ -1165,13 +1178,11 @@ fn build_series_lookup(
 }
 
 fn count_shared_tags(a: &[String], b: &[String]) -> u32 {
-    let mut count = 0u32;
-    for tag in a {
-        if b.iter().any(|value| value == tag) {
-            count += 1;
-        }
-    }
-    count
+    let left = a.iter().map(|tag| tag_key(tag)).collect::<HashSet<_>>();
+    b.iter()
+        .map(|tag| tag_key(tag))
+        .filter(|key| left.contains(key))
+        .count() as u32
 }
 
 fn page_sort_date(page: &Page) -> i64 {

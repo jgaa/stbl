@@ -134,25 +134,79 @@ pub fn collect_tag_feed(project: &Project, tag: &str) -> Vec<FeedItem> {
 }
 
 pub fn collect_tag_map(project: &Project) -> BTreeMap<String, Vec<FeedItem>> {
+    let canonical_tags = canonical_tag_map(project);
     let items = collect_blog_feed_internal(project, None);
     let mut tag_map: BTreeMap<String, Vec<FeedItem>> = BTreeMap::new();
     for item in &items {
         for tag in item.tags() {
-            tag_map.entry(tag.clone()).or_default().push(item.clone());
+            let key = tag_key(tag);
+            let canonical = canonical_tags.get(&key).cloned().unwrap_or_else(|| tag.clone());
+            tag_map.entry(canonical).or_default().push(item.clone());
         }
     }
     tag_map
 }
 
 pub fn collect_tag_list(project: &Project) -> Vec<String> {
+    let canonical_tags = canonical_tag_map(project);
     let items = collect_blog_feed_internal(project, None);
-    let mut tags = BTreeSet::new();
+    let mut keys = BTreeSet::new();
     for item in &items {
         for tag in item.tags() {
-            tags.insert(tag.clone());
+            keys.insert(tag_key(tag));
         }
     }
-    tags.into_iter().collect()
+    keys.into_iter()
+        .map(|key| canonical_tags.get(&key).cloned().unwrap_or(key))
+        .collect()
+}
+
+pub fn canonical_tag_map(project: &Project) -> BTreeMap<String, String> {
+    let mut tags = BTreeMap::new();
+    for page in &project.content.pages {
+        for tag in &page.header.tags {
+            insert_tag_variant(&mut tags, tag);
+        }
+    }
+    for series in &project.content.series {
+        for tag in &series.index.header.tags {
+            insert_tag_variant(&mut tags, tag);
+        }
+        for part in &series.parts {
+            for tag in &part.page.header.tags {
+                insert_tag_variant(&mut tags, tag);
+            }
+        }
+    }
+    tags
+}
+
+pub fn tag_key(tag: &str) -> String {
+    tag.to_lowercase()
+}
+
+fn insert_tag_variant(tags: &mut BTreeMap<String, String>, tag: &str) {
+    let key = tag_key(tag);
+    let new_has_upper = has_uppercase(tag);
+    match tags.get(&key) {
+        None => {
+            tags.insert(key, tag.to_string());
+        }
+        Some(existing) => {
+            let existing_has_upper = has_uppercase(existing);
+            if new_has_upper && !existing_has_upper {
+                tags.insert(key, tag.to_string());
+            } else if new_has_upper && existing_has_upper && existing != tag {
+                eprintln!(
+                    "tags: multiple uppercase variants for '{key}': '{existing}' and '{tag}'"
+                );
+            }
+        }
+    }
+}
+
+fn has_uppercase(value: &str) -> bool {
+    value.chars().any(|ch| ch.is_uppercase())
 }
 
 pub fn iter_visible_posts<'a>(
@@ -210,6 +264,11 @@ fn collect_blog_feed_internal(project: &Project, source_page_id: Option<DocId>) 
             .cmp(&a.sort_date())
             .then_with(|| a.tie_key().cmp(b.tie_key()))
     });
+    let canonical_tags = canonical_tag_map(project);
+    for item in &mut items {
+        let tags = canonicalize_tags(item.tags(), &canonical_tags);
+        *item.tags_mut() = tags;
+    }
     items
 }
 
@@ -315,7 +374,15 @@ impl FeedItem {
     }
 
     pub fn has_tag(&self, tag: &str) -> bool {
-        self.tags().iter().any(|value| value == tag)
+        let key = tag_key(tag);
+        self.tags().iter().any(|value| tag_key(value) == key)
+    }
+
+    pub fn tags_mut(&mut self) -> &mut Vec<String> {
+        match self {
+            FeedItem::Post(post) => &mut post.tags,
+            FeedItem::Series(series) => &mut series.tags,
+        }
     }
 }
 
@@ -438,6 +505,16 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         part_ids,
         part_hashes,
     })
+}
+
+fn canonicalize_tags(tags: &[String], canonical: &BTreeMap<String, String>) -> Vec<String> {
+    let mut entries = BTreeMap::new();
+    for tag in tags {
+        let key = tag_key(tag);
+        let label = canonical.get(&key).cloned().unwrap_or_else(|| tag.clone());
+        entries.entry(key).or_insert(label);
+    }
+    entries.into_iter().map(|(_, value)| value).collect()
 }
 
 fn page_sort_date(page: &Page) -> i64 {
@@ -612,6 +689,22 @@ mod tests {
             image_variants: Default::default(),
             video_variants: Default::default(),
         }
+    }
+
+    #[test]
+    fn tag_list_prefers_uppercase_variants() {
+        let mut header_a = crate::header::Header::default();
+        header_a.is_published = true;
+        header_a.tags = vec!["grpc".to_string()];
+        let mut header_b = crate::header::Header::default();
+        header_b.is_published = true;
+        header_b.tags = vec!["gRPC".to_string()];
+        let page_a = make_page("a", "articles/a.md", header_a);
+        let page_b = make_page("b", "articles/b.md", header_b);
+        let project = project_with_pages(vec![page_a, page_b]);
+
+        let tags = collect_tag_list(&project);
+        assert_eq!(tags, vec!["gRPC".to_string()]);
     }
 
     #[test]

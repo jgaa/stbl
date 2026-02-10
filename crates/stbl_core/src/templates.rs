@@ -5,7 +5,7 @@ use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
 use crate::comments::{CommentTemplateProvider, render_comments_html};
-use crate::blog_index::{collect_tag_list, iter_visible_posts};
+use crate::blog_index::{canonical_tag_map, collect_tag_list, iter_visible_posts, tag_key};
 use crate::model::{
     MenuAlign, NavItem, Page, PersonLink, Project, SystemConfig, ThemeHeaderLayout,
 };
@@ -96,18 +96,27 @@ pub fn render_page_with_series_nav(
         asset_manifest,
         show_authors,
     );
-    let tags = page
-        .header
-        .tags
-        .iter()
-        .map(|tag| {
-            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
-            TagLink {
-                label: tag.clone(),
-                href: resolve_root_href(&href, &rel),
-            }
-        })
-        .collect::<Vec<_>>();
+    let canonical_tags = canonical_tag_map(project);
+    let mut tag_links = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for tag in &page.header.tags {
+        let key = tag_key(tag);
+        if !seen.insert(key.clone()) {
+            continue;
+        }
+        let label = canonical_tags
+            .get(&key)
+            .cloned()
+            .unwrap_or_else(|| tag.clone());
+        let href = UrlMapper::new(&project.config)
+            .map(&format!("tags/{}", label))
+            .href;
+        tag_links.push(TagLink {
+            label,
+            href: resolve_root_href(&href, &rel),
+        });
+    }
+    let tags = tag_links;
     let published_ts = normalize_timestamp(page.header.published, project.config.system.as_ref());
     let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref()) {
         Some(updated) if Some(updated) == published_ts => None,
@@ -1379,6 +1388,39 @@ mod tests {
         .expect("render");
         assert!(html.contains("<title>Download · Demo</title>"));
         assert!(!html.contains("<title>Untitled · Demo</title>"));
+    }
+
+    #[test]
+    fn page_tags_use_canonical_case() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent {
+                pages: Vec::new(),
+                series: Vec::new(),
+                diagnostics: Vec::new(),
+                write_back: Default::default(),
+            },
+        );
+        let mut page_a = simple_page("A", "articles/a.md");
+        page_a.header.is_published = true;
+        page_a.header.tags = vec!["grpc".to_string()];
+        let mut page_b = simple_page("B", "articles/b.md");
+        page_b.header.is_published = true;
+        page_b.header.tags = vec!["gRPC".to_string()];
+        let mut project = project;
+        project.content.pages = vec![page_a.clone(), page_b];
+
+        let html = render_page(
+            &project,
+            &page_a,
+            &default_manifest(),
+            "a.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render page");
+        assert!(html.contains(">gRPC<"));
     }
 
     #[test]
