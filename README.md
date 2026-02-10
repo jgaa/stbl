@@ -56,6 +56,29 @@ These are the design-goals / primary requirements for the project.
 - Easy to [integrate with Google Analytics](https://lastviking.eu/stbl_and_google_analytics.html) and similar services.
 - Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html).
 - Easy to add [Commenting with IntenseDebate](https://lastviking.eu/stbl_with_intensedebate.html).
+- SVG safety checks for embedded assets (scan, warn/fail, or sanitize).
+
+## SVG security (asset copy)
+
+When copying assets to the output directory, stbl can scan SVG files for hidden trackers or external fetches and take action based on a configurable mode:
+
+```yaml
+security:
+  svg:
+    mode: warn  # off | warn | fail | sanitize
+```
+
+Behavior:
+- `off`: copy SVGs unchanged without scanning
+- `warn`: log warnings and copy unchanged
+- `fail`: abort the build if unsafe SVG content is detected
+- `sanitize`: rewrite SVGs into a safer subset before copying
+
+The scanner flags:
+- `<script>` or `<foreignObject>` elements
+- `href` / `xlink:href` pointing to `http:`, `https:`, `//`, or `data:`
+- `url(...)` references that are not internal `url(#...)`
+- `<style>` blocks containing `@import` or external `url(...)`
 
 ## Why
 

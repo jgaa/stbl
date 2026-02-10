@@ -40,6 +40,7 @@ pub struct ImageRef {
     pub attrs: Vec<ImageAttr>,
     pub maxw: Option<String>,
     pub maxh: Option<String>,
+    pub has_args: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +51,7 @@ pub struct VideoRef {
     pub attrs: Vec<VideoAttr>,
     pub maxw: Option<String>,
     pub maxh: Option<String>,
+    pub has_args: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -152,6 +154,7 @@ fn parse_media_destination_internal(
     alt: &str,
     mut errors: Option<&mut Vec<String>>,
 ) -> Option<MediaRef> {
+    let has_args = dest.contains(';');
     let mut parts = dest.split(';');
     let path = parts.next()?.trim();
     if path.starts_with("images/") {
@@ -212,6 +215,7 @@ fn parse_media_destination_internal(
             attrs,
             maxw,
             maxh,
+            has_args,
         }));
     }
     if path.starts_with("video/") {
@@ -267,6 +271,7 @@ fn parse_media_destination_internal(
             attrs,
             maxw,
             maxh,
+            has_args,
         }));
     }
     None
@@ -700,5 +705,41 @@ fn poster_output_rel(rel: &str) -> String {
         format!("video/_poster_/{stem}.jpg")
     } else {
         format!("video/_poster_/{parent}/{stem}.jpg")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MediaRef, parse_media_destination};
+
+    #[test]
+    fn image_ref_tracks_presence_of_args() {
+        let plain = parse_media_destination("images/foo.jpg", "Alt").expect("plain");
+        match plain {
+            MediaRef::Image(image) => assert!(!image.has_args),
+            _ => panic!("expected image"),
+        }
+
+        let optioned =
+            parse_media_destination("images/foo.jpg;maxw=200px", "Alt").expect("optioned");
+        match optioned {
+            MediaRef::Image(image) => assert!(image.has_args),
+            _ => panic!("expected image"),
+        }
+    }
+
+    #[test]
+    fn video_ref_tracks_presence_of_args() {
+        let plain = parse_media_destination("video/foo.mp4", "Alt").expect("plain");
+        match plain {
+            MediaRef::Video(video) => assert!(!video.has_args),
+            _ => panic!("expected video"),
+        }
+
+        let optioned = parse_media_destination("video/foo.mp4;p720", "Alt").expect("optioned");
+        match optioned {
+            MediaRef::Video(video) => assert!(video.has_args),
+            _ => panic!("expected video"),
+        }
     }
 }

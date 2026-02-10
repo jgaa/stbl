@@ -336,6 +336,9 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
 }
 
 fn render_image_picture_html(image: &crate::media::ImageRef, options: &RenderOptions<'_>) -> String {
+    if !image.has_args {
+        return render_plain_media_image(image, options);
+    }
     let path = image.path.raw.as_str();
     let rel = path.strip_prefix("images/").unwrap_or(path);
     let is_svg = rel.to_lowercase().ends_with(".svg");
@@ -444,6 +447,17 @@ fn render_image_picture_html(image: &crate::media::ImageRef, options: &RenderOpt
     }
     html.push_str(" loading=\"lazy\" decoding=\"async\">");
     html.push_str("</picture>");
+    html
+}
+
+fn render_plain_media_image(image: &crate::media::ImageRef, options: &RenderOptions<'_>) -> String {
+    let mut html = String::new();
+    html.push_str("<img src=\"");
+    html.push_str(options.rel_prefix);
+    html.push_str(&image.path.raw);
+    html.push_str("\" alt=\"");
+    html.push_str(&escape_attr(image.alt.trim()));
+    html.push_str("\" loading=\"lazy\" decoding=\"async\">");
     html
 }
 
@@ -632,7 +646,11 @@ fn render_video_element_html(video: &crate::media::VideoRef, options: &RenderOpt
     } = video_paths(video_path, &heights);
 
     let mut html = String::new();
-    html.push_str("<video class=\"video__el\" controls preload=\"metadata\" poster=\"");
+    html.push_str("<video");
+    if video.has_args {
+        html.push_str(" class=\"video__el\"");
+    }
+    html.push_str(" controls preload=\"metadata\" poster=\"");
     html.push_str(options.rel_prefix);
     html.push_str(&poster_rel);
     html.push('"');
@@ -968,5 +986,30 @@ mod tests {
         let html = render_markdown_to_html_with_media(md, &options);
         assert!(html.contains("has-line-numbers"));
         assert!(html.contains("<span class=\"code-line\">"));
+    }
+
+    #[test]
+    fn plain_images_render_without_srcset() {
+        let md = "![Alt](images/foo.jpg)\n";
+        let heights = [360];
+        let widths = [360];
+        let options = base_render_options(&heights, &widths);
+        let html = render_markdown_to_html_with_media(md, &options);
+        assert!(html.contains("<img src=\"images/foo.jpg\""));
+        assert!(html.contains("loading=\"lazy\""));
+        assert!(html.contains("decoding=\"async\""));
+        assert!(!html.contains("<picture"));
+        assert!(!html.contains("srcset="));
+    }
+
+    #[test]
+    fn optioned_images_keep_responsive_markup() {
+        let md = "![Alt](images/foo.jpg;maxw=200px)\n";
+        let heights = [360];
+        let widths = [360];
+        let options = base_render_options(&heights, &widths);
+        let html = render_markdown_to_html_with_media(md, &options);
+        assert!(html.contains("<picture"));
+        assert!(html.contains("srcset="));
     }
 }
