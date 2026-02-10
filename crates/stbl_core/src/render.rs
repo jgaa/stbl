@@ -869,7 +869,8 @@ fn render_code_block_html(pending: &CodeBlockPending, options: &RenderOptions<'_
             } else {
                 html
             };
-            return format!("<pre class=\"code-block\"><code{class_attr}>{html}</code></pre>");
+            let pre = format!("<pre class=\"code-block\"><code{class_attr}>{html}</code></pre>");
+            return wrap_code_block_container(&pre);
         }
     }
 
@@ -884,7 +885,8 @@ fn render_code_block_html(pending: &CodeBlockPending, options: &RenderOptions<'_
     } else {
         escaped
     };
-    format!("<pre class=\"code-block\"><code{class_attr}>{escaped}</code></pre>")
+    let pre = format!("<pre class=\"code-block\"><code{class_attr}>{escaped}</code></pre>");
+    wrap_code_block_container(&pre)
 }
 
 fn wrap_code_lines(text: &str) -> String {
@@ -900,6 +902,14 @@ fn wrap_code_lines(text: &str) -> String {
         out.push_str("</span>");
     }
     out
+}
+
+fn wrap_code_block_container(pre_html: &str) -> String {
+    format!(
+        "<div class=\"codeblock\" data-codeblock>\
+<button type=\"button\" class=\"codeblock__copy\" data-copy-button aria-label=\"Copy code\">Copy</button>\
+{pre_html}</div>"
+    )
 }
 
 #[cfg(test)]
@@ -954,6 +964,10 @@ mod tests {
         let widths = [360];
         let options = base_render_options(&heights, &widths);
         let html = render_markdown_to_html_with_media(md, &options);
+        assert!(html.contains("<div class=\"codeblock\" data-codeblock>"));
+        assert!(html.contains(
+            "<button type=\"button\" class=\"codeblock__copy\" data-copy-button aria-label=\"Copy code\">Copy</button>"
+        ));
         assert!(html.contains(
             "<pre class=\"code-block\"><code class=\"language-rust has-line-numbers syntect\">"
         ));
@@ -968,6 +982,10 @@ mod tests {
         let mut options = base_render_options(&heights, &widths);
         options.syntax_highlight = false;
         let html = render_markdown_to_html_with_media(md, &options);
+        assert!(html.contains("<div class=\"codeblock\" data-codeblock>"));
+        assert!(html.contains(
+            "<button type=\"button\" class=\"codeblock__copy\" data-copy-button aria-label=\"Copy code\">Copy</button>"
+        ));
         assert!(html.contains(
             "<pre class=\"code-block\"><code class=\"language-rust has-line-numbers\">"
         ));

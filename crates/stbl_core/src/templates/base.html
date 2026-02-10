@@ -113,5 +113,62 @@
       openMenu.removeAttribute("open");
     });
   </script>
+  <script>
+    (function () {
+      document.documentElement.classList.add("js");
+
+      function fallbackCopy(text) {
+        return new Promise(function (resolve, reject) {
+          try {
+            var textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.setAttribute("readonly", "");
+            textarea.style.position = "absolute";
+            textarea.style.left = "-9999px";
+            document.body.appendChild(textarea);
+            textarea.select();
+            var ok = document.execCommand("copy");
+            document.body.removeChild(textarea);
+            if (ok) {
+              resolve();
+            } else {
+              reject(new Error("copy failed"));
+            }
+          } catch (err) {
+            reject(err);
+          }
+        });
+      }
+
+      document.addEventListener("click", function (e) {
+        var button = e.target.closest("[data-copy-button]");
+        if (!button) return;
+        var container = button.closest("[data-codeblock]");
+        if (!container) return;
+        var code = container.querySelector("pre > code");
+        if (!code) return;
+        var text = code.textContent || "";
+        var original = button.textContent;
+        var setLabel = function (label) {
+          button.textContent = label;
+          setTimeout(function () {
+            button.textContent = original;
+          }, 1200);
+        };
+
+        var op = null;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          op = navigator.clipboard.writeText(text);
+        } else {
+          op = fallbackCopy(text);
+        }
+        op.then(function () {
+          setLabel("Copied");
+        }).catch(function () {
+          setLabel("Failed");
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

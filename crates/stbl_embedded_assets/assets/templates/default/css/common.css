@@ -252,6 +252,47 @@ pre {
   border: 1px solid var(--c-border);
 }
 
+.codeblock__copy {
+  display: none;
+}
+
+.js .codeblock {
+  position: relative;
+  margin: 1.25rem 0;
+}
+
+.js .codeblock pre {
+  margin: 0;
+  padding-top: 2.25rem;
+}
+
+.js .codeblock__copy {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  border: 1px solid var(--c-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.js .codeblock__copy:active {
+  transform: translateY(1px);
+}
+
+.js .codeblock:hover .codeblock__copy,
+.js .codeblock__copy:focus-visible {
+  opacity: 1;
+}
+
 .kbd,
 .key {
   display: inline-block;
