@@ -30,6 +30,7 @@ pub fn upgrade_site(source_dir: &Path, force: bool) -> Result<UpgradeOutput> {
     let (config, warnings) = convert_legacy(&root, source_dir)?;
 
     let mut yaml = serde_yaml::to_string(&config).context("failed to serialize yaml")?;
+    yaml = compact_numeric_lists(&yaml);
     if !yaml.ends_with('\n') {
         yaml.push('\n');
     }
@@ -40,6 +41,51 @@ pub fn upgrade_site(source_dir: &Path, force: bool) -> Result<UpgradeOutput> {
     remove_legacy_scaled_media(source_dir)?;
 
     Ok(UpgradeOutput { yaml, warnings })
+}
+
+fn compact_numeric_lists(input: &str) -> String {
+    let mut out = String::new();
+    let mut lines = input.lines().peekable();
+    while let Some(line) = lines.next() {
+        let trimmed = line.trim_end();
+        let key = trimmed.trim_start();
+        if key == "widths:" || key == "heights:" {
+            let indent_len = line.len().saturating_sub(line.trim_start().len());
+            let indent = " ".repeat(indent_len);
+            let mut values = Vec::new();
+            while let Some(next) = lines.peek() {
+                let next_trim = next.trim_start();
+                if !next_trim.starts_with("- ") {
+                    break;
+                }
+                if next.len() < indent_len + 2 {
+                    break;
+                }
+                let raw = next_trim.trim_start_matches("- ").trim();
+                if !raw.is_empty() && raw.chars().all(|ch| ch.is_ascii_digit()) {
+                    values.push(raw.to_string());
+                } else {
+                    values.clear();
+                    break;
+                }
+                lines.next();
+            }
+            if values.is_empty() {
+                out.push_str(trimmed);
+                out.push('\n');
+            } else {
+                out.push_str(&format!(
+                    "{indent}{} [{}]\n",
+                    key,
+                    values.join(", ")
+                ));
+            }
+            continue;
+        }
+        out.push_str(trimmed);
+        out.push('\n');
+    }
+    out
 }
 
 fn remove_legacy_scaled_media(source_dir: &Path) -> Result<()> {
@@ -100,8 +146,6 @@ struct UpgradeConfig {
     publish: Option<PublishOut>,
     rss: Option<RssOut>,
     comments: Option<serde_yaml::Value>,
-    chroma: Option<serde_yaml::Value>,
-    plyr: Option<serde_yaml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -283,9 +327,14 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
         .map(|block| parse_rss(block, &mut warnings))
         .transpose()?;
 
-    let chroma = block_of(root, "chroma").map(parse_simple_map);
-    let plyr = block_of(root, "plyr").map(parse_simple_map);
-    let comments = block_of(root, "comments").map(parse_simple_map);
+    let comments = block_of(root, "comments").and_then(|block| parse_comments(block, &mut warnings));
+
+    if block_of(root, "chroma").is_some() {
+        warnings.push("legacy chroma section ignored".to_string());
+    }
+    if block_of(root, "plyr").is_some() {
+        warnings.push("legacy plyr section ignored".to_string());
+    }
 
     let blog_pagination = match max_articles {
         Some(page_size) => BlogPaginationOut {
@@ -343,8 +392,6 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
         publish,
         rss,
         comments,
-        chroma,
-        plyr,
     };
 
     Ok((config, warnings))
@@ -371,17 +418,24 @@ fn parse_banner(block: &Node, warnings: &mut Vec<String>) -> Result<BannerOut> {
 fn parse_menu(block: &Node, warnings: &mut Vec<String>) -> Vec<MenuItemOut> {
     let mut items = Vec::new();
     for entry in &block.entries {
-        if let Some(value) = entry.value.clone() {
-            items.push(MenuItemOut {
-                title: entry.key.clone(),
-                href: value,
-            });
-        } else {
-            warnings.push(format!(
-                "menu item '{}' is missing href and was skipped",
-                entry.key
-            ));
-        }
+        let href = match entry.value.clone() {
+            Some(value) => value,
+            None => {
+                let slug = slugify(&entry.key);
+                if slug.is_empty() {
+                    warnings.push(format!(
+                        "menu item '{}' is missing href and was skipped",
+                        entry.key
+                    ));
+                    continue;
+                }
+                format!("{slug}.html")
+            }
+        };
+        items.push(MenuItemOut {
+            title: entry.key.clone(),
+            href,
+        });
     }
     items
 }
@@ -517,6 +571,22 @@ fn parse_simple_map(block: &Node) -> serde_yaml::Value {
         }
     }
     serde_yaml::Value::Mapping(map)
+}
+
+fn parse_comments(block: &Node, warnings: &mut Vec<String>) -> Option<serde_yaml::Value> {
+    let value = parse_simple_map(block);
+    match &value {
+        serde_yaml::Value::Mapping(map) if map.is_empty() => None,
+        serde_yaml::Value::Mapping(map) => {
+            if let Some(default) = map.get(&serde_yaml::Value::String("default".to_string())) {
+                if default.as_str().map(|val| val.trim().is_empty()).unwrap_or(true) {
+                    warnings.push("comments.default is empty and was ignored".to_string());
+                }
+            }
+            Some(value)
+        }
+        _ => Some(value),
+    }
 }
 
 fn parse_scalar_value(value: &str) -> serde_yaml::Value {
@@ -668,6 +738,7 @@ enum Token {
     Str(String),
     LBrace,
     RBrace,
+    Newline,
 }
 
 fn strip_comments(input: &str) -> String {
@@ -699,6 +770,10 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
     let mut tokens = Vec::new();
     let mut chars = input.chars().peekable();
     while let Some(ch) = chars.next() {
+        if ch == '\n' {
+            tokens.push(Token::Newline);
+            continue;
+        }
         if ch.is_whitespace() {
             continue;
         }
@@ -739,8 +814,15 @@ fn tokenize(input: &str) -> Result<Vec<Token>> {
 }
 
 fn parse_entries(tokens: &[Token], pos: &mut usize, stop_on_rbrace: bool) -> Result<Node> {
+    fn skip_newlines(tokens: &[Token], pos: &mut usize) {
+        while matches!(tokens.get(*pos), Some(Token::Newline)) {
+            *pos += 1;
+        }
+    }
+
     let mut entries = Vec::new();
     while *pos < tokens.len() {
+        skip_newlines(tokens, pos);
         if stop_on_rbrace {
             if matches!(tokens[*pos], Token::RBrace) {
                 *pos += 1;
@@ -758,34 +840,31 @@ fn parse_entries(tokens: &[Token], pos: &mut usize, stop_on_rbrace: bool) -> Res
 
         let mut value = None;
         let mut block = None;
-        if let Some(token) = tokens.get(*pos) {
-            match token {
-                Token::LBrace => {
-                    *pos += 1;
-                    block = Some(parse_entries(tokens, pos, true)?);
-                }
-                Token::Ident(text) => {
-                    value = Some(text.clone());
-                    *pos += 1;
-                    if matches!(tokens.get(*pos), Some(Token::LBrace)) {
-                        *pos += 1;
-                        block = Some(parse_entries(tokens, pos, true)?);
-                    }
-                }
-                Token::Str(text) => {
-                    value = Some(text.clone());
-                    *pos += 1;
-                    if matches!(tokens.get(*pos), Some(Token::LBrace)) {
-                        *pos += 1;
-                        block = Some(parse_entries(tokens, pos, true)?);
-                    }
-                }
-                Token::RBrace => {
-                    if stop_on_rbrace {
-                        continue;
-                    }
+        match tokens.get(*pos) {
+            Some(Token::LBrace) => {
+                *pos += 1;
+                block = Some(parse_entries(tokens, pos, true)?);
+            }
+            Some(Token::Ident(text)) => {
+                value = Some(text.clone());
+                *pos += 1;
+            }
+            Some(Token::Str(text)) => {
+                value = Some(text.clone());
+                *pos += 1;
+            }
+            Some(Token::Newline) | None => {}
+            Some(Token::RBrace) => {
+                if stop_on_rbrace {
+                    continue;
                 }
             }
+        }
+
+        skip_newlines(tokens, pos);
+        if matches!(tokens.get(*pos), Some(Token::LBrace)) {
+            *pos += 1;
+            block = Some(parse_entries(tokens, pos, true)?);
         }
 
         entries.push(Entry { key, value, block });
@@ -802,5 +881,65 @@ mod tests {
         let input = "name \"Demo\"\nbanner { widths \"94, 128\" }";
         let tokens = tokenize(&strip_comments(input)).expect("tokenize");
         assert!(!tokens.is_empty());
+    }
+
+    #[test]
+    fn parse_menu_defaults_href_without_consuming_next_item() {
+        let input = "menu {\n  Contact\n  About\n}\n";
+        let tokens = tokenize(&strip_comments(input)).expect("tokenize");
+        let mut pos = 0;
+        let root = parse_entries(&tokens, &mut pos, false).expect("parse entries");
+        let block = block_of(&root, "menu").expect("menu block");
+        let mut warnings = Vec::new();
+        let items = parse_menu(block, &mut warnings);
+        assert!(warnings.is_empty());
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].title, "Contact");
+        assert_eq!(items[0].href, "contact.html");
+        assert_eq!(items[1].title, "About");
+        assert_eq!(items[1].href, "about.html");
+    }
+
+    #[test]
+    fn comments_are_copied_and_chroma_plyr_ignored() {
+        let input = r#"
+name "Demo"
+url "https://example.com/"
+comments {
+  default disqus
+  disqus {
+    src "https://example.disqus.com/embed.js"
+    template "disqus.html"
+  }
+}
+chroma {
+  enabled auto
+}
+plyr {
+  js "https://cdn.plyr.io/3.7.8/plyr.js"
+}
+"#;
+        let tokens = tokenize(&strip_comments(input)).expect("tokenize");
+        let mut pos = 0;
+        let root = parse_entries(&tokens, &mut pos, false).expect("parse entries");
+        let temp_dir = std::env::temp_dir();
+        let (config, warnings) = convert_legacy(&root, &temp_dir).expect("convert");
+        let comments = config.comments.expect("comments");
+        let map = comments.as_mapping().expect("mapping");
+        assert!(map.contains_key(&serde_yaml::Value::String("default".to_string())));
+        assert!(map.contains_key(&serde_yaml::Value::String("disqus".to_string())));
+        assert!(warnings.iter().any(|warning| warning.contains("chroma section ignored")));
+        assert!(warnings.iter().any(|warning| warning.contains("plyr section ignored")));
+    }
+
+    #[test]
+    fn compact_numeric_lists_formats_widths_and_heights() {
+        let input = "\
+media:\n  images:\n    widths:\n    - 94\n    - 128\n    quality: 90\n  video:\n    heights:\n    - 360\n    - 720\n    poster_time: 1\n";
+        let output = compact_numeric_lists(input);
+        assert!(output.contains("    widths: [94, 128]\n"));
+        assert!(output.contains("    heights: [360, 720]\n"));
+        assert!(output.contains("    quality: 90\n"));
+        assert!(output.contains("    poster_time: 1\n"));
     }
 }

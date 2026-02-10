@@ -13,6 +13,7 @@ use stbl_core::blog_index::{
     FeedItem, blog_index_page_logical_key, blog_pagination_settings, collect_blog_feed,
     collect_tag_feed, paginate_blog_index,
 };
+use stbl_core::comments::CommentTemplateProvider;
 use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::macros::{IncludeProvider, IncludeRequest, IncludeResponse};
 use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
@@ -20,11 +21,13 @@ use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagLink,
-    TagListingPage, format_timestamp_long_date, format_timestamp_ymd, page_title_or_filename,
+    TagListingPage, format_timestamp_display, format_timestamp_long_date, normalize_timestamp,
+    page_title_or_filename,
     render_banner_html, render_blog_index, render_markdown_page, render_page,
     render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
+use stbl_embedded_assets as embedded;
 use std::process::Command;
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
@@ -83,10 +86,100 @@ impl IncludeProvider for FsIncludeProvider {
     }
 }
 
+struct FsCommentTemplateProvider {
+    site_root: PathBuf,
+    canonical_root: PathBuf,
+}
+
+impl FsCommentTemplateProvider {
+    fn new(site_root: &Path) -> Result<Self> {
+        let canonical_root = fs::canonicalize(site_root)
+            .with_context(|| format!("failed to canonicalize site root {}", site_root.display()))?;
+        Ok(Self {
+            site_root: site_root.to_path_buf(),
+            canonical_root,
+        })
+    }
+}
+
+impl CommentTemplateProvider for FsCommentTemplateProvider {
+    fn load_template(&self, template: &str) -> Result<Option<String>> {
+        let raw_path = Path::new(template);
+        if raw_path.is_absolute() {
+            bail!("comments template path must be relative");
+        }
+
+        let mut candidates = Vec::new();
+        candidates.push(self.site_root.join(raw_path));
+        if !template.contains('/') && !template.contains('\\') {
+            candidates.push(self.site_root.join("templates").join(raw_path));
+        }
+
+        for candidate in candidates {
+            if !candidate.is_file() {
+                continue;
+            }
+            let canonical = fs::canonicalize(&candidate)
+                .with_context(|| format!("failed to resolve template {}", candidate.display()))?;
+            if !canonical.starts_with(&self.canonical_root) {
+                bail!("comments template path escapes site root");
+            }
+            let contents = fs::read_to_string(&canonical).with_context(|| {
+                format!("failed to read comments template {}", canonical.display())
+            })?;
+            return Ok(Some(contents));
+        }
+
+        if let Some(contents) = load_embedded_comment_template(template)? {
+            return Ok(Some(contents));
+        }
+
+        Ok(None)
+    }
+}
+
+fn load_embedded_comment_template(template: &str) -> Result<Option<String>> {
+    let embedded_template = match embedded::template("default") {
+        Some(template) => template,
+        None => return Ok(None),
+    };
+    let candidates = embedded_template_candidates(template);
+    for candidate in candidates {
+        if let Some(entry) = embedded_template
+            .assets
+            .iter()
+            .find(|entry| entry.path == candidate)
+        {
+            let bytes = embedded::decompress_to_vec(&entry.hash)
+                .ok_or_else(|| anyhow!("failed to decompress embedded template {}", candidate))?;
+            let contents = String::from_utf8(bytes)
+                .map_err(|err| anyhow!("embedded template {} is not utf-8: {}", candidate, err))?;
+            return Ok(Some(contents));
+        }
+    }
+    Ok(None)
+}
+
+fn embedded_template_candidates(template: &str) -> Vec<String> {
+    let trimmed = template.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let mut candidates = Vec::new();
+    if trimmed.contains('/') || trimmed.contains('\\') {
+        candidates.push(trimmed.replace('\\', "/"));
+    } else {
+        candidates.push(trimmed.to_string());
+        candidates.push(format!("templates/{trimmed}"));
+    }
+    candidates
+}
+
 pub fn execute_plan(
     project: &Project,
     plan: &BuildPlan,
     out_dir: &PathBuf,
+    asset_index: &stbl_core::assets::AssetIndex,
     asset_lookup: &AssetSourceLookup,
     image_lookup: &ImageSourceLookup,
     video_lookup: &VideoSourceLookup,
@@ -100,6 +193,7 @@ pub fn execute_plan(
     let build_date_ymd = build_date_ymd_now();
     let mut image_jobs: Vec<BuildTask> = Vec::new();
     let mut video_jobs: Vec<BuildTask> = Vec::new();
+    let mut copy_asset_jobs: Vec<BuildTask> = Vec::new();
     for task in &plan.tasks {
         if let TaskKind::GenerateVarsCss { vars: _, out_rel } = &task.kind {
             if should_skip_task(&mut cache, task, out_dir, regenerate_content)? {
@@ -137,14 +231,8 @@ pub fn execute_plan(
             report.skipped_ids.push(task.id.0.clone());
             continue;
         }
-        if let TaskKind::CopyAsset {
-            source, out_rel, ..
-        } = &task.kind
-        {
-            copy_asset_to_out(out_dir, out_rel, source, asset_lookup)?;
-            report.executed += output_count(task);
-            report.executed_ids.push(task.id.0.clone());
-            cache_put(&mut cache, task);
+        if matches!(task.kind, TaskKind::CopyAsset { .. }) {
+            copy_asset_jobs.push(task.clone());
             continue;
         }
         match &task.kind {
@@ -229,7 +317,175 @@ pub fn execute_plan(
             cache_put(&mut cache, &task);
         }
     }
+    if !copy_asset_jobs.is_empty() {
+        let used_icons = collect_used_icons(out_dir, asset_index, asset_lookup, asset_manifest)?;
+        for task in copy_asset_jobs {
+            let TaskKind::CopyAsset { rel, source, out_rel } = &task.kind else {
+                continue;
+            };
+            let is_icon = is_icon_asset(&rel.0);
+            if is_icon && !used_icons.contains(&rel.0) {
+                let out_path = out_dir.join(out_rel);
+                if out_path.exists() {
+                    let _ = fs::remove_file(&out_path);
+                }
+                report.skipped += output_count(&task);
+                report.skipped_ids.push(task.id.0.clone());
+                continue;
+            }
+            if should_skip_task(&mut cache, &task, out_dir, regenerate_content)? {
+                report.skipped += output_count(&task);
+                report.skipped_ids.push(task.id.0.clone());
+                continue;
+            }
+            copy_asset_to_out(out_dir, out_rel, source, asset_lookup)?;
+            report.executed += output_count(&task);
+            report.executed_ids.push(task.id.0.clone());
+            cache_put(&mut cache, &task);
+        }
+    }
     Ok(report)
+}
+
+fn is_icon_asset(rel: &str) -> bool {
+    (rel.starts_with("icons/") || rel.starts_with("feather/"))
+        && rel.to_ascii_lowercase().ends_with(".svg")
+}
+
+fn collect_used_icons(
+    out_dir: &Path,
+    asset_index: &stbl_core::assets::AssetIndex,
+    asset_lookup: &AssetSourceLookup,
+    asset_manifest: &AssetManifest,
+) -> Result<std::collections::HashSet<String>> {
+    use std::collections::{HashMap, HashSet};
+    let mut icons = HashSet::new();
+    for asset in &asset_index.assets {
+        if is_icon_asset(&asset.rel.0) {
+            icons.insert(asset.rel.0.clone());
+        }
+    }
+    if icons.is_empty() {
+        return Ok(HashSet::new());
+    }
+    let mut out_to_rel = HashMap::new();
+    for (rel, out) in &asset_manifest.entries {
+        if is_icon_asset(rel) {
+            out_to_rel.insert(out.clone(), rel.clone());
+        }
+    }
+
+    let mut used = HashSet::new();
+    scan_output_for_icons(out_dir, &icons, &out_to_rel, &mut used)?;
+    scan_css_assets_for_icons(asset_index, asset_lookup, &icons, &out_to_rel, &mut used)?;
+    Ok(used)
+}
+
+fn scan_output_for_icons(
+    out_dir: &Path,
+    icons: &std::collections::HashSet<String>,
+    out_to_rel: &std::collections::HashMap<String, String>,
+    used: &mut std::collections::HashSet<String>,
+) -> Result<()> {
+    for entry in walkdir::WalkDir::new(out_dir).follow_links(false) {
+        let entry = entry?;
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        let ext = entry
+            .path()
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("");
+        if !matches!(ext, "html" | "css" | "xml") {
+            continue;
+        }
+        let bytes = fs::read(entry.path())?;
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            continue;
+        };
+        scan_text_for_icons(text, icons, out_to_rel, used);
+    }
+    Ok(())
+}
+
+fn scan_css_assets_for_icons(
+    asset_index: &stbl_core::assets::AssetIndex,
+    asset_lookup: &AssetSourceLookup,
+    icons: &std::collections::HashSet<String>,
+    out_to_rel: &std::collections::HashMap<String, String>,
+    used: &mut std::collections::HashSet<String>,
+) -> Result<()> {
+    for asset in &asset_index.assets {
+        if !asset.rel.0.ends_with(".css") {
+            continue;
+        }
+        let source = asset_lookup
+            .resolve(&asset.source)
+            .ok_or_else(|| anyhow!("unknown asset source {}", asset.source.0))?;
+        let bytes = match source {
+            crate::assets::AssetSource::File(path) => fs::read(path)?,
+            crate::assets::AssetSource::Embedded(bytes) => bytes.clone(),
+        };
+        let Ok(text) = std::str::from_utf8(&bytes) else {
+            continue;
+        };
+        scan_text_for_icons(text, icons, out_to_rel, used);
+    }
+    Ok(())
+}
+
+fn scan_text_for_icons(
+    text: &str,
+    icons: &std::collections::HashSet<String>,
+    out_to_rel: &std::collections::HashMap<String, String>,
+    used: &mut std::collections::HashSet<String>,
+) {
+    scan_with_prefix(text, "icons/", |candidate| {
+        if icons.contains(candidate) {
+            used.insert(candidate.to_string());
+        }
+    });
+    scan_with_prefix(text, "feather/", |candidate| {
+        if icons.contains(candidate) {
+            used.insert(candidate.to_string());
+        }
+    });
+    scan_with_prefix(text, "artifacts/", |candidate| {
+        if let Some(rel) = out_to_rel.get(candidate) {
+            used.insert(rel.clone());
+        }
+    });
+    scan_with_prefix(text, "/artifacts/", |candidate| {
+        let trimmed = candidate.trim_start_matches('/');
+        if let Some(rel) = out_to_rel.get(trimmed) {
+            used.insert(rel.clone());
+        }
+    });
+}
+
+fn scan_with_prefix<F: FnMut(&str)>(text: &str, prefix: &str, mut on_match: F) {
+    let mut idx = 0;
+    let bytes = text.as_bytes();
+    while let Some(pos) = text[idx..].find(prefix) {
+        let start = idx + pos;
+        let mut end = start + prefix.len();
+        while end < bytes.len() {
+            let ch = bytes[end];
+            if ch.is_ascii_alphanumeric()
+                || matches!(ch, b'.' | b'/' | b'_' | b'-' | b'~' | b'+')
+            {
+                end += 1;
+                continue;
+            }
+            break;
+        }
+        let candidate = &text[start..end];
+        if candidate.ends_with(".svg") {
+            on_match(candidate);
+        }
+        idx = end;
+    }
 }
 
 fn run_parallel_image_jobs(
@@ -741,6 +997,7 @@ fn render_primary_html(
     build_date_ymd: &str,
 ) -> Result<String> {
     let include_provider = FsIncludeProvider::new(&project.root)?;
+    let comment_template_provider = FsCommentTemplateProvider::new(&project.root)?;
     let current_href = current_href_for_task(project, mapper, kind)?;
     match kind {
         TaskKind::RenderPage { page } => render_page_by_id(
@@ -750,6 +1007,7 @@ fn render_primary_html(
             &current_href,
             build_date_ymd,
             &include_provider,
+            &comment_template_provider,
         ),
         TaskKind::RenderBlogIndex {
             source_page,
@@ -791,6 +1049,7 @@ fn render_primary_html(
             None,
             true,
             Some(&include_provider),
+            Some(&comment_template_provider),
         ),
         TaskKind::RenderFrontPage => {
             let title = project.config.site.title.clone();
@@ -804,6 +1063,7 @@ fn render_primary_html(
                 None,
                 false,
                 Some(&include_provider),
+                Some(&comment_template_provider),
             )
         }
         _ => render_markdown_page(
@@ -816,6 +1076,7 @@ fn render_primary_html(
             None,
             true,
             Some(&include_provider),
+            Some(&comment_template_provider),
         ),
     }
 }
@@ -827,6 +1088,7 @@ fn render_page_by_id(
     current_href: &str,
     build_date_ymd: &str,
     include_provider: &FsIncludeProvider,
+    comment_template_provider: &FsCommentTemplateProvider,
 ) -> Result<String> {
     let page =
         find_page(project, page_id).ok_or_else(|| anyhow!("page not found for render task"))?;
@@ -841,6 +1103,7 @@ fn render_page_by_id(
             current_href,
             build_date_ymd,
             Some(include_provider),
+            Some(comment_template_provider),
         )
     } else {
         render_page(
@@ -850,6 +1113,7 @@ fn render_page_by_id(
             current_href,
             build_date_ymd,
             Some(include_provider),
+            Some(comment_template_provider),
         )
     }
 }
@@ -878,7 +1142,11 @@ fn render_series(
             href: mapper
                 .map(&logical_key_from_source_path(&part.page.source_path))
                 .href,
-            published_display: format_timestamp_ymd(part.page.header.published),
+            published_display: format_timestamp_display(
+                normalize_timestamp(part.page.header.published, project.config.system.as_ref()),
+                project.config.system.as_ref(),
+                project.config.site.timezone.as_deref(),
+            ),
         })
         .collect::<Vec<_>>();
     render_series_index(
@@ -1038,10 +1306,10 @@ fn render_blog_index_page(
     let (start, end) = (page_range.start, page_range.end);
     let items = feed_items[start..end]
         .iter()
-        .map(|item| map_feed_item(item, &mapper))
+        .map(|item| map_feed_item(item, &mapper, project))
         .collect::<Vec<_>>();
 
-    let rel = rel_prefix_for_href(current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
         let options = RenderOptions {
             macro_project: Some(project),
@@ -1074,6 +1342,16 @@ fn render_blog_index_page(
     let banner_html = render_banner_html(project, source_page, &rel);
     let prev_href = page_range.prev_key.as_ref().map(|key| mapper.map(key).href);
     let next_href = page_range.next_key.as_ref().map(|key| mapper.map(key).href);
+    let first_href = if page_range.total_pages > 2 && page_range.page_no > 1 {
+        Some(mapper.map(&base_key).href)
+    } else {
+        None
+    };
+    let last_href = if page_range.total_pages > 2 && page_range.page_no < page_range.total_pages {
+        Some(mapper.map(&blog_index_page_logical_key(&base_key, page_range.total_pages)).href)
+    } else {
+        None
+    };
 
     render_blog_index(
         project,
@@ -1083,6 +1361,8 @@ fn render_blog_index_page(
         items,
         prev_href,
         next_href,
+        first_href,
+        last_href,
         page_range.page_no,
         page_range.total_pages,
         asset_manifest,
@@ -1104,7 +1384,7 @@ fn render_tag_index_page(
     let feed_items = collect_tag_feed(project, tag);
     let items = feed_items
         .iter()
-        .map(|item| map_feed_item(item, &mapper))
+        .map(|item| map_feed_item(item, &mapper, project))
         .collect::<Vec<_>>();
     let listing = TagListingPage {
         tag: tag.to_string(),
@@ -1133,37 +1413,78 @@ fn build_date_ymd_now() -> String {
         .unwrap_or_else(|| "January 1, 1970".to_string())
 }
 
-fn rel_prefix_for_href(href: &str) -> String {
-    let trimmed = href.trim_start_matches('/');
+fn root_prefix_for_base_url(base_url: &str) -> String {
+    let trimmed = base_url.trim();
     if trimmed.is_empty() {
-        return String::new();
+        return "/".to_string();
     }
-    let depth = if trimmed.ends_with('/') {
-        let stripped = trimmed.trim_end_matches('/');
-        if stripped.is_empty() {
-            0
-        } else {
-            stripped.split('/').count()
-        }
-    } else if let Some((parent, _)) = trimmed.rsplit_once('/') {
-        if parent.is_empty() {
-            0
-        } else {
-            parent.split('/').count()
-        }
-    } else {
-        0
+    let without_scheme = trimmed
+        .split("://")
+        .nth(1)
+        .unwrap_or(trimmed);
+    let path = match without_scheme.find('/') {
+        Some(idx) => &without_scheme[idx..],
+        None => "",
     };
-    "../".repeat(depth)
+    let path = path.trim();
+    if path.is_empty() || path == "/" {
+        return "/".to_string();
+    }
+    let mut normalized = path.to_string();
+    if !normalized.starts_with('/') {
+        normalized.insert(0, '/');
+    }
+    if !normalized.ends_with('/') {
+        normalized.push('/');
+    }
+    normalized
 }
 
-fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
+fn resolve_root_href(href: &str, rel: &str) -> String {
+    if rel.is_empty() || is_external_href(href) || is_absolute_or_fragment_href(href) {
+        return href.to_string();
+    }
+    format!("{rel}{}", href.trim_start_matches('/'))
+}
+
+fn is_external_href(href: &str) -> bool {
+    let href = href.trim();
+    href.starts_with("http://")
+        || href.starts_with("https://")
+        || href.starts_with("mailto:")
+        || href.starts_with("tel:")
+}
+
+fn is_absolute_or_fragment_href(href: &str) -> bool {
+    let href = href.trim();
+    href.starts_with('/') || href.starts_with('#') || href.starts_with('?')
+}
+
+fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> BlogIndexItem {
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
     match item {
         FeedItem::Post(post) => BlogIndexItem {
             title: post.title.clone(),
-            href: mapper.map(&post.logical_key).href,
-            published_display: format_timestamp_ymd(post.published),
-            updated_display: format_timestamp_ymd(post.updated),
+            href: resolve_root_href(&mapper.map(&post.logical_key).href, &rel),
+            published_display: format_timestamp_display(
+                normalize_timestamp(post.published, project.config.system.as_ref()),
+                project.config.system.as_ref(),
+                project.config.site.timezone.as_deref(),
+            ),
+            updated_display: {
+                let published_ts =
+                    normalize_timestamp(post.published, project.config.system.as_ref());
+                let updated_ts = normalize_timestamp(post.updated, project.config.system.as_ref());
+                if updated_ts.is_some() && updated_ts == published_ts {
+                    None
+                } else {
+                    format_timestamp_display(
+                        updated_ts,
+                        project.config.system.as_ref(),
+                        project.config.site.timezone.as_deref(),
+                    )
+                }
+            },
             kind_label: None,
             abstract_text: post.abstract_text.clone(),
             tags: post
@@ -1171,16 +1492,34 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
                 .iter()
                 .map(|tag| TagLink {
                     label: tag.clone(),
-                    href: mapper.map(&format!("tags/{}", tag)).href,
+                    href: resolve_root_href(&mapper.map(&format!("tags/{}", tag)).href, &rel),
                 })
                 .collect(),
             latest_parts: Vec::new(),
         },
         FeedItem::Series(series) => BlogIndexItem {
             title: series.title.clone(),
-            href: mapper.map(&series.logical_key).href,
-            published_display: format_timestamp_ymd(series.published),
-            updated_display: format_timestamp_ymd(series.updated),
+            href: resolve_root_href(&mapper.map(&series.logical_key).href, &rel),
+            published_display: format_timestamp_display(
+                normalize_timestamp(series.published, project.config.system.as_ref()),
+                project.config.system.as_ref(),
+                project.config.site.timezone.as_deref(),
+            ),
+            updated_display: {
+                let published_ts =
+                    normalize_timestamp(series.published, project.config.system.as_ref());
+                let updated_ts =
+                    normalize_timestamp(series.updated, project.config.system.as_ref());
+                if updated_ts.is_some() && updated_ts == published_ts {
+                    None
+                } else {
+                    format_timestamp_display(
+                        updated_ts,
+                        project.config.system.as_ref(),
+                        project.config.site.timezone.as_deref(),
+                    )
+                }
+            },
             kind_label: Some("Series".to_string()),
             abstract_text: series.abstract_text.clone(),
             tags: series
@@ -1188,7 +1527,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
                 .iter()
                 .map(|tag| TagLink {
                     label: tag.clone(),
-                    href: mapper.map(&format!("tags/{}", tag)).href,
+                    href: resolve_root_href(&mapper.map(&format!("tags/{}", tag)).href, &rel),
                 })
                 .collect(),
             latest_parts: series
@@ -1196,8 +1535,12 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper) -> BlogIndexItem {
                 .iter()
                 .map(|part| BlogIndexPart {
                     title: part.title.clone(),
-                    href: mapper.map(&part.logical_key).href,
-                    published_display: format_timestamp_ymd(part.published),
+                    href: resolve_root_href(&mapper.map(&part.logical_key).href, &rel),
+                    published_display: format_timestamp_display(
+                        normalize_timestamp(part.published, project.config.system.as_ref()),
+                        project.config.system.as_ref(),
+                        project.config.site.timezone.as_deref(),
+                    ),
                 })
                 .collect(),
         },
@@ -1289,6 +1632,7 @@ mod tests {
             &project,
             &plan,
             &out_dir,
+            &asset_index,
             &asset_lookup,
             &image_lookup,
             &video_lookup,
@@ -1312,9 +1656,9 @@ mod tests {
     fn blog_index_lists_pages() {
         let (_temp, out_dir) = build_into_temp(UrlStyle::Html);
         let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
-        assert!(index_html.contains("page1.html"));
-        assert!(index_html.contains("page2.html"));
-        assert!(!index_html.contains("info.html"));
+        assert!(index_html.contains("&#x2f;page1.html"));
+        assert!(index_html.contains("&#x2f;page2.html"));
+        assert!(!index_html.contains("&#x2f;info.html"));
     }
 
     #[test]
@@ -1430,6 +1774,7 @@ mod tests {
             &project,
             &plan,
             &out_dir,
+            &asset_index,
             &asset_lookup,
             &image_lookup,
             &video_lookup,
@@ -1446,21 +1791,21 @@ mod tests {
         assert!(out_dir.join("page/4.html").exists());
 
         let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
-        assert!(index_html.contains("series.html"));
-        assert!(index_html.contains("series&#x2f;part5.html"));
+        assert!(index_html.contains("&#x2f;series.html"));
+        assert!(index_html.contains("&#x2f;series&#x2f;part5.html"));
         assert!(index_html.contains("Part 5"));
         assert!(index_html.contains("Part 4"));
         assert!(index_html.contains("Part 3"));
         assert!(!index_html.contains("Part 2"));
         assert!(index_html.contains("Series abstract override."));
-        assert!(index_html.contains("2024-01-15"));
+        assert!(index_html.contains("January 15, 2024"));
         assert!(!index_html.contains("T10:00:00"));
         assert!(!index_html.contains("<span class=\"meta\"></span>"));
 
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
-        assert!(page2_html.contains("page&#x2f;3.html"));
-        assert!(page2_html.contains("index.html"));
-        assert!(!page2_html.contains("series.html"));
+        assert!(page2_html.contains("&#x2f;page&#x2f;3.html"));
+        assert!(page2_html.contains("&#x2f;index.html"));
+        assert!(!page2_html.contains("&#x2f;series.html"));
         assert!(!page2_html.contains("<span class=\"meta\"></span>"));
 
         let page4_html = fs::read_to_string(out_dir.join("page/4.html")).expect("read page4");
@@ -1472,7 +1817,7 @@ mod tests {
         assert!(rust_tag_html.contains("Custom abstract for page 1"));
         assert!(rust_tag_html.contains("First paragraph for auto-abstract."));
         assert!(rust_tag_html.contains("Series abstract override."));
-        assert!(rust_tag_html.contains("2024-01-04"));
+        assert!(rust_tag_html.contains("January 4, 2024"));
         assert!(!rust_tag_html.contains("<span class=\"meta\"></span>"));
         assert!(rust_tag_html.contains("Pagination Series"));
 

@@ -13,13 +13,17 @@
 
     {% if published or updated %}
     <p>
-      {% if published %}Published {{ published }}{% endif %}
-      {% if updated %}{% if published %} · {% endif %}Updated {{ updated }}{% endif %}
+      {% if published %}
+      Published <time class="js-local-time" datetime="{{ published_raw }}">{{ published }}</time>
+      {% endif %}
+      {% if updated %}
+      {% if published %} · {% endif %}
+      Updated <time class="js-local-time" datetime="{{ updated_raw }}">{{ updated }}</time>
+      {% endif %}
     </p>
     {% endif %}
 
     {% if tags and tags | length > 0 %}
-    <p>Tags:</p>
     <ul class="tags">
       {% for tag in tags %}
       <li>{{ tag }}</li>
@@ -49,5 +53,9 @@
     <a href="{{ series_nav.next.href }}">{{ series_nav.next.title }}</a>
     {% endif %}
   </nav>
+  {% endif %}
+
+  {% if comments_html %}
+  {{ comments_html | safe }}
   {% endif %}
 {% endblock %}

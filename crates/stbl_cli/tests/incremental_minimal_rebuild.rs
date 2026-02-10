@@ -21,7 +21,17 @@ fn edit_one_article_triggers_minimal_rebuild() {
 
     let first = run_build(&source_dir, &out_dir, &mut cache);
     assert!(first.executed > 0);
-    assert_eq!(first.skipped, 0, "first build skipped: {:?}", first.skipped_ids);
+    let skipped_non_assets = first
+        .skipped_ids
+        .iter()
+        .filter(|id| !id.starts_with("copy_asset:"))
+        .count();
+    assert_eq!(
+        skipped_non_assets,
+        0,
+        "first build skipped: {:?}",
+        first.skipped_ids
+    );
 
     let second = run_build(&source_dir, &out_dir, &mut cache);
     assert_eq!(second.executed, 0, "second build executed: {:?}", second.executed_ids);
@@ -172,6 +182,7 @@ fn run_build(source_dir: &Path, out_dir: &Path, cache: &mut SqliteCacheStore) ->
         &project,
         &plan,
         &out_dir.to_path_buf(),
+        &asset_index,
         &asset_lookup,
         &image_lookup,
         &video_lookup,

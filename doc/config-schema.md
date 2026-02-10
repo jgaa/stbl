@@ -159,9 +159,11 @@ seo:
       tag: int
       tags: int
 
-comments: map   # parsed but not enforced in MVP
-chroma: map
-plyr: map
+comments:
+  default: string      # optional provider name
+  <provider>:
+    template: string   # required; inline HTML or path to a template file
+    <key>: string|number|bool  # provider-specific template variables
 ```
 
 ### assets.cache_busting
@@ -326,18 +328,8 @@ seo:
 comments:
   # default: "disqus"
   # disqus:
+  #   template: "templates/disqus.html"
   #   src: "https://the-last-viking.disqus.com/embed.js"
-  #   template: "disqus.html"
-
-chroma:
-  enabled: "auto"  # true|false|auto
-  style: "friendly"
-  # path: "/usr/local/bin/chroma"
-
-plyr:
-  js: "https://cdn.plyr.io/3.7.8/plyr.js"
-  css: "https://cdn.plyr.io/3.7.8/plyr.css"
-  default: 480
 
 ```
 

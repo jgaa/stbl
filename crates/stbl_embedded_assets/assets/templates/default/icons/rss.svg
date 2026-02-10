@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="128px" height="128px" id="RSSicon" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient x1="0.085" y1="0.085" x2="0.915" y2="0.915" id="RSSg">
+      <stop offset="0.0" stop-color="#E3702D"/>
+      <stop offset="0.1071" stop-color="#EA7D31"/>
+      <stop offset="0.3503" stop-color="#F69537"/>
+      <stop offset="0.5" stop-color="#FB9E3A"/>
+      <stop offset="0.7016" stop-color="#EA7C31"/>
+      <stop offset="0.8866" stop-color="#DE642B"/>
+      <stop offset="1.0" stop-color="#D95B29"/>
+    </linearGradient>
+  </defs>
+  <rect width="236" height="236" rx="47" ry="47" x="10" y="10" fill="url(#RSSg)"/>
+  <circle cx="68" cy="189" r="24" fill="#FFF"/>
+  <path d="M 160 208 H 117 A 82 82 0 0 0 35 126 v -43 a 125 125 0 0 1 125 125 z" fill="#FFF"/>
+  <path d="M 184 208 A 149 149 0 0 0 35 59 v -43 a 192 192 0 0 1 192 192 z" fill="#FFF"/>
+</svg>

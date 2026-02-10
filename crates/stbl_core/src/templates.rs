@@ -1,9 +1,12 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, FixedOffset, Utc};
+use chrono_tz::Tz;
 use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
-use crate::model::{MenuAlign, NavItem, Page, Project, ThemeHeaderLayout};
+use crate::comments::{CommentTemplateProvider, render_comments_html};
+use crate::blog_index::iter_visible_posts;
+use crate::model::{MenuAlign, NavItem, Page, Project, SystemConfig, ThemeHeaderLayout};
 use crate::macros::IncludeProvider;
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::visibility::is_blog_index_excluded;
@@ -16,6 +19,7 @@ const BLOG_INDEX_TEMPLATE: &str = include_str!("templates/blog_index.html");
 const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
 const SERIES_INDEX_TEMPLATE: &str = include_str!("templates/series_index.html");
 const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html");
+const DEFAULT_DATE_FORMAT: &str = "%B %-d, %Y at %H:%M %Z";
 
 pub fn templates_hash() -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
@@ -46,6 +50,7 @@ pub fn render_page(
     current_href: &str,
     build_date_ymd: &str,
     include_provider: Option<&dyn IncludeProvider>,
+    comment_template_provider: Option<&dyn CommentTemplateProvider>,
 ) -> Result<String> {
     render_page_with_series_nav(
         project,
@@ -55,6 +60,7 @@ pub fn render_page(
         current_href,
         build_date_ymd,
         include_provider,
+        comment_template_provider,
     )
 }
 
@@ -66,8 +72,9 @@ pub fn render_page_with_series_nav(
     current_href: &str,
     build_date_ymd: &str,
     include_provider: Option<&dyn IncludeProvider>,
+    comment_template_provider: Option<&dyn CommentTemplateProvider>,
 ) -> Result<String> {
-    let rel = rel_prefix_for_href(current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let body_html = render_markdown_with_media(
         project,
         Some(page),
@@ -76,12 +83,29 @@ pub fn render_page_with_series_nav(
         include_provider,
     );
     let banner_html = render_banner_html(project, page, &rel);
+    let comments_html =
+        render_comments_html(project, page, current_href, comment_template_provider);
     let page_title = page_title_or_filename(project, page);
     let show_page_title = !is_blog_index_excluded(page, None);
     let authors = page.header.authors.clone();
     let tags = page.header.tags.clone();
-    let published = format_timestamp_rfc3339(page.header.published);
-    let updated = format_timestamp_rfc3339(page.header.updated);
+    let published_ts = normalize_timestamp(page.header.published, project.config.system.as_ref());
+    let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref()) {
+        Some(updated) if Some(updated) == published_ts => None,
+        other => other,
+    };
+    let published = format_timestamp_display(
+        published_ts,
+        project.config.system.as_ref(),
+        project.config.site.timezone.as_deref(),
+    );
+    let updated = format_timestamp_display(
+        updated_ts,
+        project.config.system.as_ref(),
+        project.config.site.timezone.as_deref(),
+    );
+    let published_raw = format_timestamp_rfc3339(published_ts);
+    let updated_raw = format_timestamp_rfc3339(updated_ts);
 
     render_with_context(
         project,
@@ -90,9 +114,12 @@ pub fn render_page_with_series_nav(
         authors,
         published,
         updated,
+        published_raw,
+        updated_raw,
         tags,
         body_html,
         banner_html,
+        comments_html,
         asset_manifest,
         current_href,
         build_date_ymd,
@@ -111,8 +138,9 @@ pub fn render_markdown_page(
     redirect_href: Option<&str>,
     show_page_title: bool,
     include_provider: Option<&dyn IncludeProvider>,
+    _comment_template_provider: Option<&dyn CommentTemplateProvider>,
 ) -> Result<String> {
-    let rel = rel_prefix_for_href(current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let body_html = render_markdown_with_media(
         project,
         None,
@@ -127,8 +155,11 @@ pub fn render_markdown_page(
         None,
         None,
         None,
+        None,
+        None,
         Vec::new(),
         body_html,
+        None,
         None,
         asset_manifest,
         current_href,
@@ -197,6 +228,8 @@ pub fn render_blog_index(
     items: Vec<BlogIndexItem>,
     prev_href: Option<String>,
     next_href: Option<String>,
+    first_href: Option<String>,
+    last_href: Option<String>,
     page_no: u32,
     total_pages: u32,
     asset_manifest: &AssetManifest,
@@ -209,10 +242,14 @@ pub fn render_blog_index(
         .get_template("blog_index.html")
         .context("missing blog_index template")?;
 
-    let nav_items = build_nav_view(project, current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
+    let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
-    let rel = rel_prefix_for_href(current_href);
+    let prev_href = prev_href.map(|href| resolve_root_href(&href, &rel));
+    let next_href = next_href.map(|href| resolve_root_href(&href, &rel));
+    let first_href = first_href.map(|href| resolve_root_href(&href, &rel));
+    let last_href = last_href.map(|href| resolve_root_href(&href, &rel));
 
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
@@ -240,6 +277,8 @@ pub fn render_blog_index(
             items => items,
             prev_href => prev_href,
             next_href => next_href,
+            first_href => first_href,
+            last_href => last_href,
             page_no => page_no,
             total_pages => total_pages,
             build_date_ymd => build_date_ymd,
@@ -263,10 +302,10 @@ pub fn render_tag_index(
         .context("missing tag_index template")?;
 
     let page_title = format!("Tag: {}", listing.tag);
-    let nav_items = build_nav_view(project, current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
+    let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
-    let rel = rel_prefix_for_href(current_href);
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
     let menu_align_class = menu_align_class(project);
@@ -311,10 +350,10 @@ pub fn render_series_index(
         .get_template("series_index.html")
         .context("missing series_index template")?;
 
-    let nav_items = build_nav_view(project, current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
+    let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
-    let rel = rel_prefix_for_href(current_href);
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
     let menu_align_class = menu_align_class(project);
@@ -375,6 +414,7 @@ pub fn render_redirect_page(
         Some(target_href),
         true,
         None,
+        None,
     )
 }
 
@@ -403,9 +443,12 @@ fn render_with_context(
     authors: Option<Vec<String>>,
     published: Option<String>,
     updated: Option<String>,
+    published_raw: Option<String>,
+    updated_raw: Option<String>,
     tags: Vec<String>,
     body_html: String,
     banner_html: Option<String>,
+    comments_html: Option<String>,
     asset_manifest: &AssetManifest,
     current_href: &str,
     build_date_ymd: &str,
@@ -417,10 +460,17 @@ fn render_with_context(
         .get_template("page.html")
         .context("missing page template")?;
 
-    let nav_items = build_nav_view(project, current_href);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
+    let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
-    let rel = rel_prefix_for_href(current_href);
+    let rss_visible = project
+        .config
+        .rss
+        .as_ref()
+        .map(|rss| rss.enabled)
+        .unwrap_or(false)
+        && iter_visible_posts(project, None).next().is_some();
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
     let menu_align_class = menu_align_class(project);
@@ -445,13 +495,17 @@ fn render_with_context(
             authors => authors,
             published => published,
             updated => updated,
+            published_raw => published_raw,
+            updated_raw => updated_raw,
             tags => tags,
             body_html => body_html,
             banner_html => banner_html,
+            comments_html => comments_html,
             series_nav => series_nav,
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
+            rss_visible => rss_visible,
             redirect_href => redirect_href,
         })
         .context("failed to render page template")
@@ -537,13 +591,13 @@ struct SiteBrandView {
     logo_url: Option<String>,
 }
 
-fn build_nav_view(project: &Project, current_href: &str) -> Vec<NavItemView> {
+fn build_nav_view(project: &Project, current_href: &str, rel: &str) -> Vec<NavItemView> {
     let mapper = UrlMapper::new(&project.config);
     let nav = resolved_nav_items(project);
     let mut active_taken = false;
     nav.iter()
         .map(|item| {
-            let href = nav_item_href(item, &mapper);
+            let href = nav_item_href(item, &mapper, rel);
             let is_active = !active_taken && href_matches(&href, current_href);
             if is_active {
                 active_taken = true;
@@ -642,35 +696,38 @@ fn header_layout_value(project: &Project) -> &'static str {
     }
 }
 
-fn rel_prefix_for_href(href: &str) -> String {
-    let trimmed = href.trim_start_matches('/');
+fn root_prefix_for_base_url(base_url: &str) -> String {
+    let trimmed = base_url.trim();
     if trimmed.is_empty() {
-        return String::new();
+        return "/".to_string();
     }
-    let depth = if trimmed.ends_with('/') {
-        let stripped = trimmed.trim_end_matches('/');
-        if stripped.is_empty() {
-            0
-        } else {
-            stripped.split('/').count()
-        }
-    } else if let Some((parent, _)) = trimmed.rsplit_once('/') {
-        if parent.is_empty() {
-            0
-        } else {
-            parent.split('/').count()
-        }
-    } else {
-        0
+    let without_scheme = trimmed
+        .split("://")
+        .nth(1)
+        .unwrap_or(trimmed);
+    let path = match without_scheme.find('/') {
+        Some(idx) => &without_scheme[idx..],
+        None => "",
     };
-    "../".repeat(depth)
+    let path = path.trim();
+    if path.is_empty() || path == "/" {
+        return "/".to_string();
+    }
+    let mut normalized = path.to_string();
+    if !normalized.starts_with('/') {
+        normalized.insert(0, '/');
+    }
+    if !normalized.ends_with('/') {
+        normalized.push('/');
+    }
+    normalized
 }
 
-fn nav_item_href(item: &NavItem, mapper: &UrlMapper) -> String {
+fn nav_item_href(item: &NavItem, mapper: &UrlMapper, rel: &str) -> String {
     if is_external_href(&item.href) || is_absolute_or_fragment_href(&item.href) {
         return item.href.clone();
     }
-    mapper.map(&item.href).href
+    resolve_root_href(&mapper.map(&item.href).href, rel)
 }
 
 fn href_matches(nav_href: &str, current_href: &str) -> bool {
@@ -688,6 +745,13 @@ fn is_external_href(href: &str) -> bool {
 fn is_absolute_or_fragment_href(href: &str) -> bool {
     let href = href.trim();
     href.starts_with('/') || href.starts_with('#') || href.starts_with('?')
+}
+
+fn resolve_root_href(href: &str, rel: &str) -> String {
+    if rel.is_empty() || is_external_href(href) || is_absolute_or_fragment_href(href) {
+        return href.to_string();
+    }
+    format!("{rel}{}", href.trim_start_matches('/'))
 }
 
 fn normalize_href(value: &str) -> String {
@@ -745,21 +809,35 @@ pub fn page_title_or_filename(project: &Project, page: &Page) -> String {
     if logical_key == "index" {
         return project.config.site.title.clone();
     }
-    let stem = std::path::Path::new(&page.source_path)
-        .file_stem()
-        .and_then(|value| value.to_str())
-        .unwrap_or("Untitled");
-    let mut chars = stem.chars();
-    let Some(first) = chars.next() else {
-        return project.config.site.title.clone();
-    };
-    format!("{}{}", first.to_uppercase(), chars.collect::<String>())
+    if let Some(title) = crate::title::deduce_title_from_source_path(&page.source_path) {
+        return title;
+    }
+    project.config.site.title.clone()
 }
 
 pub fn format_timestamp_rfc3339(value: Option<i64>) -> Option<String> {
     let value = value?;
     let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
     Some(dt.to_rfc3339())
+}
+
+pub fn format_timestamp_display(
+    value: Option<i64>,
+    system: Option<&SystemConfig>,
+    timezone: Option<&str>,
+) -> Option<String> {
+    let value = normalize_timestamp(value, system)?;
+    let date = system.and_then(|system| system.date.as_ref());
+    let format = date
+        .map(|date| date.format.trim())
+        .filter(|format| !format.is_empty())
+        .unwrap_or(DEFAULT_DATE_FORMAT);
+    let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
+    match resolve_timezone(timezone) {
+        ResolvedTimezone::Utc => Some(dt.with_timezone(&Utc).format(format).to_string()),
+        ResolvedTimezone::Fixed(offset) => Some(dt.with_timezone(&offset).format(format).to_string()),
+        ResolvedTimezone::Named(tz) => Some(dt.with_timezone(&tz).format(format).to_string()),
+    }
 }
 
 pub fn format_timestamp_ymd(value: Option<i64>) -> Option<String> {
@@ -774,17 +852,84 @@ pub fn format_timestamp_long_date(value: Option<i64>) -> Option<String> {
     Some(dt.format("%B %-d, %Y").to_string())
 }
 
+pub fn normalize_timestamp(value: Option<i64>, system: Option<&SystemConfig>) -> Option<i64> {
+    let value = value?;
+    let roundup = date_roundup_seconds(system);
+    Some(round_timestamp(value, roundup))
+}
+
+fn date_roundup_seconds(system: Option<&SystemConfig>) -> u32 {
+    system
+        .and_then(|system| system.date.as_ref())
+        .map(|date| date.roundup_seconds)
+        .unwrap_or(0)
+}
+
+fn round_timestamp(value: i64, roundup_seconds: u32) -> i64 {
+    if roundup_seconds == 0 {
+        return value;
+    }
+    let round = i64::from(roundup_seconds);
+    value.div_euclid(round) * round
+}
+
+enum ResolvedTimezone {
+    Utc,
+    Fixed(FixedOffset),
+    Named(Tz),
+}
+
+fn resolve_timezone(timezone: Option<&str>) -> ResolvedTimezone {
+    let Some(value) = timezone.map(str::trim).filter(|value| !value.is_empty()) else {
+        return ResolvedTimezone::Utc;
+    };
+    let upper = value.to_ascii_uppercase();
+    if upper == "UTC" || upper == "GMT" || upper == "Z" {
+        return ResolvedTimezone::Utc;
+    }
+    if let Ok(named) = value.parse::<Tz>() {
+        return ResolvedTimezone::Named(named);
+    }
+    let (sign, rest) = match upper.as_bytes().first() {
+        Some(b'+') => (1, &value[1..]),
+        Some(b'-') => (-1, &value[1..]),
+        _ => return ResolvedTimezone::Utc,
+    };
+    let digits: String = rest.chars().filter(|ch| ch.is_ascii_digit()).collect();
+    if digits.len() != 2 && digits.len() != 4 {
+        return ResolvedTimezone::Utc;
+    }
+    let (hours, minutes) = if digits.len() == 2 {
+        (digits.parse::<i32>().ok(), Some(0))
+    } else {
+        let (h, m) = digits.split_at(2);
+        (h.parse::<i32>().ok(), m.parse::<i32>().ok())
+    };
+    let (Some(hours), Some(minutes)) = (hours, minutes) else {
+        return ResolvedTimezone::Utc;
+    };
+    if hours > 23 || minutes > 59 {
+        return ResolvedTimezone::Utc;
+    }
+    let total = sign * (hours * 3600 + minutes * 60);
+    FixedOffset::east_opt(total)
+        .map(ResolvedTimezone::Fixed)
+        .unwrap_or(ResolvedTimezone::Utc)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
-        build_nav_view, format_timestamp_ymd, render_blog_index, render_page,
+        BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavLink, SeriesNavView, SystemConfig,
+        TagListingPage, build_nav_view, format_timestamp_display,
+        format_timestamp_ymd, render_blog_index, render_page,
         render_page_with_series_nav, render_series_index, render_tag_index,
     };
     use crate::assets::AssetManifest;
     use crate::config::load_site_config;
     use crate::header::Header;
-    use crate::model::{DocId, Page, Project, SiteContent};
+    use crate::model::{DateConfig, DocId, Page, Project, SiteContent};
+    use chrono::TimeZone;
     use std::fs;
     use std::path::PathBuf;
     use uuid::Uuid;
@@ -796,15 +941,40 @@ mod tests {
     }
 
     #[test]
+    fn format_timestamp_display_defaults_and_rounds() {
+        let ts = chrono::Utc
+            .with_ymd_and_hms(2025, 7, 4, 17, 2, 29)
+            .unwrap()
+            .timestamp();
+        let value = format_timestamp_display(Some(ts), None, None).expect("date");
+        assert_eq!(value, "July 4, 2025 at 17:02 UTC");
+
+        let config = SystemConfig {
+            date: Some(DateConfig {
+                format: "%Y-%m-%d %H:%M %Z".to_string(),
+                roundup_seconds: 3600,
+            }),
+        };
+        let value = format_timestamp_display(Some(ts), Some(&config), None).expect("date");
+        assert_eq!(value, "2025-07-04 17:00 UTC");
+
+        let value = format_timestamp_display(Some(ts), None, Some("+02:00")).expect("date");
+        assert_eq!(value, "July 4, 2025 at 19:02 +02:00");
+
+        let value = format_timestamp_display(Some(ts), None, Some("Europe/Oslo")).expect("date");
+        assert_eq!(value, "July 4, 2025 at 19:02 CEST");
+    }
+
+    #[test]
     fn nav_ordering_preserves_config() {
         let project = project_with_config(
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Blog\"\n      href: \"blog\"\n",
             SiteContent::default(),
         );
-        let items = build_nav_view(&project, "blog.html");
+        let items = build_nav_view(&project, "blog.html", "/");
         assert_nav_labels(&items, &["Home", "Blog"]);
-        assert_eq!(items[0].href, "index.html");
-        assert_eq!(items[1].href, "blog.html");
+        assert_eq!(items[0].href, "/index.html");
+        assert_eq!(items[1].href, "/blog.html");
     }
 
     #[test]
@@ -817,11 +987,11 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
             content,
         );
-        let items = build_nav_view(&project, "index.html");
+        let items = build_nav_view(&project, "index.html", "/");
         assert_nav_labels(&items, &["Home", "Blog", "Tags"]);
-        assert_eq!(items[0].href, "index.html");
-        assert_eq!(items[1].href, "index.html");
-        assert_eq!(items[2].href, "tags.html");
+        assert_eq!(items[0].href, "/index.html");
+        assert_eq!(items[1].href, "/index.html");
+        assert_eq!(items[2].href, "/tags.html");
     }
 
     #[test]
@@ -830,10 +1000,10 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Blog\"\n      href: \"blog\"\n",
             SiteContent::default(),
         );
-        let items = build_nav_view(&project, "blog/page1.html");
+        let items = build_nav_view(&project, "blog/page1.html", "/");
         assert_eq!(active_count(&items), 0);
 
-        let items = build_nav_view(&project, "blog.html");
+        let items = build_nav_view(&project, "blog.html", "/");
         assert_eq!(active_count(&items), 1);
         assert!(items[1].is_active);
     }
@@ -844,7 +1014,7 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"Home\"\n      href: \"index\"\n    - label: \"Home Duplicate\"\n      href: \"index\"\n",
             SiteContent::default(),
         );
-        let items = build_nav_view(&project, "index.html");
+        let items = build_nav_view(&project, "index.html", "/");
         assert_eq!(active_count(&items), 1);
         assert!(items[0].is_active);
         assert!(!items[1].is_active);
@@ -856,11 +1026,11 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
             SiteContent::default(),
         );
-        let items = build_nav_view(&project, "index.html");
+        let items = build_nav_view(&project, "index.html", "/");
         assert_nav_labels(&items, &["Home", "Blog", "Tags"]);
-        assert_eq!(items[0].href, "index.html");
-        assert_eq!(items[1].href, "index.html");
-        assert_eq!(items[2].href, "tags.html");
+        assert_eq!(items[0].href, "/index.html");
+        assert_eq!(items[1].href, "/index.html");
+        assert_eq!(items[2].href, "/tags.html");
     }
 
     #[test]
@@ -869,8 +1039,8 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"About\"\n      href: \"about\"\n    - label: \"Absolute\"\n      href: \"/about.html\"\n    - label: \"External\"\n      href: \"https://example.com/\"\n    - label: \"Top\"\n      href: \"#top\"\n",
             SiteContent::default(),
         );
-        let items = build_nav_view(&project, "index.html");
-        assert_eq!(items[0].href, "about.html");
+        let items = build_nav_view(&project, "index.html", "/");
+        assert_eq!(items[0].href, "/about.html");
         assert_eq!(items[1].href, "/about.html");
         assert_eq!(items[2].href, "https://example.com/");
         assert_eq!(items[3].href, "#top");
@@ -901,6 +1071,7 @@ mod tests {
             "meta-test.html",
             "2026-01-29",
             None,
+            None,
         )
         .expect("render");
         assert!(!html.contains("<div class=\"meta\">"));
@@ -920,10 +1091,11 @@ mod tests {
             "meta-test.html",
             "2026-01-29",
             None,
+            None,
         )
         .expect("render");
         assert!(html.contains("<div class=\"meta\">"));
-        assert!(html.contains("Tags:"));
+        assert!(!html.contains("Tags:"));
         assert!(html.contains("class=\"tags\""));
     }
 
@@ -940,6 +1112,7 @@ mod tests {
             &default_manifest(),
             "footer.html",
             "2026-01-25",
+            None,
             None,
         )
         .expect("render");
@@ -958,6 +1131,7 @@ mod tests {
             &default_manifest(),
             "footer.html",
             "2026-01-25",
+            None,
             None,
         )
         .expect("render");
@@ -989,6 +1163,7 @@ mod tests {
             "index.html",
             "2026-01-30",
             None,
+            None,
         )
         .expect("render");
         assert!(html.contains("<title>Demo · Demo</title>"));
@@ -1018,6 +1193,7 @@ mod tests {
             "download.html",
             "2026-01-30",
             None,
+            None,
         )
         .expect("render");
         assert!(html.contains("<title>Download · Demo</title>"));
@@ -1046,6 +1222,8 @@ mod tests {
             None,
             None,
             vec![item.clone()],
+            None,
+            None,
             None,
             None,
             1,
@@ -1087,6 +1265,7 @@ mod tests {
             "part1.html",
             "2026-01-29",
             None,
+            None,
         )
         .expect("render page");
         assert!(!html.contains("class=\"series-nav\""));
@@ -1109,6 +1288,7 @@ mod tests {
             Some(nav),
             "part1.html",
             "2026-01-29",
+            None,
             None,
         )
         .expect("render page");

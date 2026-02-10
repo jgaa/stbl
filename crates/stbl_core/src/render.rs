@@ -72,7 +72,8 @@ impl MediaRenderer for MacroMediaRenderer<'_> {
 }
 
 pub fn render_markdown_to_html(md: &str) -> String {
-    let options = Options::empty();
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
     let parser = Parser::new_ext(md, options);
     let mut html_out = String::new();
     html::push_html(&mut html_out, parser);
@@ -99,7 +100,9 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
         }
         None => md.to_string(),
     };
-    let parser = Parser::new_ext(&expanded, Options::empty());
+    let mut cmark_options = Options::empty();
+    cmark_options.insert(Options::ENABLE_TABLES);
+    let parser = Parser::new_ext(&expanded, cmark_options);
     let mut events = Vec::new();
     let mut video_pending: Option<VideoPending> = None;
     let mut image_pending: Option<ImagePending> = None;
@@ -868,14 +871,15 @@ fn render_code_block_html(pending: &CodeBlockPending, options: &RenderOptions<'_
 
 fn wrap_code_lines(text: &str) -> String {
     let mut out = String::new();
-    let mut iter = text.split('\n').peekable();
+    let mut lines: Vec<&str> = text.split('\n').collect();
+    if matches!(lines.last(), Some(last) if last.is_empty()) {
+        lines.pop();
+    }
+    let mut iter = lines.into_iter().peekable();
     while let Some(line) = iter.next() {
         out.push_str("<span class=\"code-line\">");
         out.push_str(line);
         out.push_str("</span>");
-        if iter.peek().is_some() {
-            out.push('\n');
-        }
     }
     out
 }

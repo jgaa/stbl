@@ -59,6 +59,7 @@ fn execute_build(project: &mut Project, out_dir: &PathBuf) {
         project,
         &plan,
         out_dir,
+        &asset_index,
         &asset_lookup,
         &image_lookup,
         &video_lookup,

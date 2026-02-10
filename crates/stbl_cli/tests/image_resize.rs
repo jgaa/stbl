@@ -79,6 +79,7 @@ fn image_resize_generates_variants() {
         &project,
         &plan,
         &out_dir,
+        &stbl_core::assets::AssetIndex::default(),
         &stbl_cli::assets::AssetSourceLookup::default(),
         &image_lookup,
         &VideoSourceLookup::default(),

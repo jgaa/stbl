@@ -539,6 +539,43 @@ blockquote {
   color: var(--c-muted);
 }
 
+.pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.pager-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.pager-right {
+  justify-content: flex-end;
+}
+
+.pager-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--c-muted);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.pager-link:hover,
+.pager-link:focus-visible {
+  text-decoration: underline;
+}
+
+.pager-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+}
+
 footer {
   margin-top: 3rem;
   padding: 1.5rem 0 2rem;
@@ -556,6 +593,32 @@ footer p {
   margin: 0;
   font-size: 0.9rem;
   color: var(--c-muted);
+}
+
+footer .footer-links {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+footer .footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--c-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+footer .footer-link:hover,
+footer .footer-link:focus-visible {
+  text-decoration: underline;
+}
+
+footer .footer-link img {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
 }
 
 /* Optional: visually de-emphasize the stbl line further */

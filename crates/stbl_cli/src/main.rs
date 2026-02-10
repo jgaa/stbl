@@ -451,6 +451,7 @@ fn run_build(
         &project,
         &plan,
         &out_dir,
+        &asset_index,
         &asset_lookup,
         &image_lookup,
         &video_lookup,

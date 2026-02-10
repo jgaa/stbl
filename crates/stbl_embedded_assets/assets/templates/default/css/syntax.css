@@ -10,11 +10,11 @@
 .code-block code.has-line-numbers {
   counter-reset: line;
   display: block;
+  padding-left: 3rem;
 }
 
 .code-block code.has-line-numbers .code-line {
   display: block;
-  padding-left: 3rem;
   position: relative;
 }
 
@@ -22,7 +22,7 @@
   counter-increment: line;
   content: counter(line);
   position: absolute;
-  left: 0;
+  left: -3rem;
   width: 2.4rem;
   text-align: right;
   color: var(--c-muted);

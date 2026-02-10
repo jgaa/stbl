@@ -74,6 +74,7 @@ fn video_pipeline_generates_variants_and_posters() {
         &project,
         &plan,
         &out_dir,
+        &asset_index,
         &asset_lookup,
         &image_lookup,
         &video_lookup,

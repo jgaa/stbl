@@ -27,14 +27,36 @@
   {% endfor %}
   </ul>
 
-  {% if prev_href or next_href %}
+  {% if prev_href or next_href or first_href or last_href %}
   <nav class="pager">
-    {% if prev_href %}
-    <a href="{{ prev_href }}">Newer</a>
-    {% endif %}
-    {% if next_href %}
-    <a href="{{ next_href }}">Older</a>
-    {% endif %}
+    <div class="pager-group pager-left">
+      {% if first_href %}
+      <a class="pager-link pager-first" href="{{ first_href }}">
+        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-left.svg"]) | safe }}" alt="" width="16" height="16">
+        <span>First</span>
+      </a>
+      {% endif %}
+      {% if prev_href %}
+      <a class="pager-link pager-newer" href="{{ prev_href }}">
+        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-left.svg"]) | safe }}" alt="" width="16" height="16">
+        <span>Newer</span>
+      </a>
+      {% endif %}
+    </div>
+    <div class="pager-group pager-right">
+      {% if next_href %}
+      <a class="pager-link pager-older" href="{{ next_href }}">
+        <span>Older</span>
+        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-right.svg"]) | safe }}" alt="" width="16" height="16">
+      </a>
+      {% endif %}
+      {% if last_href %}
+      <a class="pager-link pager-last" href="{{ last_href }}">
+        <span>Last</span>
+        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-right.svg"]) | safe }}" alt="" width="16" height="16">
+      </a>
+      {% endif %}
+    </div>
   </nav>
   {% endif %}
 {% endblock %}

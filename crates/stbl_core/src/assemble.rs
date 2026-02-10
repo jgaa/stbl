@@ -55,6 +55,17 @@ pub fn assemble_site_with_template_policy(
             &mut diagnostics,
             &doc.parsed.src.source_path,
         );
+        let needs_title = match header.title.as_deref().map(str::trim) {
+            None => true,
+            Some(value) => value.is_empty(),
+        };
+        if needs_title {
+            if let Some(deduced) =
+                crate::title::deduce_title_from_source_path(&doc.parsed.src.source_path)
+            {
+                header.title = Some(deduced);
+            }
+        }
         let (media_refs, media_errors) =
             crate::media::collect_media_refs_with_errors(&doc.parsed.body_markdown);
         for message in media_errors {

@@ -200,7 +200,7 @@ The following headers are recognized:
 - published: When the article was published: A date in 'YYYY-MM-DD HH:MM' format, or 'no' or 'false' if the article is unpublished. If the value is unset, the system will fall back to the file-date for the article. If the date is set to the future, the article will beheld back1.
 Unpublished articles will not be generated. This lets you work on articles long before you
 are ready to publish them, by setting the value to "no" or "false".
-- comments: Can be <code>no</code>, to disable commenting, or any one of the configured commenting services, for example <code>disqus</code> if you have [configured your site to use Disqus](https://lastviking.eu/stbl_with_disqus.html)
+- comments: Can be <code>no</code> to disable comments, or the name of a configured provider. See `doc/commants.md`.
 - updated: When the article was last updated. A date in 'YYY-MM-DD HH:MM' format. If unset, the system will fall back to the file-date for the article.
 - expires: When the article expired. A date in 'YYY-MM-DD HH:MM' format. If unset, the article will not expire. Expired articles are not published.
 - uuid: uuid of the article
@@ -321,7 +321,7 @@ The templates have the following macros available, wrapped in {{ }}.
 - author: The author(s) of an article
 - authors: Alias for author
 - banner: html5 picture element with scaled images for different screen sizes.
-- comments: html and/or jacascript code for comments on an article.
+- comments: rendered comment block (configured in `stbl.yaml`).
 - content: The content of an article.
 - expires-ansi: Ansi-date when the article expires.
 - expires: The time the article expires

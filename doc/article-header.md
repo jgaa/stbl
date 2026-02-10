@@ -199,8 +199,9 @@ Special types:
 
 * Optional
 * String
-* Legacy field, parsed and stored for compatibility
-* Not used by default templates
+* Selects the comment provider for this page
+* Use `no` to disable comments for a specific page
+* If unset, falls back to `comments.default` in `stbl.yaml`
 
 ---
 

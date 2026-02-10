@@ -85,6 +85,7 @@ fn run_build(source_dir: &Path, out_dir: &Path) {
         &project,
         &plan,
         &out_dir.to_path_buf(),
+        &asset_index,
         &asset_lookup,
         &image_lookup,
         &video_lookup,
