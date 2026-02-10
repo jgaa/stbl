@@ -89,6 +89,8 @@ enum Command {
         articles_dir: PathBuf,
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
+        #[arg(long, value_name = "DEST")]
+        publish_to: Option<String>,
         #[arg(long)]
         no_cache: bool,
         #[arg(long, value_name = "PATH")]
@@ -153,6 +155,7 @@ fn main() -> Result<()> {
         Command::Build {
             articles_dir,
             out,
+            publish_to,
             no_cache,
             cache_path,
             fast_images,
@@ -171,6 +174,7 @@ fn main() -> Result<()> {
             &cli,
             articles_dir,
             out.as_ref(),
+            publish_to.as_ref(),
             *no_cache,
             cache_path.as_ref(),
             *fast_images,
@@ -345,6 +349,7 @@ fn run_build(
     cli: &Cli,
     articles_dir: &PathBuf,
     out: Option<&PathBuf>,
+    publish_to: Option<&String>,
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
     fast_images: bool,
@@ -363,6 +368,8 @@ fn run_build(
     let root = root_dir(cli)?;
     let mut config = crate::config_loader::load_config_for_build(&root)
         .with_context(|| "failed to load stbl.yaml")?;
+    let publish_command = require_publish_command(publish_to.map(|value| value.as_str()), config.publish.as_ref())?
+        .map(|command| command.to_string());
     if fast_images {
         config.media.images.format_mode = stbl_core::model::ImageFormatMode::Fast;
     }
@@ -482,6 +489,15 @@ fn run_build(
         println!("cache_path: {}", path.display());
     }
 
+    if let Some(destination) = publish_to {
+        let command = render_publish_command(
+            publish_command.as_deref().unwrap_or_default(),
+            &out_dir,
+            destination,
+        );
+        run_publish_command(&command, &root)?;
+    }
+
     let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
     println!("{summary}");
     let effective_preview = preview || preview_open;
@@ -513,6 +529,46 @@ fn should_beep(preview: bool, beep: bool, no_beep: bool) -> bool {
         return true;
     }
     beep
+}
+
+fn require_publish_command<'a>(
+    publish_to: Option<&str>,
+    publish: Option<&'a stbl_core::model::PublishConfig>,
+) -> Result<Option<&'a str>> {
+    let Some(destination) = publish_to else {
+        return Ok(None);
+    };
+    if destination.trim().is_empty() {
+        anyhow::bail!("--publish-to requires a non-empty destination");
+    }
+    let command = publish
+        .map(|config| config.command.trim())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!("publish.command must be set when using --publish-to")
+        })?;
+    Ok(Some(command))
+}
+
+fn render_publish_command(command: &str, out_dir: &Path, destination: &str) -> String {
+    let local_site = normalize_path(out_dir);
+    command
+        .replace("{{local-site}}", &local_site)
+        .replace("{{destination}}", destination)
+}
+
+fn run_publish_command(command: &str, root: &Path) -> Result<()> {
+    println!("publish: {}", command);
+    let status = ProcessCommand::new("sh")
+        .arg("-c")
+        .arg(command)
+        .current_dir(root)
+        .status()
+        .with_context(|| "failed to execute publish.command")?;
+    if !status.success() {
+        anyhow::bail!("publish.command failed with exit code {status}");
+    }
+    Ok(())
 }
 
 fn run_upgrade(cli: &Cli, force: bool) -> Result<()> {
@@ -959,6 +1015,7 @@ mod tests {
         cli.command = Command::Build {
             articles_dir: PathBuf::from("articles"),
             out: Some(PathBuf::from("out")),
+            publish_to: None,
             no_cache: false,
             cache_path: None,
             fast_images: false,
@@ -978,6 +1035,34 @@ mod tests {
         cli.commit_writeback = true;
         let err = validate_flags(&cli).expect_err("expected error");
         assert!(err.to_string().contains("commit-writeback"));
+    }
+
+    #[test]
+    fn publish_requires_command() {
+        let publish = stbl_core::model::PublishConfig {
+            command: "  ".to_string(),
+        };
+        let err = require_publish_command(Some("dest"), Some(&publish)).expect_err("error");
+        assert!(err.to_string().contains("publish.command"));
+    }
+
+    #[test]
+    fn publish_requires_destination() {
+        let publish = stbl_core::model::PublishConfig {
+            command: "rsync {{local-site}} {{destination}}".to_string(),
+        };
+        let err = require_publish_command(Some("   "), Some(&publish)).expect_err("error");
+        assert!(err.to_string().contains("publish-to"));
+    }
+
+    #[test]
+    fn render_publish_command_replaces_tokens() {
+        let command =
+            render_publish_command("rsync {{local-site}} {{destination}}", Path::new("out"), "dest");
+        assert!(command.contains("out"));
+        assert!(command.contains("dest"));
+        assert!(!command.contains("{{local-site}}"));
+        assert!(!command.contains("{{destination}}"));
     }
 
     #[test]

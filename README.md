@@ -18,6 +18,7 @@ Build options:
 - `stbl_cli build --fast-compress` (use gzip level 1 and skip brotli for precompression)
 - `stbl_cli build --preview` (serve output locally, do not open a browser)
 - `stbl_cli build --preview-open` (serve output locally and open a browser)
+- `stbl_cli build --publish-to <DEST>` (run `publish.command` after a successful build; requires `publish.command` in `stbl.yaml`)
 
 
 # Introduction to stbl

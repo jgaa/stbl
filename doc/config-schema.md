@@ -318,6 +318,7 @@ system:
 
 publish:
   command: "rsync -a --delete {{local-site}}/ {{destination}}/"
+  # {{local-site}} is the output dir, {{destination}} comes from --publish-to
 
 blog:
   abstract:
