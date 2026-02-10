@@ -936,9 +936,9 @@ fn expand_series(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
         title_text.push_str(&format!("{total_parts} parts"));
     }
 
-    let mapper = UrlMapper::new(&ctx.project.config);
     let index_key = logical_key_from_source_path(&series.dir_path);
-    let index_href = mapper.map(&index_key).href;
+    let mapper = UrlMapper::new(&ctx.project.config);
+    let index_href = crate::url::map_series_index(&index_key).href;
 
     let mut out = String::new();
     out.push_str("<nav class=\"series-nav\">");
@@ -1398,9 +1398,8 @@ mod tests {
     use anyhow::anyhow;
     use crate::header::Header;
     use crate::model::{
-        DocId, ImageFormatMode, MacrosConfig, Series, SeriesId, SeriesPart, SiteConfig,
-        SiteContent, SiteMeta,
-        ThemeColorOverrides,
+        DocId, ImageFormatMode, MacrosConfig, SecurityConfig, Series, SeriesId, SeriesPart,
+        SiteConfig, SiteContent, SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides,
         ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use std::path::PathBuf;
@@ -1446,6 +1445,11 @@ mod tests {
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,
+            },
+            security: SecurityConfig {
+                svg: SvgSecurityConfig {
+                    mode: SvgSecurityMode::Warn,
+                },
             },
             media: crate::model::MediaConfig {
                 images: crate::model::ImageConfig {

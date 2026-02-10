@@ -51,6 +51,15 @@ impl UrlMapper {
     }
 }
 
+pub fn map_series_index(logical_key: &str) -> UrlMapping {
+    let logical = normalize_logical_key(logical_key);
+    UrlMapping {
+        href: format!("{logical}/"),
+        primary_output: PathBuf::from(format!("{logical}/index.html")),
+        fallback: None,
+    }
+}
+
 fn normalize_logical_key(logical_key: &str) -> &str {
     let trimmed = logical_key.trim_matches('/');
     let normalized = trimmed.strip_suffix(".html").unwrap_or(trimmed);

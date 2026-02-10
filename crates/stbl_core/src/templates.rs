@@ -5,8 +5,10 @@ use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
 use crate::comments::{CommentTemplateProvider, render_comments_html};
-use crate::blog_index::iter_visible_posts;
-use crate::model::{MenuAlign, NavItem, Page, Project, SystemConfig, ThemeHeaderLayout};
+use crate::blog_index::{collect_tag_list, iter_visible_posts};
+use crate::model::{
+    MenuAlign, NavItem, Page, PersonLink, Project, SystemConfig, ThemeHeaderLayout,
+};
 use crate::macros::IncludeProvider;
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::visibility::is_blog_index_excluded;
@@ -87,8 +89,25 @@ pub fn render_page_with_series_nav(
         render_comments_html(project, page, current_href, comment_template_provider);
     let page_title = page_title_or_filename(project, page);
     let show_page_title = !is_blog_index_excluded(page, None);
-    let authors = page.header.authors.clone();
-    let tags = page.header.tags.clone();
+    let show_authors = !is_blog_index_excluded(page, None);
+    let authors = build_author_views(
+        project,
+        page.header.authors.as_ref(),
+        asset_manifest,
+        show_authors,
+    );
+    let tags = page
+        .header
+        .tags
+        .iter()
+        .map(|tag| {
+            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
+            TagLink {
+                label: tag.clone(),
+                href: resolve_root_href(&href, &rel),
+            }
+        })
+        .collect::<Vec<_>>();
     let published_ts = normalize_timestamp(page.header.published, project.config.system.as_ref());
     let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref()) {
         Some(updated) if Some(updated) == published_ts => None,
@@ -152,7 +171,7 @@ pub fn render_markdown_page(
         project,
         title.to_string(),
         show_page_title,
-        None,
+        Vec::new(),
         None,
         None,
         None,
@@ -183,6 +202,19 @@ pub struct TagLink {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct AuthorLinkView {
+    pub name: String,
+    pub href: String,
+    pub icon: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AuthorView {
+    pub name: String,
+    pub links: Vec<AuthorLinkView>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct BlogIndexItem {
     pub title: String,
     pub href: String,
@@ -208,10 +240,16 @@ pub struct SeriesNavLink {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct SeriesNavEntry {
+    pub title: String,
+    pub href: String,
+    pub is_current: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct SeriesNavView {
-    pub prev: Option<SeriesNavLink>,
     pub index: SeriesNavLink,
-    pub next: Option<SeriesNavLink>,
+    pub parts: Vec<SeriesNavEntry>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -256,6 +294,16 @@ pub fn render_blog_index(
     let menu_align_class = menu_align_class(project);
     let header_layout = header_layout_value(project);
     let header_layout_class = header_layout_class(project);
+    let tag_links = collect_tag_list(project)
+        .into_iter()
+        .map(|tag| {
+            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
+            TagLink {
+                label: tag,
+                href: resolve_root_href(&href, &rel),
+            }
+        })
+        .collect::<Vec<_>>();
 
     template
         .render(context! {
@@ -281,6 +329,7 @@ pub fn render_blog_index(
             last_href => last_href,
             page_no => page_no,
             total_pages => total_pages,
+            tag_links => tag_links,
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
@@ -311,6 +360,16 @@ pub fn render_tag_index(
     let menu_align_class = menu_align_class(project);
     let header_layout = header_layout_value(project);
     let header_layout_class = header_layout_class(project);
+    let tag_links = collect_tag_list(project)
+        .into_iter()
+        .map(|tag| {
+            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
+            TagLink {
+                label: tag,
+                href: resolve_root_href(&href, &rel),
+            }
+        })
+        .collect::<Vec<_>>();
 
     template
         .render(context! {
@@ -328,6 +387,7 @@ pub fn render_tag_index(
             page_title => page_title,
             tag => listing.tag,
             items => listing.items,
+            tag_links => tag_links,
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
@@ -440,12 +500,12 @@ fn render_with_context(
     project: &Project,
     page_title: String,
     show_page_title: bool,
-    authors: Option<Vec<String>>,
+    authors: Vec<AuthorView>,
     published: Option<String>,
     updated: Option<String>,
     published_raw: Option<String>,
     updated_raw: Option<String>,
-    tags: Vec<String>,
+    tags: Vec<TagLink>,
     body_html: String,
     banner_html: Option<String>,
     comments_html: Option<String>,
@@ -509,6 +569,126 @@ fn render_with_context(
             redirect_href => redirect_href,
         })
         .context("failed to render page template")
+}
+
+fn build_author_views(
+    project: &Project,
+    author_ids: Option<&Vec<String>>,
+    asset_manifest: &AssetManifest,
+    show_authors: bool,
+) -> Vec<AuthorView> {
+    if !show_authors {
+        return Vec::new();
+    }
+    let people = project.config.people.as_ref();
+    let resolved_ids: Vec<String> = match author_ids {
+        Some(ids) if !ids.is_empty() => ids.clone(),
+        _ => people
+            .map(|people| vec![people.default.clone()])
+            .unwrap_or_default(),
+    };
+    resolved_ids
+        .iter()
+        .map(|author_id| {
+            let (name, links) = match people.and_then(|people| people.entries.get(author_id)) {
+                Some(person) => {
+                    let links = build_author_links(person.name.as_str(), &person.links, asset_manifest);
+                    (person.name.clone(), links)
+                }
+                None => (author_id.clone(), Vec::new()),
+            };
+            AuthorView { name, links }
+        })
+        .collect()
+}
+
+fn build_author_links(
+    person_name: &str,
+    links: &[PersonLink],
+    asset_manifest: &AssetManifest,
+) -> Vec<AuthorLinkView> {
+    let mut out = Vec::new();
+    for link in links {
+        match resolve_author_icon(asset_manifest, link) {
+            Some(icon) => out.push(AuthorLinkView {
+                name: link.name.clone(),
+                href: link.url.clone(),
+                icon,
+            }),
+            None => {
+                eprintln!(
+                    "author link icon not found for {} ({}): {}",
+                    person_name, link.id, link.url
+                );
+            }
+        }
+    }
+    out
+}
+
+fn resolve_author_icon(asset_manifest: &AssetManifest, link: &PersonLink) -> Option<String> {
+    let mut candidates = Vec::new();
+    if let Some(icon) = link.icon.as_deref() {
+        push_icon_candidates_for_token(icon, &mut candidates);
+    }
+    let id = normalize_icon_id(&link.id);
+    for base in icon_bases_for_id(&id) {
+        candidates.extend(icon_candidates_for_base(&base));
+    }
+    for candidate in candidates {
+        if asset_manifest.entries.contains_key(&candidate) {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+fn push_icon_candidates_for_token(token: &str, out: &mut Vec<String>) {
+    let trimmed = token.trim().trim_start_matches("./");
+    if trimmed.is_empty() {
+        return;
+    }
+    if trimmed.contains('/') {
+        out.push(trimmed.to_string());
+        if !trimmed.ends_with(".svg") {
+            out.push(format!("{trimmed}.svg"));
+        }
+        return;
+    }
+    let base = trimmed.trim_end_matches(".svg");
+    out.extend(icon_candidates_for_base(base));
+}
+
+fn normalize_icon_id(id: &str) -> String {
+    id.trim()
+        .trim_start_matches('@')
+        .to_ascii_lowercase()
+        .replace([' ', '_'], "-")
+}
+
+fn icon_bases_for_id(id: &str) -> Vec<String> {
+    match id {
+        "email" | "e-mail" | "mail" => vec!["email".to_string(), "mail".to_string()],
+        "linkedin" | "linked-in" => vec!["linkedin".to_string()],
+        "reddit" | "reddir" => vec!["reddit".to_string()],
+        "x" | "twitter" => vec!["x".to_string(), "twitter".to_string()],
+        _ => vec![id.to_string()],
+    }
+}
+
+fn icon_candidates_for_base(base: &str) -> Vec<String> {
+    let base = base.trim();
+    if base.is_empty() {
+        return Vec::new();
+    }
+    vec![
+        format!("assets/icons/{base}.svg"),
+        format!("assets/{base}.svg"),
+        format!("icons/{base}.svg"),
+        format!("feather/{base}.svg"),
+        format!("artifacts/icons/{base}.svg"),
+        format!("artifacts/{base}.svg"),
+    ]
 }
 
 fn render_markdown_with_media(
@@ -920,7 +1100,8 @@ fn resolve_timezone(timezone: Option<&str>) -> ResolvedTimezone {
 #[cfg(test)]
 mod tests {
     use super::{
-        BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavLink, SeriesNavView, SystemConfig,
+        BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
+        SystemConfig,
         TagListingPage, build_nav_view, format_timestamp_display,
         format_timestamp_ymd, render_blog_index, render_page,
         render_page_with_series_nav, render_series_index, render_tag_index,
@@ -1271,15 +1452,22 @@ mod tests {
         assert!(!html.contains("class=\"series-nav\""));
 
         let nav = SeriesNavView {
-            prev: None,
             index: SeriesNavLink {
                 title: "Series".to_string(),
                 href: "series.html".to_string(),
             },
-            next: Some(SeriesNavLink {
-                title: "Part 2".to_string(),
-                href: "part2.html".to_string(),
-            }),
+            parts: vec![
+                SeriesNavEntry {
+                    title: "Part 1 Title".to_string(),
+                    href: "part1.html".to_string(),
+                    is_current: true,
+                },
+                SeriesNavEntry {
+                    title: "Part 2 Title".to_string(),
+                    href: "part2.html".to_string(),
+                    is_current: false,
+                },
+            ],
         };
         let html = render_page_with_series_nav(
             &project,
@@ -1295,6 +1483,7 @@ mod tests {
         assert!(html.contains("class=\"series-nav\""));
         assert!(html.contains("series.html"));
         assert!(html.contains("part2.html"));
+        assert!(html.contains("Part 1 Title"));
     }
 
     #[test]

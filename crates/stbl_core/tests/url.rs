@@ -1,9 +1,10 @@
 use stbl_core::model::{
-    AssetsConfig, ImageFormatMode, MacrosConfig, SiteConfig, SiteMeta, SyntaxConfig,
-    ThemeBreakpoints, ThemeConfig, ThemeColorOverrides, ThemeHeaderConfig, ThemeNavOverrides,
-    ThemeWideBackgroundOverrides, UrlStyle,
+    AssetsConfig, ImageFormatMode, MacrosConfig, SecurityConfig, SiteConfig, SiteMeta,
+    SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, ThemeBreakpoints, ThemeConfig,
+    ThemeColorOverrides, ThemeHeaderConfig, ThemeNavOverrides, ThemeWideBackgroundOverrides,
+    UrlStyle,
 };
-use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path};
+use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path, map_series_index};
 
 fn base_config(style: UrlStyle) -> SiteConfig {
     SiteConfig {
@@ -46,6 +47,11 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         },
         assets: AssetsConfig {
             cache_busting: false,
+        },
+        security: SecurityConfig {
+            svg: SvgSecurityConfig {
+                mode: SvgSecurityMode::Warn,
+            },
         },
         media: stbl_core::model::MediaConfig {
             images: stbl_core::model::ImageConfig {
@@ -143,6 +149,19 @@ fn strips_html_suffix_for_pretty_style() {
         UrlMapping {
             href: "download/".to_string(),
             primary_output: "download/index.html".into(),
+            fallback: None,
+        }
+    );
+}
+
+#[test]
+fn series_index_forces_pretty_output() {
+    let mapping = map_series_index("series-name");
+    assert_eq!(
+        mapping,
+        UrlMapping {
+            href: "series-name/".to_string(),
+            primary_output: "series-name/index.html".into(),
             fallback: None,
         }
     );

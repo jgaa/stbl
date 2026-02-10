@@ -461,29 +461,36 @@ fn parse_people(block: &Node, warnings: &mut Vec<String>) -> Result<Option<Peopl
             ));
             continue;
         };
+        let email = value_of(person_block, "email");
         let mut links = Vec::new();
-        if let Some(email_block) = block_of(person_block, "e-mail") {
-            let link_name = value_of(email_block, "name").unwrap_or_else(|| "Contact".to_string());
-            if let Some(url) = value_of(email_block, "url") {
-                let icon = value_of(email_block, "icon");
-                links.push(PersonLinkOut {
-                    id: "e-mail".to_string(),
-                    name: link_name,
-                    url,
-                    icon,
-                });
-            } else {
-                warnings.push(format!(
-                    "people entry '{}' has e-mail block without url",
-                    entry.key
-                ));
+        for item in &person_block.entries {
+            let id = item.key.trim();
+            if matches!(id, "name" | "email") {
+                continue;
             }
+            let Some(link_block) = item.block.as_ref() else {
+                continue;
+            };
+            let link_name = value_of(link_block, "name").unwrap_or_else(|| id.to_string());
+            let Some(url) = value_of(link_block, "url") else {
+                warnings.push(format!(
+                    "people entry '{}' has {} block without url",
+                    entry.key, id
+                ));
+                continue;
+            };
+            links.push(PersonLinkOut {
+                id: id.to_string(),
+                name: link_name,
+                url,
+                icon: None,
+            });
         }
         entries.insert(
             entry.key.clone(),
             PersonOut {
                 name,
-                email: None,
+                email,
                 links,
             },
         );

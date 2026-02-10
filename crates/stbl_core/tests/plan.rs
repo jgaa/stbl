@@ -46,7 +46,7 @@ fn build_plan_is_deterministic_and_complete() {
     for task in &plan.tasks {
         *kind_counts.entry(kind_label(&task.kind)).or_default() += 1;
     }
-    assert_eq!(kind_counts.get("RenderPage"), Some(&4));
+    assert_eq!(kind_counts.get("RenderPage"), Some(&7));
     assert_eq!(kind_counts.get("RenderBlogIndex"), Some(&1));
     assert_eq!(kind_counts.get("RenderSeries"), Some(&1));
     assert_eq!(kind_counts.get("RenderTagIndex"), Some(&2));

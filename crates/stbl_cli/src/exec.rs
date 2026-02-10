@@ -20,13 +20,14 @@ use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskK
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
-    BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagLink,
+    BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
+    TagLink,
     TagListingPage, format_timestamp_display, format_timestamp_long_date, normalize_timestamp,
     page_title_or_filename,
     render_banner_html, render_blog_index, render_markdown_page, render_page,
     render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
-use stbl_core::url::{UrlMapper, logical_key_from_source_path};
+use stbl_core::url::{UrlMapper, logical_key_from_source_path, map_series_index};
 use stbl_embedded_assets as embedded;
 use std::process::Command;
 use std::sync::{Arc, Mutex, mpsc};
@@ -338,7 +339,7 @@ pub fn execute_plan(
                 report.skipped_ids.push(task.id.0.clone());
                 continue;
             }
-            copy_asset_to_out(out_dir, out_rel, source, asset_lookup)?;
+            copy_asset_to_out(out_dir, out_rel, source, asset_lookup, &project.config.security)?;
             report.executed += output_count(&task);
             report.executed_ids.push(task.id.0.clone());
             cache_put(&mut cache, &task);
@@ -1129,6 +1130,7 @@ fn render_series(
     let series = find_series(project, series_id)
         .ok_or_else(|| anyhow!("series not found for render task"))?;
     let mapper = UrlMapper::new(&project.config);
+    let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let parts = series
         .parts
         .iter()
@@ -1139,9 +1141,12 @@ fn render_series(
                 .title
                 .clone()
                 .unwrap_or_else(|| "Untitled".to_string()),
-            href: mapper
-                .map(&logical_key_from_source_path(&part.page.source_path))
-                .href,
+            href: resolve_root_href(
+                &mapper
+                    .map(&logical_key_from_source_path(&part.page.source_path))
+                    .href,
+                &rel,
+            ),
             published_display: format_timestamp_display(
                 normalize_timestamp(part.page.header.published, project.config.system.as_ref()),
                 project.config.system.as_ref(),
@@ -1194,49 +1199,50 @@ fn series_nav_for_page(
     mapper: &UrlMapper,
 ) -> Option<SeriesNavView> {
     for series in &project.content.series {
-        for (idx, part) in series.parts.iter().enumerate() {
+        for part in &series.parts {
             if part.page.id == page_id {
-                let prev = if idx > 0 {
-                    Some(nav_link_for_page(&series.parts[idx - 1].page, mapper))
-                } else {
-                    None
-                };
-                let next = if idx + 1 < series.parts.len() {
-                    Some(nav_link_for_page(&series.parts[idx + 1].page, mapper))
-                } else {
-                    None
-                };
+                let rel = root_prefix_for_base_url(&project.config.site.base_url);
                 let index_title = series
                     .index
                     .header
                     .title
                     .clone()
                     .unwrap_or_else(|| "Series".to_string());
-                let index_href = mapper
-                    .map(&logical_key_from_source_path(&series.dir_path))
-                    .href;
+                let index_href = resolve_root_href(
+                    &map_series_index(&logical_key_from_source_path(&series.dir_path)).href,
+                    &rel,
+                );
                 let index = SeriesNavLink {
                     title: index_title,
                     href: index_href,
                 };
-                return Some(SeriesNavView { prev, index, next });
+                let parts = series
+                    .parts
+                    .iter()
+                    .map(|part| SeriesNavEntry {
+                        title: format!(
+                            "Part {} {}",
+                            part.part_no,
+                            part.page
+                                .header
+                                .title
+                                .clone()
+                                .unwrap_or_else(|| "Untitled".to_string())
+                        ),
+                        href: resolve_root_href(
+                            &mapper
+                                .map(&logical_key_from_source_path(&part.page.source_path))
+                                .href,
+                            &rel,
+                        ),
+                        is_current: part.page.id == page_id,
+                    })
+                    .collect();
+                return Some(SeriesNavView { index, parts });
             }
         }
     }
     None
-}
-
-fn nav_link_for_page(page: &Page, mapper: &UrlMapper) -> SeriesNavLink {
-    SeriesNavLink {
-        title: page
-            .header
-            .title
-            .clone()
-            .unwrap_or_else(|| "Untitled".to_string()),
-        href: mapper
-            .map(&logical_key_from_source_path(&page.source_path))
-            .href,
-    }
 }
 
 fn mapping_for_task(
@@ -1269,7 +1275,11 @@ fn mapping_for_task(
         TaskKind::RenderFrontPage => "index".to_string(),
         _ => return Ok(None),
     };
-    Ok(Some(mapper.map(&logical_key)))
+    let mapping = match kind {
+        TaskKind::RenderSeries { .. } => map_series_index(&logical_key),
+        _ => mapper.map(&logical_key),
+    };
+    Ok(Some(mapping))
 }
 
 fn render_redirect_stub(
@@ -1499,7 +1509,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
         },
         FeedItem::Series(series) => BlogIndexItem {
             title: series.title.clone(),
-            href: resolve_root_href(&mapper.map(&series.logical_key).href, &rel),
+            href: resolve_root_href(&map_series_index(&series.logical_key).href, &rel),
             published_display: format_timestamp_display(
                 normalize_timestamp(series.published, project.config.system.as_ref()),
                 project.config.system.as_ref(),
@@ -1791,7 +1801,7 @@ mod tests {
         assert!(out_dir.join("page/4.html").exists());
 
         let index_html = fs::read_to_string(out_dir.join("index.html")).expect("read index");
-        assert!(index_html.contains("&#x2f;series.html"));
+        assert!(index_html.contains("&#x2f;series&#x2f;"));
         assert!(index_html.contains("&#x2f;series&#x2f;part5.html"));
         assert!(index_html.contains("Part 5"));
         assert!(index_html.contains("Part 4"));
@@ -1805,7 +1815,7 @@ mod tests {
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");
         assert!(page2_html.contains("&#x2f;page&#x2f;3.html"));
         assert!(page2_html.contains("&#x2f;index.html"));
-        assert!(!page2_html.contains("&#x2f;series.html"));
+        assert!(!page2_html.contains("&#x2f;series&#x2f;"));
         assert!(!page2_html.contains("<span class=\"meta\"></span>"));
 
         let page4_html = fs::read_to_string(out_dir.join("page/4.html")).expect("read page4");

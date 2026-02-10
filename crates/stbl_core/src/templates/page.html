@@ -7,14 +7,30 @@
 
   {% if authors or published or updated or (tags and tags | length > 0) %}
   <div class="meta">
-    {% if authors %}
-    <p>By {{ authors | join(", ") }}</p>
-    {% endif %}
-
     {% if published or updated %}
     <p>
       {% if published %}
       Published <time class="js-local-time" datetime="{{ published_raw }}">{{ published }}</time>
+      {% if authors and authors | length > 0 %}
+      <span class="meta-sep"> · </span>
+      <span class="meta-authors">
+        By
+        {% for author in authors %}
+        <span class="author">
+          <span class="author-name">{{ author.name }}</span>
+          {% if author.links and author.links | length > 0 %}
+          <span class="author-links">
+            {% for link in author.links %}
+            <a class="author-link" href="{{ link.href }}" aria-label="{{ link.name }}" title="{{ link.name }}">
+              <img class="author-icon" src="{{ (rel ~ asset_manifest[link.icon]) | safe }}" alt="" width="16" height="16">
+            </a>
+            {% endfor %}
+          </span>
+          {% endif %}
+        </span>{% if not loop.last %}, {% endif %}
+        {% endfor %}
+      </span>
+      {% endif %}
       {% endif %}
       {% if updated %}
       {% if published %} · {% endif %}
@@ -23,13 +39,13 @@
     </p>
     {% endif %}
 
-    {% if tags and tags | length > 0 %}
-    <ul class="tags">
-      {% for tag in tags %}
-      <li>{{ tag }}</li>
-      {% endfor %}
-    </ul>
-    {% endif %}
+  {% if tags and tags | length > 0 %}
+  <ul class="tags">
+    {% for tag in tags %}
+    <li><a class="tag" href="{{ tag.href }}">{{ tag.label }}</a></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   </div>
   {% endif %}
 
@@ -45,13 +61,20 @@
 
   {% if series_nav %}
   <nav class="series-nav">
-    {% if series_nav.prev %}
-    <a href="{{ series_nav.prev.href }}">{{ series_nav.prev.title }}</a>
-    {% endif %}
-    <a href="{{ series_nav.index.href }}">{{ series_nav.index.title }}</a>
-    {% if series_nav.next %}
-    <a href="{{ series_nav.next.href }}">{{ series_nav.next.title }}</a>
-    {% endif %}
+    <div class="series-title">
+      <a href="{{ series_nav.index.href }}">{{ series_nav.index.title }}</a>
+    </div>
+    <ul class="series-parts">
+      {% for part in series_nav.parts %}
+      <li class="series-part{% if part.is_current %} is-current{% endif %}">
+        {% if part.is_current %}
+        <span class="series-current">{{ part.title }}</span>
+        {% else %}
+        <a href="{{ part.href }}">{{ part.title }}</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
   </nav>
   {% endif %}
 

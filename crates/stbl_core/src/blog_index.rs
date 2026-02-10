@@ -502,8 +502,9 @@ mod tests {
     use super::*;
     use crate::header::TemplateId;
     use crate::model::{
-        BlogConfig, BlogPaginationConfig, ImageFormatMode, MacrosConfig, SiteConfig, SiteContent,
-        SiteMeta, ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+        BlogConfig, BlogPaginationConfig, ImageFormatMode, MacrosConfig, SecurityConfig, SiteConfig,
+        SiteContent, SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides,
+        ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use crate::url::UrlMapper;
     use std::path::PathBuf;
@@ -549,6 +550,11 @@ mod tests {
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,
+            },
+            security: SecurityConfig {
+                svg: SvgSecurityConfig {
+                    mode: SvgSecurityMode::Warn,
+                },
             },
             media: crate::model::MediaConfig {
                 images: crate::model::ImageConfig {

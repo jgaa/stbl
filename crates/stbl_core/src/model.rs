@@ -200,6 +200,7 @@ pub struct SiteConfig {
     pub theme: ThemeConfig,
     pub syntax: SyntaxConfig,
     pub assets: AssetsConfig,
+    pub security: SecurityConfig,
     pub media: MediaConfig,
     pub footer: FooterConfig,
     pub people: Option<PeopleConfig>,
@@ -236,6 +237,25 @@ pub struct MacrosConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct AssetsConfig {
     pub cache_busting: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SecurityConfig {
+    pub svg: SvgSecurityConfig,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SvgSecurityConfig {
+    pub mode: SvgSecurityMode,
+}
+
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SvgSecurityMode {
+    Off,
+    Warn,
+    Fail,
+    Sanitize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -1,11 +1,12 @@
 use anyhow::{Context, Result, anyhow, bail};
 use blake3;
 use stbl_core::assets::{AssetIndex, AssetRelPath, AssetSourceId, ResolvedAsset};
-use stbl_core::model::{BuildTask, SiteConfig, TaskKind};
+use stbl_core::model::{BuildTask, SecurityConfig, SiteConfig, SvgSecurityMode, TaskKind};
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
 use stbl_embedded_assets as embedded;
+use xmltree::{Element, XMLNode};
 
 #[derive(Debug, Default, Clone)]
 pub struct AssetSourceLookup {
@@ -133,13 +134,14 @@ pub fn execute_copy_tasks(
     tasks: &[BuildTask],
     out_dir: &Path,
     lookup: &AssetSourceLookup,
+    security: &SecurityConfig,
 ) -> Result<()> {
     for task in tasks {
         if let TaskKind::CopyAsset {
             source, out_rel, ..
         } = &task.kind
         {
-            copy_asset_to_out(out_dir, out_rel, source, lookup)?;
+            copy_asset_to_out(out_dir, out_rel, source, lookup, security)?;
         }
     }
     Ok(())
@@ -150,31 +152,306 @@ pub fn copy_asset_to_out(
     out_rel: &str,
     source: &AssetSourceId,
     lookup: &AssetSourceLookup,
+    security: &SecurityConfig,
 ) -> Result<()> {
     let out_path = out_dir.join(out_rel);
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    match lookup
+    let bytes = match lookup
         .resolve(source)
         .ok_or_else(|| anyhow!("unknown asset source {}", source.0))?
     {
-        AssetSource::File(src_path) => {
-            std::fs::copy(src_path, &out_path).with_context(|| {
-                format!(
-                    "failed to copy {} to {}",
-                    src_path.display(),
-                    out_path.display()
-                )
-            })?;
-        }
-        AssetSource::Embedded(bytes) => {
-            std::fs::write(&out_path, bytes)
-                .with_context(|| format!("failed to write {}", out_path.display()))?;
-        }
+        AssetSource::File(src_path) => std::fs::read(src_path).with_context(|| {
+            format!(
+                "failed to read asset {} for copy to {}",
+                src_path.display(),
+                out_path.display()
+            )
+        })?,
+        AssetSource::Embedded(bytes) => bytes.clone(),
+    };
+    let is_svg = out_rel.to_ascii_lowercase().ends_with(".svg");
+    if is_svg {
+        write_svg_asset(&out_path, out_rel, &bytes, security)?;
+    } else {
+        std::fs::write(&out_path, &bytes)
+            .with_context(|| format!("failed to write {}", out_path.display()))?;
     }
     Ok(())
+}
+
+fn write_svg_asset(
+    out_path: &Path,
+    rel: &str,
+    bytes: &[u8],
+    security: &SecurityConfig,
+) -> Result<()> {
+    match security.svg.mode {
+        SvgSecurityMode::Off => {
+            std::fs::write(out_path, bytes)
+                .with_context(|| format!("failed to write {}", out_path.display()))?;
+            return Ok(());
+        }
+        _ => {}
+    }
+    let text = match std::str::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(err) => {
+            match security.svg.mode {
+                SvgSecurityMode::Fail => {
+                    bail!("svg security: {rel}: invalid UTF-8: {err}");
+                }
+                SvgSecurityMode::Warn | SvgSecurityMode::Sanitize => {
+                    eprintln!("warning: svg security: {rel}: invalid UTF-8: {err}");
+                    std::fs::write(out_path, bytes)
+                        .with_context(|| format!("failed to write {}", out_path.display()))?;
+                    return Ok(());
+                }
+                SvgSecurityMode::Off => unreachable!(),
+            }
+        }
+    };
+    let scan = match scan_svg(text) {
+        Ok(scan) => scan,
+        Err(err) => match security.svg.mode {
+            SvgSecurityMode::Fail => {
+                bail!("svg security: {rel}: failed to scan: {err}");
+            }
+            SvgSecurityMode::Warn | SvgSecurityMode::Sanitize => {
+                eprintln!("warning: svg security: {rel}: failed to scan: {err}");
+                std::fs::write(out_path, bytes)
+                    .with_context(|| format!("failed to write {}", out_path.display()))?;
+                return Ok(());
+            }
+            SvgSecurityMode::Off => unreachable!(),
+        },
+    };
+    if scan.issues.is_empty() {
+        std::fs::write(out_path, bytes)
+            .with_context(|| format!("failed to write {}", out_path.display()))?;
+        return Ok(());
+    }
+    match security.svg.mode {
+        SvgSecurityMode::Warn => {
+            eprintln!(
+                "warning: svg security: {}: {}",
+                rel,
+                format_svg_issues(&scan)
+            );
+            std::fs::write(out_path, bytes)
+                .with_context(|| format!("failed to write {}", out_path.display()))?;
+        }
+        SvgSecurityMode::Fail => {
+            bail!("svg security: {rel}: {}", format_svg_issues(&scan));
+        }
+        SvgSecurityMode::Sanitize => {
+            let sanitized = sanitize_svg_text(text)?;
+            std::fs::write(out_path, sanitized)
+                .with_context(|| format!("failed to write {}", out_path.display()))?;
+        }
+        SvgSecurityMode::Off => {}
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SvgIssueKind {
+    ScriptElement,
+    ForeignObjectElement,
+    UnsafeHref,
+    UnsafeUrl,
+    StyleImport,
+    StyleUrl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SvgIssue {
+    kind: SvgIssueKind,
+    detail: String,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SvgScanResult {
+    issues: Vec<SvgIssue>,
+}
+
+fn scan_svg(text: &str) -> Result<SvgScanResult> {
+    let doc = roxmltree::Document::parse(text)
+        .map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
+    let mut result = SvgScanResult::default();
+    for node in doc.descendants().filter(|node| node.is_element()) {
+        let name = node.tag_name().name();
+        if name.eq_ignore_ascii_case("script") {
+            result.issues.push(SvgIssue {
+                kind: SvgIssueKind::ScriptElement,
+                detail: "script element".to_string(),
+            });
+        }
+        if name.eq_ignore_ascii_case("foreignObject") {
+            result.issues.push(SvgIssue {
+                kind: SvgIssueKind::ForeignObjectElement,
+                detail: "foreignObject element".to_string(),
+            });
+        }
+        for attr in node.attributes() {
+            let value = attr.value();
+            if is_href_attr(attr.name()) && is_unsafe_href_value(value) {
+                result.issues.push(SvgIssue {
+                    kind: SvgIssueKind::UnsafeHref,
+                    detail: format!("unsafe href: {}", value.trim()),
+                });
+            }
+            if has_unsafe_url_func(value) {
+                result.issues.push(SvgIssue {
+                    kind: SvgIssueKind::UnsafeUrl,
+                    detail: format!("unsafe url(): {}", value.trim()),
+                });
+            }
+        }
+        if name.eq_ignore_ascii_case("style") {
+            let mut css_text = String::new();
+            for child in node.children().filter(|child| child.is_text()) {
+                if let Some(text) = child.text() {
+                    css_text.push_str(text);
+                }
+            }
+            let css_lower = css_text.to_ascii_lowercase();
+            if css_lower.contains("@import") {
+                result.issues.push(SvgIssue {
+                    kind: SvgIssueKind::StyleImport,
+                    detail: "style @import".to_string(),
+                });
+            }
+            if has_unsafe_url_func(&css_text) {
+                result.issues.push(SvgIssue {
+                    kind: SvgIssueKind::StyleUrl,
+                    detail: "style url()".to_string(),
+                });
+            }
+        }
+    }
+    Ok(result)
+}
+
+fn sanitize_svg_text(text: &str) -> Result<String> {
+    let mut element = Element::parse(text.as_bytes())
+        .map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
+    sanitize_element(&mut element);
+    let mut out = Vec::new();
+    element
+        .write(&mut out)
+        .map_err(|err| anyhow!("failed to write sanitized SVG: {err}"))?;
+    let sanitized = String::from_utf8(out)
+        .map_err(|err| anyhow!("sanitized SVG is not UTF-8: {err}"))?;
+    Ok(sanitized)
+}
+
+fn sanitize_element(element: &mut Element) {
+    element.attributes.retain(|key, value| {
+        if is_href_attr(key) && is_unsafe_href_value(value) {
+            return false;
+        }
+        !has_unsafe_url_func(value)
+    });
+
+    let mut new_children = Vec::new();
+    for child in element.children.drain(..) {
+        match child {
+            XMLNode::Element(mut child_elem) => {
+                let name = child_elem.name.clone();
+                if name.eq_ignore_ascii_case("script")
+                    || name.eq_ignore_ascii_case("foreignObject")
+                {
+                    continue;
+                }
+                if name.eq_ignore_ascii_case("style") {
+                    sanitize_style_element(&mut child_elem);
+                }
+                sanitize_element(&mut child_elem);
+                new_children.push(XMLNode::Element(child_elem));
+            }
+            XMLNode::Text(text) => new_children.push(XMLNode::Text(text)),
+            other => new_children.push(other),
+        }
+    }
+    element.children = new_children;
+}
+
+fn sanitize_style_element(element: &mut Element) {
+    let mut new_children = Vec::new();
+    for child in element.children.drain(..) {
+        match child {
+            XMLNode::Text(text) => {
+                let cleaned = sanitize_css_text(&text);
+                if !cleaned.trim().is_empty() {
+                    new_children.push(XMLNode::Text(cleaned));
+                }
+            }
+            other => new_children.push(other),
+        }
+    }
+    element.children = new_children;
+}
+
+fn sanitize_css_text(text: &str) -> String {
+    let mut cleaned_lines = Vec::new();
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if lower.contains("@import") {
+            continue;
+        }
+        if has_unsafe_url_func(line) {
+            continue;
+        }
+        cleaned_lines.push(line);
+    }
+    if cleaned_lines.is_empty() {
+        String::new()
+    } else {
+        cleaned_lines.join("\n")
+    }
+}
+
+fn is_href_attr(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower == "href" || lower.ends_with(":href")
+}
+
+fn is_unsafe_href_value(value: &str) -> bool {
+    let trimmed = value.trim().to_ascii_lowercase();
+    trimmed.starts_with("http:")
+        || trimmed.starts_with("https:")
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("data:")
+}
+
+fn has_unsafe_url_func(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    let mut rest = lower.as_str();
+    while let Some(idx) = rest.find("url(") {
+        let after = &rest[idx + 4..];
+        let end = after.find(')');
+        let Some(end) = end else {
+            return true;
+        };
+        let mut inner = after[..end].trim();
+        inner = inner.trim_matches('"').trim_matches('\'').trim();
+        if !inner.starts_with('#') {
+            return true;
+        }
+        rest = &after[end + 1..];
+    }
+    false
+}
+
+fn format_svg_issues(scan: &SvgScanResult) -> String {
+    let mut parts = Vec::new();
+    for issue in &scan.issues {
+        parts.push(issue.detail.clone());
+    }
+    parts.join(", ")
 }
 
 fn add_file_asset(
@@ -257,4 +534,48 @@ fn normalize_rel_path(path: &Path) -> Result<AssetRelPath> {
         bail!("asset rel path must not be empty");
     }
     Ok(AssetRelPath(raw))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{sanitize_svg_text, scan_svg, SvgIssueKind};
+
+    #[test]
+    fn scan_svg_reports_unsafe_features() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+  <script>alert(1)</script>
+  <foreignObject><div>hi</div></foreignObject>
+  <image href="https://example.com/x.png" />
+  <rect style="filter:url(http://evil)" />
+  <style>@import url(http://evil); .a{fill:red;}</style>
+</svg>"#;
+        let result = scan_svg(svg).expect("scan svg");
+        let kinds = result
+            .issues
+            .iter()
+            .map(|issue| issue.kind.clone())
+            .collect::<Vec<_>>();
+        assert!(kinds.contains(&SvgIssueKind::ScriptElement));
+        assert!(kinds.contains(&SvgIssueKind::ForeignObjectElement));
+        assert!(kinds.contains(&SvgIssueKind::UnsafeHref));
+        assert!(kinds.contains(&SvgIssueKind::UnsafeUrl));
+        assert!(kinds.contains(&SvgIssueKind::StyleImport));
+        assert!(kinds.contains(&SvgIssueKind::StyleUrl));
+    }
+
+    #[test]
+    fn sanitize_svg_removes_unsafe_features() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg">
+  <script>alert(1)</script>
+  <foreignObject><div>hi</div></foreignObject>
+  <image href="https://example.com/x.png" />
+  <rect style="filter:url(http://evil)" />
+  <style>@import url(http://evil); .a{fill:red;}</style>
+  <rect fill="url(#safe)" />
+</svg>"#;
+        let sanitized = sanitize_svg_text(svg).expect("sanitize svg");
+        let result = scan_svg(&sanitized).expect("scan sanitized");
+        assert!(result.issues.is_empty(), "issues after sanitize: {:?}", result.issues);
+        assert!(sanitized.contains("url(#safe)"));
+    }
 }

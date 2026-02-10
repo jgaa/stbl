@@ -77,7 +77,7 @@ pub fn build_plan(
                 inputs.push(ContentId::Doc(part.page.id));
             }
         }
-        let outputs = outputs_for_logical_key(&mapper, &logical_key);
+        let outputs = outputs_for_series(&logical_key);
         tasks.push(BuildTask {
             id: id.clone(),
             kind,
@@ -307,6 +307,19 @@ pub fn build_plan(
     BuildPlan { tasks, edges }
 }
 
+fn outputs_for_series(logical_key: &str) -> Vec<OutputArtifact> {
+    let mapping = crate::url::map_series_index(logical_key);
+    let mut outputs = vec![OutputArtifact {
+        path: mapping.primary_output,
+    }];
+    if let Some(fallback) = mapping.fallback {
+        outputs.push(OutputArtifact {
+            path: fallback.from,
+        });
+    }
+    outputs
+}
+
 fn build_plan_hash_context(project: &Project) -> PlanHashContext {
     let render_config_hash = hash_render_config(&project.config);
     let templates_hash = templates_hash();
@@ -335,6 +348,7 @@ struct RenderConfigHash<'a> {
     nav: &'a Vec<crate::model::NavItem>,
     theme: &'a crate::model::ThemeConfig,
     assets: &'a crate::model::AssetsConfig,
+    security: &'a crate::model::SecurityConfig,
     media: &'a crate::model::MediaConfig,
     footer: &'a crate::model::FooterConfig,
     people: &'a Option<crate::model::PeopleConfig>,
@@ -355,6 +369,7 @@ pub fn hash_render_config(cfg: &crate::model::SiteConfig) -> [u8; 32] {
         nav: &cfg.nav,
         theme: &cfg.theme,
         assets: &cfg.assets,
+        security: &cfg.security,
         media: &cfg.media,
         footer: &cfg.footer,
         people: &cfg.people,
@@ -377,6 +392,13 @@ fn published_pages_by_path(project: &Project) -> Vec<&crate::model::Page> {
         .iter()
         .filter(|page| crate::visibility::is_published_page(page))
         .collect();
+    for series in &project.content.series {
+        for part in &series.parts {
+            if crate::visibility::is_published_page(&part.page) {
+                pages.push(&part.page);
+            }
+        }
+    }
     pages.sort_by(|a, b| a.source_path.cmp(&b.source_path));
     pages
 }

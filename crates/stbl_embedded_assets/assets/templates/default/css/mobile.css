@@ -2,14 +2,15 @@
 .nav-desktop { display: none; }
 .nav-mobile { display: block; }
 
+/* Keep header light in mobile */
 header {
-  background: var(--c-nav-bg);
-  color: var(--c-nav-fg);
-  border-bottom: 1px solid var(--c-nav-border);
+  background: var(--c-bg);
+  color: var(--c-fg);
+  border-bottom: 1px solid var(--c-border);
+  position: relative;
 }
-
-header a { color: var(--c-nav-fg); }
-header a:hover { color: var(--c-nav-fg); }
+header a { color: inherit; }
+header a:hover { color: inherit; }
 
 .nav-mobile details.menu > summary {
   cursor: pointer;
@@ -22,23 +23,47 @@ header a:hover { color: var(--c-nav-fg); }
   border: 1px solid var(--c-nav-border);
 }
 
+/* Ensure overlay is NEVER visible unless details is open */
+.nav-mobile details.menu .menu-overlay {
+  display: none;
+}
 .nav-mobile details.menu[open] .menu-overlay {
-  position: fixed;
-  inset: 0;
-  padding: 4rem 1.25rem 1.25rem;
-  overflow: auto;
+  display: block;
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+
   z-index: 999;
   background: var(--c-bg);
-  color: var(--c-nav-fg);
+  color: var(--c-fg);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.5rem;
 }
 
 .nav-mobile .menu-overlay ul {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: block;
+}
+
+.nav-mobile .menu-overlay li + li {
+  border-top: 1px solid var(--c-border);
 }
 
 .nav-mobile .menu-overlay a {
-  font-size: 1.25rem;
-  color: var(--c-nav-fg);
+  display: block;
+  padding: 0.9rem 0.75rem;
+  font-size: 1.1rem;
+  text-decoration: none;
+  color: var(--c-link);
+}
+.nav-mobile .menu-overlay a:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--c-link-hover);
 }

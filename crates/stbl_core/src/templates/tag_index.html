@@ -3,9 +3,52 @@
 {% block content %}
   <h1>{{ page_title }}</h1>
 
-  <ul class="post-list">
-  {% for item in items %}
-    {% include "partials/list_item.html" %}
-  {% endfor %}
-  </ul>
+  <div class="blog-index-layout">
+    <div class="blog-index-main">
+      <ul class="post-list">
+      {% for item in items %}
+        {% include "partials/list_item.html" %}
+      {% endfor %}
+      </ul>
+    </div>
+
+    {% if tag_links and tag_links | length > 0 %}
+    <aside class="blog-index-tags" aria-label="Tags">
+      <details class="tag-panel" data-expand-desktop>
+        <summary class="tag-panel-toggle">
+          <span class="tag-panel-icon" aria-hidden="true"></span>
+          <span class="tag-panel-label">Tags</span>
+        </summary>
+        <div class="tag-panel-body">
+          <ul class="tags">
+          {% for tag in tag_links %}
+            <li><a class="tag" href="{{ tag.href }}">{{ tag.label }}</a></li>
+          {% endfor %}
+          </ul>
+        </div>
+      </details>
+    </aside>
+    {% endif %}
+  </div>
+
+  <script>
+    (function () {
+      var details = document.querySelector('.blog-index-tags details[data-expand-desktop]');
+      if (!details) return;
+      var mql = window.matchMedia('(min-width: 768px)');
+      function syncOpen() {
+        if (mql.matches) {
+          details.open = true;
+        } else {
+          details.open = false;
+        }
+      }
+      if (mql.addEventListener) {
+        mql.addEventListener('change', syncOpen);
+      } else if (mql.addListener) {
+        mql.addListener(syncOpen);
+      }
+      syncOpen();
+    })();
+  </script>
 {% endblock %}

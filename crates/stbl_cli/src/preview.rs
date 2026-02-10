@@ -175,7 +175,10 @@ fn handle_request(
         }
     };
 
-    let full_path = out_dir.join(&rel_path);
+    let mut full_path = out_dir.join(&rel_path);
+    if full_path.is_dir() {
+        full_path = full_path.join(index);
+    }
     if !full_path.exists() || full_path.is_dir() {
         return Ok(Response::from_string("Not Found")
             .with_status_code(StatusCode(404))

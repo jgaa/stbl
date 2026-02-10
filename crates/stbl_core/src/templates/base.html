@@ -97,5 +97,21 @@
       }
     })();
   </script>
+  <script>
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest(".nav-mobile details.menu[open] .menu-overlay a");
+      if (!a) return;
+      var details = e.target.closest("details.menu");
+      if (details) details.removeAttribute("open");
+    });
+  </script>
+  <script>
+    document.addEventListener("click", function (e) {
+      var openMenu = document.querySelector(".nav-mobile details.menu[open]");
+      if (!openMenu) return;
+      if (openMenu.contains(e.target)) return;
+      openMenu.removeAttribute("open");
+    });
+  </script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 use crate::blog_index::{collect_tag_list, iter_visible_posts};
 use crate::model::{Page, Project};
-use crate::url::{UrlMapper, logical_key_from_source_path};
+use crate::url::{UrlMapper, logical_key_from_source_path, map_series_index};
 use chrono::{DateTime, Duration, Utc};
 pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let rss_config = match project.config.rss.as_ref() {
@@ -17,7 +17,13 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let mut items: Vec<FeedItem> = collect_feed_pages(project)
         .into_iter()
         .filter_map(|feed_page| {
-            FeedItem::from_page(project, mapper, feed_page.page, &feed_page.logical_key)
+            FeedItem::from_page(
+                project,
+                mapper,
+                feed_page.page,
+                &feed_page.logical_key,
+                feed_page.force_pretty,
+            )
         })
         .filter(|item| {
             cutoff
@@ -80,8 +86,12 @@ pub fn render_sitemap(project: &Project, mapper: &UrlMapper) -> String {
             .updated
             .or(feed_page.page.header.published)
             .and_then(|value| DateTime::<Utc>::from_timestamp(value, 0));
-        if let Some(entry) = sitemap_entry_for_key(project, mapper, &feed_page.logical_key, lastmod)
-        {
+        let entry = if feed_page.force_pretty {
+            sitemap_entry_for_mapping(project, &map_series_index(&feed_page.logical_key), lastmod)
+        } else {
+            sitemap_entry_for_key(project, mapper, &feed_page.logical_key, lastmod)
+        };
+        if let Some(entry) = entry {
             entries.push(entry);
         }
     }
@@ -111,6 +121,7 @@ pub fn render_sitemap(project: &Project, mapper: &UrlMapper) -> String {
 struct FeedPage<'a> {
     page: &'a Page,
     logical_key: String,
+    force_pretty: bool,
 }
 
 fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
@@ -119,6 +130,7 @@ fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
         pages.push(FeedPage {
             page,
             logical_key: logical_key_from_source_path(&page.source_path),
+            force_pretty: false,
         });
     }
     for series in &project.content.series {
@@ -126,6 +138,7 @@ fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
             pages.push(FeedPage {
                 page: &series.index,
                 logical_key: logical_key_from_source_path(&series.dir_path),
+                force_pretty: true,
             });
         }
         for part in &series.parts {
@@ -133,6 +146,7 @@ fn collect_feed_pages(project: &Project) -> Vec<FeedPage<'_>> {
                 pages.push(FeedPage {
                     page: &part.page,
                     logical_key: logical_key_from_source_path(&part.page.source_path),
+                    force_pretty: false,
                 });
             }
         }
@@ -176,6 +190,7 @@ impl FeedItem {
         mapper: &UrlMapper,
         page: &Page,
         logical_key: &str,
+        force_pretty: bool,
     ) -> Option<Self> {
         if !crate::visibility::is_published_page(page) {
             return None;
@@ -190,7 +205,11 @@ impl FeedItem {
             .title
             .clone()
             .unwrap_or_else(|| "Untitled".to_string());
-        let href = mapper.map(logical_key).href;
+        let href = if force_pretty {
+            map_series_index(logical_key).href
+        } else {
+            mapper.map(logical_key).href
+        };
         let link = base_url_join(&project.config.site.base_url, &href);
         let pub_date = published.to_rfc2822();
         let description = page.header.abstract_text.clone().unwrap_or_default();
@@ -223,6 +242,16 @@ fn sitemap_entry_for_key(
     Some(SitemapEntry { loc, lastmod })
 }
 
+fn sitemap_entry_for_mapping(
+    project: &Project,
+    mapping: &crate::url::UrlMapping,
+    lastmod: Option<DateTime<Utc>>,
+) -> Option<SitemapEntry> {
+    let loc = base_url_join(&project.config.site.base_url, &mapping.href);
+    let lastmod = lastmod.map(|value| value.to_rfc3339());
+    Some(SitemapEntry { loc, lastmod })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,8 +259,9 @@ mod tests {
     use crate::config::load_site_config;
     use crate::header::UnknownKeyPolicy;
     use crate::model::{
-        ImageFormatMode, MacrosConfig, Page, Project, SiteConfig, SiteContent, SiteMeta,
-        ThemeColorOverrides, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
+        ImageFormatMode, MacrosConfig, Page, Project, SecurityConfig, SiteConfig, SiteContent,
+        SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides, ThemeNavOverrides,
+        ThemeWideBackgroundOverrides, UrlStyle,
     };
     use std::path::{Path, PathBuf};
     use std::time::SystemTime;
@@ -343,6 +373,11 @@ mod tests {
             },
             assets: crate::model::AssetsConfig {
                 cache_busting: false,
+            },
+            security: SecurityConfig {
+                svg: SvgSecurityConfig {
+                    mode: SvgSecurityMode::Warn,
+                },
             },
             media: crate::model::MediaConfig {
                 images: crate::model::ImageConfig {

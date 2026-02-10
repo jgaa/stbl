@@ -3,7 +3,7 @@ use stbl_core::config::load_site_config;
 use stbl_core::header::Header;
 use stbl_core::model::{DocId, Page, Project, SiteContent};
 use stbl_core::templates::{
-    BlogIndexItem, SeriesIndexPart, SeriesNavLink, SeriesNavView, TagListingPage,
+    BlogIndexItem, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView, TagListingPage,
     render_blog_index, render_page, render_page_with_series_nav, render_series_index,
     render_tag_index,
 };
@@ -108,15 +108,22 @@ fn envelope_series_part_has_chrome_regions_and_single_h1() {
     let (project, site_title) = project_with_config(default_config());
     let page = simple_page("Series Part", "articles/series/part1.md");
     let nav = SeriesNavView {
-        prev: None,
         index: SeriesNavLink {
             title: "Series Alpha".to_string(),
             href: "series.html".to_string(),
         },
-        next: Some(SeriesNavLink {
-            title: "Part 2".to_string(),
-            href: "series/part2.html".to_string(),
-        }),
+        parts: vec![
+            SeriesNavEntry {
+                title: "Part 1".to_string(),
+                href: "series/part1.html".to_string(),
+                is_current: true,
+            },
+            SeriesNavEntry {
+                title: "Part 2".to_string(),
+                href: "series/part2.html".to_string(),
+                is_current: false,
+            },
+        ],
     };
     let html = render_page_with_series_nav(
         &project,

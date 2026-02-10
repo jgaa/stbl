@@ -7,10 +7,10 @@ use serde::Deserialize;
 
 use crate::model::{
     AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuAlign,
-    MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SeoConfig, SiteConfig,
-    SiteMeta, SyntaxConfig, SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeConfig,
-    ThemeHeaderConfig, ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
-    VideoConfig, WideBackgroundStyle,
+    MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SecurityConfig,
+    SeoConfig, SiteConfig, SiteMeta, SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, SystemConfig,
+    ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeHeaderConfig, ThemeHeaderLayout,
+    ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig, WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +22,7 @@ struct SiteConfigRaw {
     theme: Option<ThemeConfigRaw>,
     syntax: Option<SyntaxConfigRaw>,
     assets: Option<AssetsConfigRaw>,
+    security: Option<SecurityConfigRaw>,
     media: Option<MediaConfigRaw>,
     footer: Option<FooterConfigRaw>,
     people: Option<PeopleConfigRaw>,
@@ -72,6 +73,16 @@ struct SyntaxConfigRaw {
 #[derive(Debug, Deserialize)]
 struct AssetsConfigRaw {
     cache_busting: Option<bool>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SecurityConfigRaw {
+    svg: Option<SvgSecurityConfigRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SvgSecurityConfigRaw {
+    mode: Option<SvgSecurityMode>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -568,6 +579,17 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         }
     };
 
+    let security = SecurityConfig {
+        svg: SvgSecurityConfig {
+            mode: parsed
+                .security
+                .as_ref()
+                .and_then(|security| security.svg.as_ref())
+                .and_then(|svg| svg.mode)
+                .unwrap_or(SvgSecurityMode::Warn),
+        },
+    };
+
     let media = MediaConfig {
         images: ImageConfig {
             widths: parsed
@@ -619,6 +641,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                 .and_then(|assets| assets.cache_busting)
                 .unwrap_or(false),
         },
+        security,
         media,
         footer: FooterConfig {
             show_stbl: parsed
@@ -794,6 +817,27 @@ mod tests {
         );
         let config = load_site_config(&path).expect("config should load");
         assert_eq!(config.syntax.theme, "GitHub");
+    }
+
+    #[test]
+    fn security_svg_defaults_to_warn() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.security.svg.mode, crate::model::SvgSecurityMode::Warn);
+    }
+
+    #[test]
+    fn security_svg_mode_parses() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nsecurity:\n  svg:\n    mode: \"sanitize\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(
+            config.security.svg.mode,
+            crate::model::SvgSecurityMode::Sanitize
+        );
     }
 
     #[test]

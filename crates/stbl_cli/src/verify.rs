@@ -639,6 +639,7 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
         "menu",
         "theme",
         "assets",
+        "security",
         "media",
         "footer",
         "people",
@@ -666,6 +667,7 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
             "menu" => warn_unknown_list_entries(value, report, path, "menu", &["title", "href"]),
             "theme" => warn_unknown_theme_entries(value, report, path),
             "assets" => warn_unknown_entries(value, report, path, "assets", &["cache_busting"]),
+            "security" => warn_unknown_security_entries(value, report, path),
             "media" => warn_unknown_media_entries(value, report, path),
             "footer" => warn_unknown_entries(value, report, path, "footer", &["show_stbl"]),
             "people" => warn_unknown_people_entries(value, report, path),
@@ -676,6 +678,15 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
             "seo" => warn_unknown_seo_entries(value, report, path),
             "comments" | "chroma" | "plyr" => {}
             _ => {}
+        }
+    }
+}
+
+fn warn_unknown_security_entries(value: &Value, report: &mut Report, path: &str) {
+    warn_unknown_entries(value, report, path, "security", &["svg"]);
+    if let Some(map) = value.as_mapping() {
+        if let Some(svg) = map.get(&Value::String("svg".to_string())) {
+            warn_unknown_entries(svg, report, path, "security.svg", &["mode"]);
         }
     }
 }

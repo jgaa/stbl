@@ -124,7 +124,7 @@ people:
         - id: "website"
           name: "John Doe"
           url: "https://example.com/"
-          icon: "icons/website.svg"
+          icon: "icons/website.svg" # optional override for auto-selected icon
 
 system:
   date:
@@ -227,6 +227,21 @@ Controls fenced code block highlighting and styling.
 
 ---
 
+### security.svg
+
+Controls SVG safety checks during asset copy.
+
+`security.svg.mode`
+
+* Type: string (`off`, `warn`, `fail`, `sanitize`)
+* Default: `warn`
+* `off`: copy SVGs unchanged without scanning
+* `warn`: log warnings and copy unchanged
+* `fail`: abort build if unsafe SVG content is detected
+* `sanitize`: rewrite SVGs into a safer subset before copying
+
+---
+
 ## RSS rules
 
 * RSS is generated only if `rss.enabled: true`
@@ -282,15 +297,19 @@ people:
         - id: "e-mail"
           name: "jdoe"
           url: "mailto:jdoe@example.com"
-          icon: "{{rel}}artifacts/feather/mail.svg"
+          icon: "{{rel}}artifacts/feather/mail.svg" # optional override
         - id: "github"
           name: "jgaa"
           url: "https://github.com/john.doe"
-          icon: "{{rel}}artifacts/feather/github.svg"
+          icon: "{{rel}}artifacts/feather/github.svg" # optional override
         - id: "linkedin"
           name: "Jarle Aase"
           url: "https://www.linkedin.com/in/john.doe"
-          icon: "{{rel}}artifacts/li123.svg"
+          icon: "{{rel}}artifacts/li123.svg" # optional override
+
+security:
+  svg:
+    mode: "warn" # off | warn | fail | sanitize
 
 system:
   date:

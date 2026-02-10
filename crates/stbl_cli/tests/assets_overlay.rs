@@ -4,6 +4,7 @@ use std::path::Path;
 use blake3::hash;
 use stbl_cli::assets::{discover_assets, execute_copy_tasks};
 use stbl_core::assets::plan_assets;
+use stbl_core::model::{SecurityConfig, SvgSecurityConfig, SvgSecurityMode};
 use tempfile::TempDir;
 
 #[test]
@@ -18,7 +19,12 @@ fn site_assets_override_theme_assets() {
     let (asset_index, lookup) = discover_assets(&site_root).expect("discover assets");
     let (tasks, _manifest) =
         plan_assets(&asset_index, false, blake3::hash(b"config").into());
-    execute_copy_tasks(&tasks, &out_dir, &lookup).expect("copy assets");
+    let security = SecurityConfig {
+        svg: SvgSecurityConfig {
+            mode: SvgSecurityMode::Off,
+        },
+    };
+    execute_copy_tasks(&tasks, &out_dir, &lookup, &security).expect("copy assets");
 
     let css = fs::read_to_string(out_dir.join("artifacts/css/common.css")).expect("read css");
     assert_eq!(css, "site");
@@ -37,7 +43,12 @@ fn cache_busting_emits_hashed_filenames() {
     let (asset_index, lookup) = discover_assets(&site_root).expect("discover assets");
     let (tasks, _manifest) =
         plan_assets(&asset_index, true, blake3::hash(b"config").into());
-    execute_copy_tasks(&tasks, &out_dir, &lookup).expect("copy assets");
+    let security = SecurityConfig {
+        svg: SvgSecurityConfig {
+            mode: SvgSecurityMode::Off,
+        },
+    };
+    execute_copy_tasks(&tasks, &out_dir, &lookup, &security).expect("copy assets");
 
     let css_dir = out_dir.join("artifacts/css");
     let entries = fs::read_dir(&css_dir).expect("read css dir");

@@ -15,48 +15,91 @@
   {{ intro_html | safe }}
   {% endif %}
 
-  <h2>Articles</h2>
+  <div class="blog-index-layout">
+    <div class="blog-index-main">
+      <h2>Articles</h2>
 
-  {% if total_pages > 1 %}
-  <div class="pager-meta">Page {{ page_no }} of {{ total_pages }}</div>
-  {% endif %}
-
-  <ul class="post-list">
-  {% for item in items %}
-    {% include "partials/list_item.html" %}
-  {% endfor %}
-  </ul>
-
-  {% if prev_href or next_href or first_href or last_href %}
-  <nav class="pager">
-    <div class="pager-group pager-left">
-      {% if first_href %}
-      <a class="pager-link pager-first" href="{{ first_href }}">
-        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-left.svg"]) | safe }}" alt="" width="16" height="16">
-        <span>First</span>
-      </a>
+      {% if total_pages > 1 %}
+      <div class="pager-meta">Page {{ page_no }} of {{ total_pages }}</div>
       {% endif %}
-      {% if prev_href %}
-      <a class="pager-link pager-newer" href="{{ prev_href }}">
-        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-left.svg"]) | safe }}" alt="" width="16" height="16">
-        <span>Newer</span>
-      </a>
+
+      <ul class="post-list">
+      {% for item in items %}
+        {% include "partials/list_item.html" %}
+      {% endfor %}
+      </ul>
+
+      {% if prev_href or next_href or first_href or last_href %}
+      <nav class="pager">
+        <div class="pager-group pager-left">
+          {% if first_href %}
+          <a class="pager-link pager-first" href="{{ first_href }}">
+            <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-left.svg"]) | safe }}" alt="" width="16" height="16">
+            <span>First</span>
+          </a>
+          {% endif %}
+          {% if prev_href %}
+          <a class="pager-link pager-newer" href="{{ prev_href }}">
+            <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-left.svg"]) | safe }}" alt="" width="16" height="16">
+            <span>Newer</span>
+          </a>
+          {% endif %}
+        </div>
+        <div class="pager-group pager-right">
+          {% if next_href %}
+          <a class="pager-link pager-older" href="{{ next_href }}">
+            <span>Older</span>
+            <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-right.svg"]) | safe }}" alt="" width="16" height="16">
+          </a>
+          {% endif %}
+          {% if last_href %}
+          <a class="pager-link pager-last" href="{{ last_href }}">
+            <span>Last</span>
+            <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-right.svg"]) | safe }}" alt="" width="16" height="16">
+          </a>
+          {% endif %}
+        </div>
+      </nav>
       {% endif %}
     </div>
-    <div class="pager-group pager-right">
-      {% if next_href %}
-      <a class="pager-link pager-older" href="{{ next_href }}">
-        <span>Older</span>
-        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/arrow-right.svg"]) | safe }}" alt="" width="16" height="16">
-      </a>
-      {% endif %}
-      {% if last_href %}
-      <a class="pager-link pager-last" href="{{ last_href }}">
-        <span>Last</span>
-        <img class="pager-icon" src="{{ (rel ~ asset_manifest["icons/chevrons-right.svg"]) | safe }}" alt="" width="16" height="16">
-      </a>
-      {% endif %}
-    </div>
-  </nav>
-  {% endif %}
+
+    {% if tag_links and tag_links | length > 0 %}
+    <aside class="blog-index-tags" aria-label="Tags">
+      <details class="tag-panel" data-expand-desktop>
+        <summary class="tag-panel-toggle">
+          <span class="tag-panel-icon" aria-hidden="true"></span>
+          <span class="tag-panel-label">Tags</span>
+        </summary>
+        <div class="tag-panel-body">
+          <ul class="tags">
+          {% for tag in tag_links %}
+            <li><a class="tag" href="{{ tag.href }}">{{ tag.label }}</a></li>
+          {% endfor %}
+          </ul>
+        </div>
+      </details>
+    </aside>
+    {% endif %}
+  </div>
+
+  <script>
+    (function () {
+      var details = document.querySelector('.blog-index-tags details[data-expand-desktop]');
+      if (!details) return;
+      var mql = window.matchMedia('(min-width: 768px)');
+      function syncOpen() {
+        if (mql.matches) {
+          details.open = true;
+        } else {
+          details.open = false;
+        }
+      }
+      if (mql.addEventListener) {
+        mql.addEventListener('change', syncOpen);
+      } else if (mql.addListener) {
+        mql.addListener(syncOpen);
+      }
+      syncOpen();
+    })();
+  </script>
 {% endblock %}
