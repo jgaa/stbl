@@ -629,6 +629,7 @@ mod tests {
                     tagline_size: "1rem".to_string(),
                 },
                 wide_background: ThemeWideBackgroundOverrides::default(),
+                color_scheme: None,
             },
             syntax: crate::model::SyntaxConfig {
                 highlight: true,

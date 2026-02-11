@@ -9,8 +9,9 @@ use crate::model::{
     AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuAlign,
     MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SecurityConfig,
     SeoConfig, SiteConfig, SiteMeta, SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, SystemConfig,
-    ThemeBreakpoints, ThemeColorOverrides, ThemeConfig, ThemeHeaderConfig, ThemeHeaderLayout,
-    ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig, WideBackgroundStyle,
+    ThemeBreakpoints, ThemeColorOverrides, ThemeColorScheme, ThemeConfig, ThemeHeaderConfig,
+    ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig,
+    WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -101,6 +102,7 @@ struct ThemeConfigRaw {
     nav: Option<ThemeNavRaw>,
     header: Option<ThemeHeaderRaw>,
     wide_background: Option<ThemeWideBackgroundRaw>,
+    color_scheme: Option<ThemeColorScheme>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -552,6 +554,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                 .map(validate_opacity)
                 .transpose()?,
         },
+        color_scheme: theme_raw.and_then(|theme| theme.color_scheme.clone()),
     };
 
     let syntax = {

@@ -236,11 +236,27 @@ pre, code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
-code {
-  background: var(--c-surface);
-  color: var(--c-fg);
-  padding: 0.1rem 0.25rem;
-  border-radius: 0.25rem;
+/* Inline code only (expanded) */
+p code,
+li code,
+td code,
+th code,
+blockquote code,
+h1 code, h2 code, h3 code, h4 code, h5 code, h6 code {
+  background: var(--c-quote-bg);
+  color: var(--c-accent);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+}
+
+pre .code-line::before {
+  color: color-mix(in srgb, var(--c-code-fg) 45%, var(--c-code-bg));
+}
+
+pre code {
+  color: var(--c-code-fg);
+  background: none;
+  padding: 0;
 }
 
 pre {

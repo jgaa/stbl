@@ -314,6 +314,7 @@ pub struct ThemeConfig {
     pub nav: ThemeNavOverrides,
     pub header: ThemeHeaderConfig,
     pub wide_background: ThemeWideBackgroundOverrides,
+    pub color_scheme: Option<ThemeColorScheme>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -395,6 +396,38 @@ pub struct ThemeWideBackgroundOverrides {
     pub style: Option<WideBackgroundStyle>,
     pub position: Option<String>,
     pub opacity: Option<f32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeColorSchemeMode {
+    Auto,
+    Light,
+    Dark,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeColorSchemeSource {
+    Preset,
+    Derived,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ThemeColorSchemeBase {
+    pub bg: Option<String>,
+    pub fg: Option<String>,
+    pub accent: Option<String>,
+    pub link: Option<String>,
+    pub heading: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ThemeColorScheme {
+    pub name: Option<String>,
+    pub mode: Option<ThemeColorSchemeMode>,
+    pub source: Option<ThemeColorSchemeSource>,
+    pub base: Option<ThemeColorSchemeBase>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

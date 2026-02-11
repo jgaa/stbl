@@ -1,4 +1,6 @@
 mod assets;
+mod color_presets;
+mod color_derive;
 mod config_loader;
 mod exec;
 mod init;
@@ -13,12 +15,17 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand, ValueEnum};
+use serde_yaml::{Mapping, Value};
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::config::load_site_config;
 use stbl_core::header::UnknownKeyPolicy;
+use stbl_core::model::{
+    ThemeColorScheme, ThemeColorSchemeBase, ThemeColorSchemeMode, ThemeColorSchemeSource,
+    ThemeWideBackgroundOverrides, WideBackgroundStyle,
+};
 use stbl_core::model::DiagnosticLevel;
 use std::process::Command as ProcessCommand;
 use walkdir::WalkDir;
@@ -60,6 +67,23 @@ enum InitKindArg {
     Blog,
     #[value(name = "landing-page")]
     LandingPage,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum ApplyColorsModeArg {
+    Auto,
+    Light,
+    Dark,
+}
+
+impl From<ApplyColorsModeArg> for ThemeColorSchemeMode {
+    fn from(value: ApplyColorsModeArg) -> Self {
+        match value {
+            ApplyColorsModeArg::Auto => ThemeColorSchemeMode::Auto,
+            ApplyColorsModeArg::Light => ThemeColorSchemeMode::Light,
+            ApplyColorsModeArg::Dark => ThemeColorSchemeMode::Dark,
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -135,9 +159,37 @@ enum Command {
         language: String,
         #[arg(long, value_enum, default_value = "blog")]
         kind: InitKindArg,
+        #[arg(long, value_name = "NAME")]
+        color_theme: Option<String>,
         #[arg(long)]
         copy_all: bool,
         target_dir: Option<PathBuf>,
+    },
+    #[command(about = "Apply a named color preset to theme colors.")]
+    ApplyColors {
+        name: Option<String>,
+        #[arg(long)]
+        list_presets: bool,
+        #[arg(long)]
+        from_base: bool,
+        #[arg(long)]
+        bg: Option<String>,
+        #[arg(long)]
+        fg: Option<String>,
+        #[arg(long)]
+        accent: Option<String>,
+        #[arg(long)]
+        link: Option<String>,
+        #[arg(long)]
+        heading: Option<String>,
+        #[arg(long, value_enum, default_value = "auto")]
+        mode: ApplyColorsModeArg,
+        #[arg(long, value_name = "HEX")]
+        brand: Vec<String>,
+        #[arg(long)]
+        dry_run: bool,
+        #[arg(long)]
+        backup: bool,
     },
 }
 
@@ -196,9 +248,46 @@ fn main() -> Result<()> {
             url,
             language,
             kind,
+            color_theme,
             copy_all,
             target_dir,
-        } => run_init(title, url, language, *kind, *copy_all, target_dir.as_ref()),
+        } => run_init(
+            title,
+            url,
+            language,
+            *kind,
+            color_theme.as_ref(),
+            *copy_all,
+            target_dir.as_ref(),
+        ),
+        Command::ApplyColors {
+            name,
+            list_presets,
+            from_base,
+            bg,
+            fg,
+            accent,
+            link,
+            heading,
+            mode,
+            brand,
+            dry_run,
+            backup,
+        } => run_apply_colors(
+            &cli,
+            name.as_ref(),
+            *list_presets,
+            *from_base,
+            bg.as_ref(),
+            fg.as_ref(),
+            accent.as_ref(),
+            link.as_ref(),
+            heading.as_ref(),
+            *mode,
+            brand,
+            *dry_run,
+            *backup,
+        ),
     }
 }
 
@@ -589,6 +678,7 @@ fn run_init(
     url: &str,
     language: &str,
     kind: InitKindArg,
+    color_theme: Option<&String>,
     copy_all: bool,
     target_dir: Option<&PathBuf>,
 ) -> Result<()> {
@@ -600,14 +690,239 @@ fn run_init(
         InitKindArg::Blog => crate::init::InitKind::Blog,
         InitKindArg::LandingPage => crate::init::InitKind::LandingPage,
     };
+    if let Some(theme) = color_theme {
+        let presets = color_presets::load_color_presets()?;
+        if !presets.contains_key(theme) {
+            bail!("unknown color preset '{theme}' (use apply-colors --list-presets)");
+        }
+    }
     crate::init::init_site(crate::init::InitOptions {
         title: title.to_string(),
         base_url: url.to_string(),
         language: language.to_string(),
         kind,
+        color_theme: color_theme.cloned(),
         copy_all,
         target_dir,
     })
+}
+
+fn run_apply_colors(
+    cli: &Cli,
+    name: Option<&String>,
+    list_presets: bool,
+    from_base: bool,
+    bg: Option<&String>,
+    fg: Option<&String>,
+    accent: Option<&String>,
+    link: Option<&String>,
+    heading: Option<&String>,
+    mode: ApplyColorsModeArg,
+    brand: &Vec<String>,
+    dry_run: bool,
+    backup: bool,
+) -> Result<()> {
+    let presets = color_presets::load_color_presets()?;
+    if list_presets {
+        for preset in presets.keys() {
+            println!("{preset}");
+        }
+        return Ok(());
+    }
+    if from_base {
+        if name.is_some() {
+            bail!("cannot combine preset name with --from-base");
+        }
+        let bg = bg.ok_or_else(|| anyhow::anyhow!("--bg is required with --from-base"))?;
+        let accent = accent.ok_or_else(|| anyhow::anyhow!("--accent is required with --from-base"))?;
+        let derived = color_derive::derive_from_base(color_derive::BaseColorsInput {
+            bg: bg.to_string(),
+            fg: fg.cloned(),
+            accent: accent.to_string(),
+            link: link.cloned(),
+            heading: heading.cloned(),
+            mode: mode.into(),
+            brand: brand.clone(),
+        })?;
+        let root = root_dir(cli)?;
+        let config_path = root.join("stbl.yaml");
+        if !config_path.exists() {
+            bail!("missing stbl.yaml in {}", root.display());
+        }
+        let raw = fs::read_to_string(&config_path)
+            .with_context(|| format!("failed to read {}", config_path.display()))?;
+        let mut doc: Value =
+            serde_yaml::from_str(&raw).with_context(|| "failed to parse stbl.yaml")?;
+        apply_derived_to_yaml(&mut doc, &derived)?;
+        let mut yaml = serde_yaml::to_string(&doc).context("failed to serialize stbl.yaml")?;
+        if !yaml.ends_with('\n') {
+            yaml.push('\n');
+        }
+        if dry_run {
+            print!("{yaml}");
+        } else {
+            if backup {
+                let backup_path = config_path.with_extension("yaml.bak");
+                fs::copy(&config_path, &backup_path)
+                    .with_context(|| format!("failed to write {}", backup_path.display()))?;
+            }
+            fs::write(&config_path, yaml)
+                .with_context(|| format!("failed to write {}", config_path.display()))?;
+            println!("updated {}", config_path.display());
+        }
+        return Ok(());
+    }
+
+    let Some(name) = name else {
+        bail!("missing preset name (use --list-presets to see options)");
+    };
+    let preset = presets
+        .get(name)
+        .ok_or_else(|| anyhow::anyhow!("unknown preset '{name}' (use --list-presets)"))?;
+    color_presets::validate_preset(name, preset)?;
+    let root = root_dir(cli)?;
+    let config_path = root.join("stbl.yaml");
+    if !config_path.exists() {
+        bail!("missing stbl.yaml in {}", root.display());
+    }
+    let raw = fs::read_to_string(&config_path)
+        .with_context(|| format!("failed to read {}", config_path.display()))?;
+    let mut doc: Value =
+        serde_yaml::from_str(&raw).with_context(|| "failed to parse stbl.yaml")?;
+    apply_preset_to_yaml(&mut doc, name, preset)?;
+    let mut yaml = serde_yaml::to_string(&doc).context("failed to serialize stbl.yaml")?;
+    if !yaml.ends_with('\n') {
+        yaml.push('\n');
+    }
+    if dry_run {
+        print!("{yaml}");
+    } else {
+        if backup {
+            let backup_path = config_path.with_extension("yaml.bak");
+            fs::copy(&config_path, &backup_path)
+                .with_context(|| format!("failed to write {}", backup_path.display()))?;
+        }
+        fs::write(&config_path, yaml)
+            .with_context(|| format!("failed to write {}", config_path.display()))?;
+        println!("updated {}", config_path.display());
+    }
+    Ok(())
+}
+
+fn apply_preset_to_yaml(
+    doc: &mut Value,
+    name: &str,
+    preset: &color_presets::ColorPreset,
+) -> Result<()> {
+    let root = ensure_mapping(doc, "stbl.yaml root")?;
+    let theme_value = root
+        .entry(Value::String("theme".to_string()))
+        .or_insert_with(|| Value::Mapping(Mapping::new()));
+    let theme = ensure_mapping(theme_value, "theme")?;
+
+    let colors_value = serde_yaml::to_value(&preset.colors).context("failed to serialize colors")?;
+    theme.insert(Value::String("colors".to_string()), colors_value);
+
+    let nav_value = serde_yaml::to_value(&preset.nav).context("failed to serialize nav colors")?;
+    theme.insert(Value::String("nav".to_string()), nav_value);
+
+    if let Some(wide) = preset.wide_background.as_ref() {
+        let wide_value = wide_background_to_value(wide)?;
+        theme.insert(Value::String("wide_background".to_string()), wide_value);
+    }
+
+    let mut scheme = Mapping::new();
+    scheme.insert(
+        Value::String("name".to_string()),
+        Value::String(name.to_string()),
+    );
+    scheme.insert(
+        Value::String("source".to_string()),
+        Value::String("preset".to_string()),
+    );
+    scheme.insert(
+        Value::String("mode".to_string()),
+        Value::String("auto".to_string()),
+    );
+    theme.insert(
+        Value::String("color_scheme".to_string()),
+        Value::Mapping(scheme),
+    );
+
+    Ok(())
+}
+
+fn apply_derived_to_yaml(doc: &mut Value, derived: &color_derive::DerivedScheme) -> Result<()> {
+    let root = ensure_mapping(doc, "stbl.yaml root")?;
+    let theme_value = root
+        .entry(Value::String("theme".to_string()))
+        .or_insert_with(|| Value::Mapping(Mapping::new()));
+    let theme = ensure_mapping(theme_value, "theme")?;
+
+    let colors_value =
+        serde_yaml::to_value(&derived.colors).context("failed to serialize colors")?;
+    theme.insert(Value::String("colors".to_string()), colors_value);
+
+    let nav_value = serde_yaml::to_value(&derived.nav).context("failed to serialize nav colors")?;
+    theme.insert(Value::String("nav".to_string()), nav_value);
+
+    let wide_value = wide_background_to_value(&derived.wide_background)?;
+    theme.insert(Value::String("wide_background".to_string()), wide_value);
+
+    let scheme = ThemeColorScheme {
+        name: None,
+        mode: Some(derived.mode),
+        source: Some(ThemeColorSchemeSource::Derived),
+        base: Some(ThemeColorSchemeBase {
+            bg: Some(derived.base.bg.clone()),
+            fg: Some(derived.base.fg.clone()),
+            accent: Some(derived.base.accent.clone()),
+            link: derived.base.link.clone(),
+            heading: derived.base.heading.clone(),
+        }),
+    };
+    let scheme_value =
+        serde_yaml::to_value(&scheme).context("failed to serialize color_scheme")?;
+    theme.insert(Value::String("color_scheme".to_string()), scheme_value);
+
+    Ok(())
+}
+
+fn ensure_mapping<'a>(value: &'a mut Value, label: &str) -> Result<&'a mut Mapping> {
+    match value {
+        Value::Mapping(map) => Ok(map),
+        _ => bail!("{label} must be a mapping"),
+    }
+}
+
+fn wide_background_to_value(wide: &ThemeWideBackgroundOverrides) -> Result<Value> {
+    let mut map = Mapping::new();
+    if let Some(value) = wide.color.as_ref() {
+        map.insert(Value::String("color".to_string()), Value::String(value.clone()));
+    }
+    if let Some(value) = wide.image.as_ref() {
+        map.insert(Value::String("image".to_string()), Value::String(value.clone()));
+    }
+    if let Some(value) = wide.style {
+        let style = match value {
+            WideBackgroundStyle::Cover => "cover",
+            WideBackgroundStyle::Tile => "tile",
+        };
+        map.insert(Value::String("style".to_string()), Value::String(style.to_string()));
+    }
+    if let Some(value) = wide.position.as_ref() {
+        map.insert(
+            Value::String("position".to_string()),
+            Value::String(value.clone()),
+        );
+    }
+    if let Some(value) = wide.opacity {
+        map.insert(
+            Value::String("opacity".to_string()),
+            Value::from(value as f64),
+        );
+    }
+    Ok(Value::Mapping(map))
 }
 
 fn root_dir(cli: &Cli) -> Result<PathBuf> {

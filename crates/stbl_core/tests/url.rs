@@ -39,6 +39,7 @@ fn base_config(style: UrlStyle) -> SiteConfig {
                 tagline_size: "1rem".to_string(),
             },
             wide_background: ThemeWideBackgroundOverrides::default(),
+            color_scheme: None,
         },
         syntax: SyntaxConfig {
             highlight: true,

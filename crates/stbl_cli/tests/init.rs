@@ -44,6 +44,7 @@ fn init_aborts_if_config_exists() {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind: InitKind::Blog,
+        color_theme: None,
         copy_all: false,
         target_dir: root.to_path_buf(),
     })
@@ -61,6 +62,7 @@ fn init_aborts_if_required_dir_exists() {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind: InitKind::Blog,
+        color_theme: None,
         copy_all: false,
         target_dir: root.to_path_buf(),
     })
@@ -107,6 +109,7 @@ fn run_init(root: &Path, kind: InitKind, copy_all: bool) {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind,
+        color_theme: None,
         copy_all,
         target_dir: root.to_path_buf(),
     })

@@ -6,6 +6,14 @@ default:
     heading: "#0b1f3a"
     accent: "#0b1f3a"
     link: "#0b1f3a"
+    muted: "#8c8c8c"
+    surface: "#f5f5f5"
+    border: "#d9d9d9"
+    link_hover: "#091a31"
+    code_bg: "#ebebeb"
+    code_fg: "#000000"
+    quote_bg: "#f7f7f7"
+    quote_border: "#d9d9d9"
     wide_bg: "#f3f4f6"
   nav:
     bg: "#000000"
@@ -14,7 +22,7 @@ default:
   wide_background:
     color: "#f3f4f6"
     opacity: 0.0
-    style: cover
+    style: Cover
     position: "center top"
 
 slate:
@@ -67,7 +75,7 @@ forest:
     color: "#08140f"
     opacity: 1.0
 
-candy:
+darkoffice:
   variant: candy
   colors:
     bg: "#0b1020"
@@ -240,4 +248,29 @@ material:
     border: "#e0e0e0"
   wide_background:
     color: "#fafafa"
+    opacity: 1.0
+
+candy:
+  variant: candy
+  colors:
+    bg: "#fff4f8"          # very light pink (cotton candy base)
+    fg: "#2b1b2f"          # deep plum (softer than black, high contrast)
+    heading: "#1a1020"     # darker plum for strong headings
+    accent: "#ff2e63"      # strong candy red/pink
+    link: "#0077ff"        # bright candy blue
+    muted: "#6b4f72"       # softened plum
+    surface: "#ffffff"     # clean white cards
+    border: "#ffd6e8"      # light pink border
+    link_hover: "#0057c2"  # deeper blue for hover
+    code_bg: "#24162a"     # dark plum for contrast blocks
+    code_fg: "#fff7fb"
+    quote_bg: "#ffeaf4"    # soft strawberry cream
+    quote_border: "#ff2e63"
+    wide_bg: "#fff0f6"
+  nav:
+    bg: "#ff2e63"          # bold candy red nav bar
+    fg: "#ffffff"
+    border: "#e0245e"
+  wide_background:
+    color: "#fff0f6"
     opacity: 1.0

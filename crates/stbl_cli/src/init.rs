@@ -16,6 +16,7 @@ pub struct InitOptions {
     pub base_url: String,
     pub language: String,
     pub kind: InitKind,
+    pub color_theme: Option<String>,
     pub copy_all: bool,
     pub target_dir: PathBuf,
 }
@@ -41,6 +42,7 @@ pub fn init_site(options: InitOptions) -> Result<()> {
         &base_url,
         &options.language,
         options.kind,
+        options.color_theme.as_deref(),
     );
     let config_path = target_dir.join("stbl.yaml");
     fs::write(&config_path, config)
@@ -112,6 +114,7 @@ fn render_config(
     base_url: &str,
     language: &str,
     kind: InitKind,
+    color_theme: Option<&str>,
 ) -> String {
     let title = yaml_string(title);
     let language = yaml_string(language);
@@ -124,6 +127,11 @@ fn render_config(
     out.push_str(&format!("  base_url: \"{base_url}\"\n"));
     out.push_str(&format!("  language: \"{language}\"\n"));
     out.push_str("  url_style: html\n");
+    if let Some(theme) = color_theme {
+        let theme = yaml_string(theme);
+        out.push_str("theme:\n");
+        out.push_str(&format!("  variant: \"{theme}\"\n"));
+    }
     out.push_str("menu:\n");
     out.push_str("  - title: \"Home\"\n");
     out.push_str("    href: \"./\"\n");

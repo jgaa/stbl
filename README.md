@@ -311,6 +311,23 @@ pre code {
 
 Set the colors to match your site’s theme.
 
+## Apply Color Schemes
+
+You can apply a preset or derive a scheme from base colors:
+
+```bash
+stbl_cli apply-colors --list-presets
+stbl_cli apply-colors candy
+stbl_cli apply-colors --from-base --bg "#0b1020" --fg "#e9eefc" --accent "#ff4fd8"
+```
+
+Options:
+
+- `--dry-run` prints the updated `stbl.yaml` without writing.
+- `--backup` writes `stbl.yaml.bak` before applying changes.
+
+The optional `theme.color_scheme` section records the preset name or base colors used, but rendering always uses `theme.colors` and `theme.nav`.
+
 ## Templates
 
 The templates are snippets of html code with macros that are expanded during rendering.

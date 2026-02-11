@@ -87,6 +87,16 @@ theme:
     style: cover|tile
     position: string
     opacity: float
+  color_scheme:
+    name: string            # optional
+    mode: auto|light|dark   # optional
+    source: preset|derived  # optional
+    base:
+      bg: string            # optional
+      fg: string            # optional
+      accent: string        # optional
+      link: string          # optional
+      heading: string       # optional
 
 syntax:
   highlight: bool     # default true
@@ -267,6 +277,41 @@ site:
   base_url: "https://lastviking.eu/"  # required
   language: "en"               # required
   # timezone: "Europe/Sofia"   # optional; if omitted use local timezone
+
+theme:
+  variant: "default"
+  colors:
+    bg: "#ffffff"
+    fg: "#000000"
+    heading: "#0b1f3a"
+    accent: "#0b1f3a"
+    link: "#0b1f3a"
+    muted: "#8c8c8c"
+    surface: "#f5f5f5"
+    border: "#d9d9d9"
+    link_hover: "#091a31"
+    code_bg: "#ebebeb"
+    code_fg: "#000000"
+    quote_bg: "#f7f7f7"
+    quote_border: "#d9d9d9"
+    wide_bg: "#f3f4f6"
+  nav:
+    bg: "#000000"
+    fg: "#ffffff"
+    border: "#ffffff"
+  wide_background:
+    color: "#f3f4f6"
+    opacity: 0.0
+    style: cover
+    position: "center top"
+  color_scheme:
+    name: "default"
+    mode: "auto"
+    source: "preset"
+    base:
+      bg: "#ffffff"
+      fg: "#000000"
+      accent: "#0b1f3a"
 
 banner:
   widths: [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
