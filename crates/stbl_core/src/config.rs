@@ -116,6 +116,7 @@ struct ThemeColorsRaw {
     bg: Option<String>,
     fg: Option<String>,
     heading: Option<String>,
+    title_fg: Option<String>,
     accent: Option<String>,
     link: Option<String>,
     muted: Option<String>,
@@ -412,6 +413,12 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
                     .and_then(|theme| theme.colors.as_ref())
                     .and_then(|colors| colors.heading.clone()),
                 "theme.colors.heading",
+            )?,
+            title_fg: optional_non_empty(
+                theme_raw
+                    .and_then(|theme| theme.colors.as_ref())
+                    .and_then(|colors| colors.title_fg.clone()),
+                "theme.colors.title_fg",
             )?,
             accent: optional_non_empty(
                 theme_raw

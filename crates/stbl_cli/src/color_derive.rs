@@ -132,6 +132,7 @@ pub fn derive_from_base(input: BaseColorsInput) -> Result<DerivedScheme> {
         bg: Some(bg.to_hex()),
         fg: Some(fg.to_hex()),
         heading: Some(heading.to_hex()),
+        title_fg: Some(heading.to_hex()),
         accent: Some(accent.to_hex()),
         link: Some(link.to_hex()),
         muted: Some(muted.to_hex()),

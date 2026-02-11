@@ -13,6 +13,7 @@ pub struct ResolvedThemeVars {
     pub c_bg: String,
     pub c_fg: String,
     pub c_heading: String,
+    pub c_title_fg: String,
     pub c_muted: String,
     pub c_surface: String,
     pub c_border: String,
@@ -107,6 +108,8 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         .unwrap_or(fg);
     let heading = pick_color_optional(overrides.heading.as_ref(), base_defaults.heading.as_ref(), "heading")?
         .unwrap_or(accent);
+    let title_fg = pick_color_optional(overrides.title_fg.as_ref(), None, "title_fg")?
+        .unwrap_or(heading);
     let link = pick_color_optional(overrides.link.as_ref(), base_defaults.link.as_ref(), "link")?
         .unwrap_or(accent);
 
@@ -160,6 +163,7 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         c_bg: bg.to_hex(),
         c_fg: fg.to_hex(),
         c_heading: heading.to_hex(),
+        c_title_fg: title_fg.to_hex(),
         c_muted: muted.to_hex(),
         c_surface: surface.to_hex(),
         c_border: border.to_hex(),

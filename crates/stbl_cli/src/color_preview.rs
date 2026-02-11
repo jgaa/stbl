@@ -228,6 +228,7 @@ fn render_color_theme_preview(presets: &BTreeMap<String, ColorPreset>) -> Result
         let bg = preset.colors.bg.clone().unwrap_or_default();
         let fg = preset.colors.fg.clone().unwrap_or_default();
         let heading = preset.colors.heading.clone().unwrap_or_default();
+        let title_fg = preset.colors.title_fg.clone().unwrap_or_default();
         let accent = preset.colors.accent.clone().unwrap_or_default();
         let link = preset.colors.link.clone().unwrap_or_default();
         let link_hover = preset.colors.link_hover.clone().unwrap_or_default();
@@ -337,6 +338,7 @@ fn render_color_theme_preview(presets: &BTreeMap<String, ColorPreset>) -> Result
                 ("bg", &bg),
                 ("fg", &fg),
                 ("heading", &heading),
+                ("title_fg", &title_fg),
                 ("accent", &accent),
                 ("link", &link),
                 ("link_hover", &link_hover),

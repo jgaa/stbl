@@ -125,7 +125,7 @@ header.header-stacked .nav-desktop {
 }
 
 .brand-title {
-  color: var(--c-heading);
+  color: var(--c-title-fg);
   font-size: var(--header-title-size);
   font-weight: 700;
   line-height: 1.2;

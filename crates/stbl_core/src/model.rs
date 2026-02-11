@@ -328,6 +328,7 @@ pub struct ThemeColorOverrides {
     pub bg: Option<String>,
     pub fg: Option<String>,
     pub heading: Option<String>,
+    pub title_fg: Option<String>,
     pub accent: Option<String>,
     pub link: Option<String>,
     pub muted: Option<String>,

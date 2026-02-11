@@ -685,7 +685,7 @@ fn cache_put(cache: &mut Option<&mut dyn CacheStore>, task: &BuildTask) {
 
 fn render_vars_css(vars: &ResolvedThemeVars) -> String {
     format!(
-        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --header-title-size: {};\n  --header-tagline-size: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
+        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --header-title-size: {};\n  --header-tagline-size: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-title-fg: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
         vars.max_body_width,
         vars.desktop_min,
         vars.wide_min,
@@ -694,6 +694,7 @@ fn render_vars_css(vars: &ResolvedThemeVars) -> String {
         vars.c_bg,
         vars.c_fg,
         vars.c_heading,
+        vars.c_title_fg,
         vars.c_muted,
         vars.c_surface,
         vars.c_border,

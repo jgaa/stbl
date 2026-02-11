@@ -61,6 +61,7 @@ theme:
     bg: string
     fg: string
     heading: string
+    title_fg: string       # Defaults to heading
     accent: string
     link: string
     muted: string
@@ -284,6 +285,7 @@ theme:
     bg: "#ffffff"
     fg: "#000000"
     heading: "#0b1f3a"
+    title_fg: "#0b1f3a"
     accent: "#0b1f3a"
     link: "#0b1f3a"
     muted: "#8c8c8c"
