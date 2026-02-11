@@ -3,7 +3,7 @@ default:
   colors:
     bg: "#ffffff"
     fg: "#000000"
-    heading: "#0b1f3a"
+    heading: "#191970"
     accent: "#0b1f3a"
     link: "#0b1f3a"
     muted: "#8c8c8c"
@@ -81,7 +81,7 @@ darkoffice:
     bg: "#0b1020"
     fg: "#e9eefc"
     heading: "#ffffff"
-    accent: "#ff4fd8"
+    accent: "#2F4F4F"
     link: "#7aa7ff"
     muted: "#b8c2e0"
     surface: "#111a33"
@@ -90,7 +90,7 @@ darkoffice:
     code_bg: "#070b16"
     code_fg: "#e9eefc"
     quote_bg: "#111025"
-    quote_border: "#ff4fd8"
+    quote_border: "#2F4F4F"
     wide_bg: "#070b16"
   nav:
     bg: "#070b16"
@@ -178,26 +178,26 @@ luxury:
 circus:
   variant: circus
   colors:
-    bg: "#fff7e6"
-    fg: "#181818"
-    heading: "#000000"
+    bg: "#FFFACD"
+    fg: "#000000"
+    heading: "#191970"
     accent: "#d44343"
-    link: "#4bb1df"
-    muted: "#555555"
+    link: "#006400"
+    muted: "#FF8C00"
     surface: "#ffffff"
-    border: "#e5e5e5"
-    link_hover: "#9068d4"
+    border: "#FF1493"
+    link_hover: "#228B22"
     code_bg: "#042134"
     code_fg: "#ffffff"
     quote_bg: "#fff0cc"
     quote_border: "#ffb400"
     wide_bg: "#fff7e6"
   nav:
-    bg: "#ffffff"
-    fg: "#181818"
-    border: "#e5e5e5"
+    bg: "#ff0000"
+    fg: "#ffffff"
+    border: "#8B0000"
   wide_background:
-    color: "#fff7e6"
+    color: "#ff0000"
     opacity: 1.0
 
 blackandwhite:
@@ -253,22 +253,22 @@ material:
 candy:
   variant: candy
   colors:
-    bg: "#fff4f8"          # very light pink (cotton candy base)
-    fg: "#2b1b2f"          # deep plum (softer than black, high contrast)
-    heading: "#1a1020"     # darker plum for strong headings
-    accent: "#ff2e63"      # strong candy red/pink
-    link: "#0077ff"        # bright candy blue
-    muted: "#6b4f72"       # softened plum
-    surface: "#ffffff"     # clean white cards
-    border: "#ffd6e8"      # light pink border
-    link_hover: "#0057c2"  # deeper blue for hover
-    code_bg: "#24162a"     # dark plum for contrast blocks
+    bg: "#fff4f8"
+    fg: "#2b1b2f"
+    heading: "#0000CD"
+    accent: "#ff2e63"
+    link: "#008000"
+    muted: "#D2691E"
+    surface: "#ffffff"
+    border: "#ffd6e8"
+    link_hover: "#006400"
+    code_bg: "#C71585"
     code_fg: "#fff7fb"
-    quote_bg: "#ffeaf4"    # soft strawberry cream
+    quote_bg: "#ffeaf4"
     quote_border: "#ff2e63"
     wide_bg: "#fff0f6"
   nav:
-    bg: "#ff2e63"          # bold candy red nav bar
+    bg: "#ff2e63"
     fg: "#ffffff"
     border: "#e0245e"
   wide_background:

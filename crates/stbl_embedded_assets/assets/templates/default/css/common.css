@@ -266,6 +266,7 @@ pre {
   background: var(--c-code-bg);
   color: var(--c-code-fg);
   border: 1px solid var(--c-border);
+  font-size: 0.9rem;
 }
 
 .codeblock__copy {

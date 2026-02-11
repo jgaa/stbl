@@ -1,6 +1,7 @@
 mod assets;
 mod color_presets;
 mod color_derive;
+mod color_preview;
 mod config_loader;
 mod exec;
 mod init;
@@ -191,6 +192,13 @@ enum Command {
         #[arg(long)]
         backup: bool,
     },
+    #[command(about = "Generate an HTML preview of all color presets.")]
+    ShowColorThemes {
+        #[arg(long, value_name = "PATH")]
+        out: Option<PathBuf>,
+        #[arg(long)]
+        open: bool,
+    },
 }
 
 fn main() -> Result<()> {
@@ -288,6 +296,7 @@ fn main() -> Result<()> {
             *dry_run,
             *backup,
         ),
+        Command::ShowColorThemes { out, open } => run_show_color_themes(out.as_ref(), *open),
     }
 }
 
@@ -805,6 +814,35 @@ fn run_apply_colors(
         fs::write(&config_path, yaml)
             .with_context(|| format!("failed to write {}", config_path.display()))?;
         println!("updated {}", config_path.display());
+    }
+    Ok(())
+}
+
+fn run_show_color_themes(out: Option<&PathBuf>, open: bool) -> Result<()> {
+    let presets = color_presets::load_color_presets()?;
+    let out_path = match out {
+        Some(path) => path.to_path_buf(),
+        None => color_preview::default_color_preview_path()?,
+    };
+    color_preview::write_color_theme_preview(&out_path, &presets)?;
+    println!("Wrote color theme preview: {}", out_path.display());
+    if open {
+        let parent = out_path
+            .parent()
+            .ok_or_else(|| anyhow::anyhow!("invalid output path {}", out_path.display()))?;
+        let index = out_path
+            .file_name()
+            .ok_or_else(|| anyhow::anyhow!("invalid output path {}", out_path.display()))?
+            .to_string_lossy()
+            .to_string();
+        preview::run_preview(preview::PreviewOpts {
+            site_dir: None,
+            out_dir: Some(parent.to_path_buf()),
+            host: "127.0.0.1".to_string(),
+            port: 0,
+            no_open: false,
+            index,
+        })?;
     }
     Ok(())
 }
