@@ -4,10 +4,22 @@
   {% if item.published_display or item.updated_display or item.kind_label %}
   <div class="meta">
     {% if item.published_display %}
-    <span class="meta">Published: {{ item.published_display }}</span>
+    <span class="meta">Published:
+      {% if item.published_raw %}
+      <time class="js-local-time" datetime="{{ item.published_raw }}">{{ item.published_display }}</time>
+      {% else %}
+      {{ item.published_display }}
+      {% endif %}
+    </span>
     {% endif %}
     {% if item.updated_display %}
-    <span class="meta">Updated {{ item.updated_display }}</span>
+    <span class="meta">Updated
+      {% if item.updated_raw %}
+      <time class="js-local-time" datetime="{{ item.updated_raw }}">{{ item.updated_display }}</time>
+      {% else %}
+      {{ item.updated_display }}
+      {% endif %}
+    </span>
     {% endif %}
     {% if item.kind_label %}
     <span class="meta">{{ item.kind_label }}</span>
@@ -31,9 +43,18 @@
   <ul class="series-parts">
     {% for part in item.latest_parts %}
     <li>
-      <a href="{{ part.href }}">{{ part.title }}</a>
+      <a href="{{ part.href }}">Part {{ part.part_no }}: {{ part.title }}</a>
+      {% if part.abstract_text %}
+      <p class="blogitem-excerpt">{{ part.abstract_text }}</p>
+      {% endif %}
       {% if part.published_display %}
-      <span class="meta">{{ part.published_display }}</span>
+      <div class="meta series-part-meta">
+        {% if part.published_raw %}
+        <time class="js-local-time" datetime="{{ part.published_raw }}">{{ part.published_display }}</time>
+        {% else %}
+        {{ part.published_display }}
+        {% endif %}
+      </div>
       {% endif %}
     </li>
     {% endfor %}

@@ -22,12 +22,14 @@ use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
     TagLink,
-    TagListingPage, format_timestamp_display, format_timestamp_long_date, normalize_timestamp,
+    TagListingPage, format_timestamp_display, format_timestamp_long_date, format_timestamp_rfc3339,
+    normalize_timestamp,
     page_title_or_filename,
     render_banner_html, render_blog_index, render_markdown_page, render_page,
     render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
 };
 use stbl_core::url::{UrlMapper, logical_key_from_source_path, map_series_index};
+use stbl_core::visibility::is_published_page;
 use stbl_embedded_assets as embedded;
 use std::process::Command;
 use std::sync::{Arc, Mutex, mpsc};
@@ -1134,6 +1136,7 @@ fn render_series(
     let parts = series
         .parts
         .iter()
+        .filter(|part| is_published_page(&part.page))
         .map(|part| SeriesIndexPart {
             title: part
                 .page
@@ -1143,8 +1146,8 @@ fn render_series(
                 .unwrap_or_else(|| "Untitled".to_string()),
             href: resolve_root_href(
                 &mapper
-                    .map(&logical_key_from_source_path(&part.page.source_path))
-                    .href,
+                .map(&logical_key_from_source_path(&part.page.source_path))
+                .href,
                 &rel,
             ),
             published_display: format_timestamp_display(
@@ -1152,6 +1155,10 @@ fn render_series(
                 project.config.system.as_ref(),
                 project.config.site.timezone.as_deref(),
             ),
+            published_raw: {
+                let ts = normalize_timestamp(part.page.header.published, project.config.system.as_ref());
+                format_timestamp_rfc3339(ts)
+            },
         })
         .collect::<Vec<_>>();
     render_series_index(
@@ -1219,6 +1226,7 @@ fn series_nav_for_page(
                 let parts = series
                     .parts
                     .iter()
+                    .filter(|part| is_published_page(&part.page))
                     .map(|part| SeriesNavEntry {
                         title: format!(
                             "Part {} {}",
@@ -1476,11 +1484,14 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
         FeedItem::Post(post) => BlogIndexItem {
             title: post.title.clone(),
             href: resolve_root_href(&mapper.map(&post.logical_key).href, &rel),
-            published_display: format_timestamp_display(
-                normalize_timestamp(post.published, project.config.system.as_ref()),
-                project.config.system.as_ref(),
-                project.config.site.timezone.as_deref(),
-            ),
+            published_display: {
+                let ts = normalize_timestamp(post.published, project.config.system.as_ref());
+                format_timestamp_display(
+                    ts,
+                    project.config.system.as_ref(),
+                    project.config.site.timezone.as_deref(),
+                )
+            },
             updated_display: {
                 let published_ts =
                     normalize_timestamp(post.published, project.config.system.as_ref());
@@ -1493,6 +1504,20 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
                         project.config.system.as_ref(),
                         project.config.site.timezone.as_deref(),
                     )
+                }
+            },
+            published_raw: {
+                let ts = normalize_timestamp(post.published, project.config.system.as_ref());
+                format_timestamp_rfc3339(ts)
+            },
+            updated_raw: {
+                let published_ts =
+                    normalize_timestamp(post.published, project.config.system.as_ref());
+                let updated_ts = normalize_timestamp(post.updated, project.config.system.as_ref());
+                if updated_ts.is_some() && updated_ts == published_ts {
+                    None
+                } else {
+                    format_timestamp_rfc3339(updated_ts)
                 }
             },
             kind_label: None,
@@ -1510,11 +1535,14 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
         FeedItem::Series(series) => BlogIndexItem {
             title: series.title.clone(),
             href: resolve_root_href(&map_series_index(&series.logical_key).href, &rel),
-            published_display: format_timestamp_display(
-                normalize_timestamp(series.published, project.config.system.as_ref()),
-                project.config.system.as_ref(),
-                project.config.site.timezone.as_deref(),
-            ),
+            published_display: {
+                let ts = normalize_timestamp(series.published, project.config.system.as_ref());
+                format_timestamp_display(
+                    ts,
+                    project.config.system.as_ref(),
+                    project.config.site.timezone.as_deref(),
+                )
+            },
             updated_display: {
                 let published_ts =
                     normalize_timestamp(series.published, project.config.system.as_ref());
@@ -1528,6 +1556,21 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
                         project.config.system.as_ref(),
                         project.config.site.timezone.as_deref(),
                     )
+                }
+            },
+            published_raw: {
+                let ts = normalize_timestamp(series.published, project.config.system.as_ref());
+                format_timestamp_rfc3339(ts)
+            },
+            updated_raw: {
+                let published_ts =
+                    normalize_timestamp(series.published, project.config.system.as_ref());
+                let updated_ts =
+                    normalize_timestamp(series.updated, project.config.system.as_ref());
+                if updated_ts.is_some() && updated_ts == published_ts {
+                    None
+                } else {
+                    format_timestamp_rfc3339(updated_ts)
                 }
             },
             kind_label: Some("Series".to_string()),
@@ -1544,6 +1587,7 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
                 .latest_parts
                 .iter()
                 .map(|part| BlogIndexPart {
+                    part_no: part.part_no,
                     title: part.title.clone(),
                     href: resolve_root_href(&mapper.map(&part.logical_key).href, &rel),
                     published_display: format_timestamp_display(
@@ -1551,6 +1595,12 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
                         project.config.system.as_ref(),
                         project.config.site.timezone.as_deref(),
                     ),
+                    published_raw: {
+                        let ts =
+                            normalize_timestamp(part.published, project.config.system.as_ref());
+                        format_timestamp_rfc3339(ts)
+                    },
+                    abstract_text: part.abstract_text.clone(),
                 })
                 .collect(),
         },
@@ -1809,7 +1859,7 @@ mod tests {
         assert!(!index_html.contains("Part 2"));
         assert!(index_html.contains("Series abstract override."));
         assert!(index_html.contains("January 15, 2024"));
-        assert!(!index_html.contains("T10:00:00"));
+        assert!(index_html.contains("datetime=\"2024-01-15T10:00:00+00:00\""));
         assert!(!index_html.contains("<span class=\"meta\"></span>"));
 
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");

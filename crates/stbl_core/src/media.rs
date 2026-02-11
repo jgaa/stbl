@@ -569,6 +569,16 @@ pub fn plan_video_tasks(
             .copied()
             .expect("video hash exists");
         let rel = path.strip_prefix("video/").unwrap_or(path.as_str());
+        let rel_mp4 = replace_extension(rel, "mp4");
+        let is_mp4 = std::path::Path::new(rel)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("mp4"))
+            .unwrap_or(false);
+        let source_height = videos
+            .dimensions
+            .get(&path)
+            .map(|dimensions| dimensions.height);
         let original_out = format!("video/{rel}");
         let copy_kind = TaskKind::CopyVideoOriginal {
             source: source.clone(),
@@ -610,20 +620,43 @@ pub fn plan_video_tasks(
             }],
         });
 
-        let max_height = videos
-            .dimensions
-            .get(&path)
-            .map(|dimensions| dimensions.height);
+        if !is_mp4 {
+            let download_height = source_height.or_else(|| heights.last().copied());
+            if let Some(height) = download_height {
+                if height > 0 {
+                    let out_rel = format!("video/{rel_mp4}");
+                    let height_label = format!("h={height}");
+                    let kind = TaskKind::TranscodeVideoMp4 {
+                        source: source.clone(),
+                        height,
+                        out_rel: out_rel.clone(),
+                    };
+                    let id = TaskId::new("vid_mp4", &[path.as_str(), &height_label]);
+                    let fingerprint =
+                        fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
+                    tasks.push(BuildTask {
+                        id,
+                        kind,
+                        inputs_fingerprint: fingerprint,
+                        inputs: vec![ContentId::Video(path.clone())],
+                        outputs: vec![OutputArtifact {
+                            path: std::path::PathBuf::from(out_rel),
+                        }],
+                    });
+                }
+            }
+        }
+
         for height in &heights {
             if *height == 0 {
                 continue;
             }
-            if let Some(max_height) = max_height {
-                if *height > max_height {
+            if let Some(source_height) = source_height {
+                if *height > source_height {
                     continue;
                 }
             }
-            let out_rel = format!("video/_scale_{height}/{rel}");
+            let out_rel = format!("video/_scale_{height}/{rel_mp4}");
             let height_label = format!("h={height}");
             let kind = TaskKind::TranscodeVideoMp4 {
                 source: source.clone(),

@@ -1,0 +1,243 @@
+default:
+  variant: default
+  colors:
+    bg: "#ffffff"
+    fg: "#000000"
+    heading: "#0b1f3a"
+    accent: "#0b1f3a"
+    link: "#0b1f3a"
+    wide_bg: "#f3f4f6"
+  nav:
+    bg: "#000000"
+    fg: "#ffffff"
+    border: "#ffffff"
+  wide_background:
+    color: "#f3f4f6"
+    opacity: 0.0
+    style: cover
+    position: "center top"
+
+slate:
+  variant: slate
+  colors:
+    bg: "#f8fafc"
+    fg: "#0f172a"
+    heading: "#020617"
+    accent: "#4f46e5"
+    link: "#2563eb"
+    muted: "#475569"
+    surface: "#ffffff"
+    border: "#e2e8f0"
+    link_hover: "#1d4ed8"
+    code_bg: "#0f172a"
+    code_fg: "#e2e8f0"
+    quote_bg: "#f1f5f9"
+    quote_border: "#cbd5e1"
+    wide_bg: "#f1f5f9"
+  nav:
+    bg: "#ffffff"
+    fg: "#0f172a"
+    border: "#e2e8f0"
+  wide_background:
+    color: "#f1f5f9"
+    opacity: 1.0
+
+forest:
+  variant: forest
+  colors:
+    bg: "#0b1b14"
+    fg: "#e7f2ec"
+    heading: "#f3faf6"
+    accent: "#22c55e"
+    link: "#34d399"
+    muted: "#a7c2b4"
+    surface: "#11261d"
+    border: "#1e3a2e"
+    link_hover: "#6ee7b7"
+    code_bg: "#08140f"
+    code_fg: "#d1fae5"
+    quote_bg: "#0f231a"
+    quote_border: "#22c55e"
+    wide_bg: "#08140f"
+  nav:
+    bg: "#08140f"
+    fg: "#e7f2ec"
+    border: "#1e3a2e"
+  wide_background:
+    color: "#08140f"
+    opacity: 1.0
+
+candy:
+  variant: candy
+  colors:
+    bg: "#0b1020"
+    fg: "#e9eefc"
+    heading: "#ffffff"
+    accent: "#ff4fd8"
+    link: "#7aa7ff"
+    muted: "#b8c2e0"
+    surface: "#111a33"
+    border: "#22305a"
+    link_hover: "#a3c0ff"
+    code_bg: "#070b16"
+    code_fg: "#e9eefc"
+    quote_bg: "#111025"
+    quote_border: "#ff4fd8"
+    wide_bg: "#070b16"
+  nav:
+    bg: "#070b16"
+    fg: "#e9eefc"
+    border: "#22305a"
+  wide_background:
+    color: "#070b16"
+    opacity: 1.0
+
+sand:
+  variant: sand
+  colors:
+    bg: "#fdf6e3"
+    fg: "#586e75"
+    heading: "#073642"
+    accent: "#cb4b16"
+    link: "#268bd2"
+    muted: "#657b83"
+    surface: "#eee8d5"
+    border: "#e1d9c6"
+    link_hover: "#1d6fa5"
+    code_bg: "#073642"
+    code_fg: "#eee8d5"
+    quote_bg: "#eee8d5"
+    quote_border: "#b58900"
+    wide_bg: "#fdf6e3"
+  nav:
+    bg: "#fdf6e3"
+    fg: "#073642"
+    border: "#e1d9c6"
+  wide_background:
+    color: "#fdf6e3"
+    opacity: 1.0
+
+midnight:
+  variant: midnight
+  colors:
+    bg: "#2e3440"
+    fg: "#d8dee9"
+    heading: "#eceff4"
+    accent: "#88c0d0"
+    link: "#81a1c1"
+    muted: "#a7b0c0"
+    surface: "#3b4252"
+    border: "#4c566a"
+    link_hover: "#8fbcbb"
+    code_bg: "#2b303b"
+    code_fg: "#e5e9f0"
+    quote_bg: "#3b4252"
+    quote_border: "#88c0d0"
+    wide_bg: "#2e3440"
+  nav:
+    bg: "#2e3440"
+    fg: "#eceff4"
+    border: "#4c566a"
+  wide_background:
+    color: "#2e3440"
+    opacity: 1.0
+
+luxury:
+  variant: luxury
+  colors:
+    bg: "#020B13"
+    fg: "#f5f1e4"
+    heading: "#ffffff"
+    accent: "#DAAB2D"
+    link: "#DAAB2D"
+    muted: "#c8c1b2"
+    surface: "#262626"
+    border: "#3a3a3a"
+    link_hover: "#ffd36a"
+    code_bg: "#0b141b"
+    code_fg: "#f5f1e4"
+    quote_bg: "#11181f"
+    quote_border: "#A57A03"
+    wide_bg: "#020B13"
+  nav:
+    bg: "#020B13"
+    fg: "#f5f1e4"
+    border: "#262626"
+  wide_background:
+    color: "#020B13"
+    opacity: 1.0
+
+circus:
+  variant: circus
+  colors:
+    bg: "#fff7e6"
+    fg: "#181818"
+    heading: "#000000"
+    accent: "#d44343"
+    link: "#4bb1df"
+    muted: "#555555"
+    surface: "#ffffff"
+    border: "#e5e5e5"
+    link_hover: "#9068d4"
+    code_bg: "#042134"
+    code_fg: "#ffffff"
+    quote_bg: "#fff0cc"
+    quote_border: "#ffb400"
+    wide_bg: "#fff7e6"
+  nav:
+    bg: "#ffffff"
+    fg: "#181818"
+    border: "#e5e5e5"
+  wide_background:
+    color: "#fff7e6"
+    opacity: 1.0
+
+blackandwhite:
+  variant: blackandwhite
+  colors:
+    bg: "#ffffff"
+    fg: "#111111"
+    heading: "#000000"
+    accent: "#000000"
+    link: "#000000"
+    muted: "#444444"
+    surface: "#f5f5f5"
+    border: "#d0d0d0"
+    link_hover: "#000000"
+    code_bg: "#111111"
+    code_fg: "#ffffff"
+    quote_bg: "#f5f5f5"
+    quote_border: "#111111"
+    wide_bg: "#ffffff"
+  nav:
+    bg: "#ffffff"
+    fg: "#111111"
+    border: "#d0d0d0"
+  wide_background:
+    color: "#ffffff"
+    opacity: 1.0
+
+material:
+  variant: material
+  colors:
+    bg: "#fafafa"
+    fg: "#1f2937"
+    heading: "#111827"
+    accent: "#1976d2"
+    link: "#1976d2"
+    muted: "#4b5563"
+    surface: "#ffffff"
+    border: "#e0e0e0"
+    link_hover: "#1565c0"
+    code_bg: "#0f172a"
+    code_fg: "#e5e7eb"
+    quote_bg: "#e3f2fd"
+    quote_border: "#42a5f5"
+    wide_bg: "#fafafa"
+  nav:
+    bg: "#ffffff"
+    fg: "#1f2937"
+    border: "#e0e0e0"
+  wide_background:
+    color: "#fafafa"
+    opacity: 1.0

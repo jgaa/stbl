@@ -87,6 +87,7 @@ fn envelope_series_index_has_chrome_regions_and_single_h1() {
         title: "Part 1".to_string(),
         href: "series/part1.html".to_string(),
         published_display: Some("2024-01-01".to_string()),
+        published_raw: None,
     }];
     let html = render_series_index(
         &project,
@@ -225,6 +226,8 @@ fn simple_item() -> BlogIndexItem {
         href: "item.html".to_string(),
         published_display: Some("2024-01-01".to_string()),
         updated_display: None,
+        published_raw: None,
+        updated_raw: None,
         kind_label: None,
         abstract_text: None,
         tags: Vec::new(),

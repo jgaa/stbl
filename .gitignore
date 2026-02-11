@@ -42,4 +42,5 @@ lib
 # Rust/argo
 target
 
-
+# Kate
+*.kate-swp

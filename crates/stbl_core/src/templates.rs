@@ -21,6 +21,7 @@ const BLOG_INDEX_TEMPLATE: &str = include_str!("templates/blog_index.html");
 const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
 const SERIES_INDEX_TEMPLATE: &str = include_str!("templates/series_index.html");
 const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html");
+const FOOTER_TEMPLATE: &str = include_str!("templates/partials/footer.html");
 const DEFAULT_DATE_FORMAT: &str = "%B %-d, %Y at %H:%M %Z";
 
 pub fn templates_hash() -> [u8; 32] {
@@ -199,9 +200,12 @@ pub fn render_markdown_page(
 
 #[derive(Debug, Clone, Serialize)]
 pub struct BlogIndexPart {
+    pub part_no: i32,
     pub title: String,
     pub href: String,
     pub published_display: Option<String>,
+    pub published_raw: Option<String>,
+    pub abstract_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -229,6 +233,8 @@ pub struct BlogIndexItem {
     pub href: String,
     pub published_display: Option<String>,
     pub updated_display: Option<String>,
+    pub published_raw: Option<String>,
+    pub updated_raw: Option<String>,
     pub kind_label: Option<String>,
     pub abstract_text: Option<String>,
     pub tags: Vec<TagLink>,
@@ -240,6 +246,7 @@ pub struct SeriesIndexPart {
     pub title: String,
     pub href: String,
     pub published_display: Option<String>,
+    pub published_raw: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -293,6 +300,13 @@ pub fn render_blog_index(
     let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rss_visible = project
+        .config
+        .rss
+        .as_ref()
+        .map(|rss| rss.enabled)
+        .unwrap_or(false)
+        && iter_visible_posts(project, None).next().is_some();
     let prev_href = prev_href.map(|href| resolve_root_href(&href, &rel));
     let next_href = next_href.map(|href| resolve_root_href(&href, &rel));
     let first_href = first_href.map(|href| resolve_root_href(&href, &rel));
@@ -319,7 +333,7 @@ pub fn render_blog_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
-            home_href => UrlMapper::new(&project.config).map("index").href,
+            home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
@@ -342,6 +356,7 @@ pub fn render_blog_index(
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
+            rss_visible => rss_visible,
             redirect_href => Option::<String>::None,
         })
         .context("failed to render blog index template")
@@ -364,6 +379,13 @@ pub fn render_tag_index(
     let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rss_visible = project
+        .config
+        .rss
+        .as_ref()
+        .map(|rss| rss.enabled)
+        .unwrap_or(false)
+        && iter_visible_posts(project, None).next().is_some();
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
     let menu_align_class = menu_align_class(project);
@@ -385,7 +407,7 @@ pub fn render_tag_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
-            home_href => UrlMapper::new(&project.config).map("index").href,
+            home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
@@ -400,6 +422,7 @@ pub fn render_tag_index(
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
+            rss_visible => rss_visible,
             redirect_href => Option::<String>::None,
         })
         .context("failed to render tag index template")
@@ -423,6 +446,13 @@ pub fn render_series_index(
     let nav_items = build_nav_view(project, current_href, &rel);
     let footer_show_stbl = project.config.footer.show_stbl;
     let footer_copyright = footer_copyright_text(&project.config.site, build_date_ymd);
+    let rss_visible = project
+        .config
+        .rss
+        .as_ref()
+        .map(|rss| rss.enabled)
+        .unwrap_or(false)
+        && iter_visible_posts(project, None).next().is_some();
     let site = build_site_brand_view(project, asset_manifest, &rel);
     let menu_align = menu_align_value(project);
     let menu_align_class = menu_align_class(project);
@@ -446,7 +476,7 @@ pub fn render_series_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
-            home_href => UrlMapper::new(&project.config).map("index").href,
+            home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,
@@ -460,6 +490,7 @@ pub fn render_series_index(
             build_date_ymd => build_date_ymd,
             footer_show_stbl => footer_show_stbl,
             footer_copyright => footer_copyright,
+            rss_visible => rss_visible,
             redirect_href => Option::<String>::None,
         })
         .context("failed to render series index template")
@@ -502,6 +533,7 @@ fn template_env() -> Result<Environment<'static>> {
     env.add_template("tag_index.html", TAG_INDEX_TEMPLATE)?;
     env.add_template("series_index.html", SERIES_INDEX_TEMPLATE)?;
     env.add_template("partials/list_item.html", LIST_ITEM_TEMPLATE)?;
+    env.add_template("partials/footer.html", FOOTER_TEMPLATE)?;
     Ok(env)
 }
 
@@ -1434,6 +1466,8 @@ mod tests {
             href: "item.html".to_string(),
             published_display: Some("2024-01-01".to_string()),
             updated_display: None,
+            published_raw: None,
+            updated_raw: None,
             kind_label: None,
             abstract_text: None,
             tags: Vec::new(),
@@ -1540,11 +1574,13 @@ mod tests {
                 title: "Part 1".to_string(),
                 href: "part1.html".to_string(),
                 published_display: Some("2024-01-01".to_string()),
+                published_raw: None,
             },
             SeriesIndexPart {
                 title: "Part 2".to_string(),
                 href: "part2.html".to_string(),
                 published_display: Some("2024-01-02".to_string()),
+                published_raw: None,
             },
         ];
         let html = render_series_index(

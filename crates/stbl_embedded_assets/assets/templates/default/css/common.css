@@ -75,7 +75,7 @@ img, video { max-width: 100%; height: auto; }
   padding: 0 1rem;
 }
 
-header { padding: 1rem 0; }
+header { padding: 0 0; }
 
 header .page { padding: 0.75rem 1rem; }
 
@@ -137,7 +137,7 @@ header.header-stacked .nav-desktop {
   line-height: 1.2;
 }
 
-main { padding: 1rem 0 2rem; }
+main { padding: 0 0 2rem; }
 
 h1 { line-height: 1.2; margin: 0 0 1rem; }
 h2, h3 { line-height: 1.25; margin-top: 2rem; }
@@ -673,6 +673,11 @@ nav.series-nav li.series-part a {
 
 nav.series-nav li.series-part a:hover {
   text-decoration: underline;
+}
+
+.list-item .series-parts .series-part-meta {
+  display: block;
+  font-size: 0.85rem;
 }
 
 /* -------------------------------------------------------------------

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use anyhow::Result;
 use pulldown_cmark::{Event, Parser, Tag};
 use serde_yaml::Value;
-use stbl_core::header::{Header, HeaderError, HeaderWarning, UnknownKeyPolicy, parse_header};
+use stbl_core::header::{Header, HeaderError, HeaderWarning, TemplateId, UnknownKeyPolicy, parse_header};
 use stbl_core::model::DocKind;
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 
@@ -135,6 +135,8 @@ pub fn run_verify(root: &Path, articles_dir: &Path, strict: bool, verbose: bool)
     }
 
     verify_duplicate_uuids(&docs, &mut report);
+    verify_tag_case_mismatches(&docs, &mut report);
+    verify_series_headers(&docs, &mut report);
     if config_ok {
         if let Some(config) = &config {
             verify_site_logo(root, config, &mut report);
@@ -143,6 +145,7 @@ pub fn run_verify(root: &Path, articles_dir: &Path, strict: bool, verbose: bool)
     }
 
     withheld.sort_by_key(|item| item.mtime);
+    new_articles.retain(|item| !is_index_markdown(&item.path));
     new_articles.sort_by_key(|item| item.mtime);
 
     print_report(&report, &withheld, &new_articles);
@@ -178,7 +181,11 @@ fn verify_config(root: &Path, report: &mut Report) -> (Option<stbl_core::model::
     };
     match serde_yaml::from_str::<Value>(&raw) {
         Ok(value) => {
-            warn_unknown_config_entries(&value, report, "stbl.yaml");
+            if let Some(schema) = load_schema_from_docs(root) {
+                warn_unknown_config_entries_with_schema(&value, &schema, report, "stbl.yaml");
+            } else {
+                warn_unknown_config_entries(&value, report, "stbl.yaml");
+            }
         }
         Err(err) => {
             report.error(
@@ -526,6 +533,63 @@ fn verify_duplicate_uuids(docs: &[DocInfo], report: &mut Report) {
     }
 }
 
+fn verify_tag_case_mismatches(docs: &[DocInfo], report: &mut Report) {
+    let mut tag_map: BTreeMap<String, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+    for doc in docs {
+        for tag in &doc.header.tags {
+            let key = tag.to_lowercase();
+            let variants = tag_map.entry(key).or_default();
+            variants
+                .entry(tag.clone())
+                .or_default()
+                .insert(doc.source_path.clone());
+        }
+    }
+    for (key, variants) in tag_map {
+        if variants.len() <= 1 {
+            continue;
+        }
+        let mut message = format!("tag case mismatch for '{key}':");
+        for (variant, paths) in variants.into_iter() {
+            let list = paths.into_iter().collect::<Vec<_>>().join(", ");
+            message.push_str("\n  ");
+            message.push_str(&variant);
+            message.push_str(": ");
+            message.push_str(&list);
+        }
+        report.warn(None, message);
+    }
+}
+
+fn verify_series_headers(docs: &[DocInfo], report: &mut Report) {
+    for doc in docs {
+        let source = Some(doc.source_path.clone());
+        if doc.series_dir.is_none()
+            && doc.header.part.as_deref().unwrap_or("").trim().len() > 0
+        {
+            report.warn(
+                source.clone(),
+                "series part header is set but page is not part of a series".to_string(),
+            );
+        }
+        if doc.series_dir.is_some() {
+            let is_info_template = matches!(doc.header.template, Some(TemplateId::Info));
+            let is_info_type = doc
+                .header
+                .content_type
+                .as_deref()
+                .map(|value| value.eq_ignore_ascii_case("info"))
+                .unwrap_or(false);
+            if is_info_template || is_info_type {
+                report.warn(
+                    source,
+                    "series pages must not use info template or content type".to_string(),
+                );
+            }
+        }
+    }
+}
+
 fn verify_url_collisions(
     config: &stbl_core::model::SiteConfig,
     docs: &[DocInfo],
@@ -628,6 +692,120 @@ fn print_report(report: &Report, withheld: &[DocListing], new_articles: &[DocLis
     }
 }
 
+fn is_index_markdown(path: &str) -> bool {
+    path == "index.md" || path.ends_with("/index.md")
+}
+
+fn load_schema_from_docs(root: &Path) -> Option<Value> {
+    let mut candidates = Vec::new();
+    candidates.push(root.join("doc/config-schema.md"));
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("doc/config-schema.md"));
+    }
+
+    for path in candidates {
+        if !path.exists() {
+            continue;
+        }
+        let contents = fs::read_to_string(&path).ok()?;
+        let yaml = extract_schema_yaml(&contents)?;
+        if let Ok(schema) = serde_yaml::from_str::<Value>(&yaml) {
+            return Some(schema);
+        }
+    }
+    None
+}
+
+fn extract_schema_yaml(contents: &str) -> Option<String> {
+    let mut in_schema_section = false;
+    let mut in_code = false;
+    let mut buffer = Vec::new();
+
+    for line in contents.lines() {
+        if line.trim_start().starts_with("## Full schema") {
+            in_schema_section = true;
+        }
+        if !in_code && in_schema_section && line.trim_start().starts_with("```yaml") {
+            in_code = true;
+            continue;
+        }
+        if in_code {
+            if line.trim_start().starts_with("```") {
+                break;
+            }
+            buffer.push(line);
+        }
+    }
+    if buffer.is_empty() {
+        return None;
+    }
+    Some(buffer.join("\n"))
+}
+
+fn warn_unknown_config_entries_with_schema(
+    value: &Value,
+    schema: &Value,
+    report: &mut Report,
+    path: &str,
+) {
+    if !matches!(value, Value::Mapping(_)) {
+        report.warn(Some(path.to_string()), "config root must be a map".to_string());
+        return;
+    }
+    warn_unknown_entries_against_schema(value, schema, report, path);
+}
+
+fn warn_unknown_entries_against_schema(
+    value: &Value,
+    schema: &Value,
+    report: &mut Report,
+    path: &str,
+) {
+    match (value, schema) {
+        (Value::Mapping(map), Value::Mapping(schema_map)) => {
+            let mut placeholder_schema: Option<&Value> = None;
+            let mut allowed_keys = HashSet::new();
+            for (key, schema_value) in schema_map {
+                if let Some(key_str) = key.as_str() {
+                    if key_str.starts_with('<') && key_str.ends_with('>') {
+                        placeholder_schema = Some(schema_value);
+                    } else {
+                        allowed_keys.insert(key_str.to_string());
+                    }
+                }
+            }
+            for (key, value) in map {
+                let key_str = key.as_str().unwrap_or("<non-string>");
+                if allowed_keys.contains(key_str) {
+                    if let Some(schema_value) = schema_map.get(key) {
+                        let child_path = format!("{path}.{key_str}");
+                        warn_unknown_entries_against_schema(value, schema_value, report, &child_path);
+                    }
+                    continue;
+                }
+                if let Some(schema_value) = placeholder_schema {
+                    let child_path = format!("{path}.{key_str}");
+                    warn_unknown_entries_against_schema(value, schema_value, report, &child_path);
+                } else {
+                    report.warn(
+                        Some(normalize_config_path(path)),
+                        format!("unknown config entry: {key_str}"),
+                    );
+                }
+            }
+        }
+        (Value::Sequence(values), Value::Sequence(schema_values)) => {
+            if let Some(schema_entry) = schema_values.first() {
+                for (idx, value) in values.iter().enumerate() {
+                    let child_path = format!("{path}[{idx}]");
+                    warn_unknown_entries_against_schema(value, schema_entry, report, &child_path);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
     let Some(map) = value.as_mapping() else {
         report.warn(Some(path.to_string()), "config root must be a map".to_string());
@@ -649,8 +827,6 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
         "rss",
         "seo",
         "comments",
-        "chroma",
-        "plyr",
     ];
     for (key, value) in map {
         let key = key.as_str().unwrap_or("<non-string>");
@@ -893,7 +1069,7 @@ fn warn_unknown_seo_entries(value: &Value, report: &mut Report, path: &str) {
 fn warn_unknown_entries(
     value: &Value,
     report: &mut Report,
-    path: &str,
+    _path: &str,
     prefix: &str,
     allowed: &[&str],
 ) {
@@ -904,8 +1080,8 @@ fn warn_unknown_entries(
         let key_str = key.as_str().unwrap_or("<non-string>");
         if !allowed.contains(&key_str) {
             report.warn(
-                Some(path.to_string()),
-                format!("unknown config entry: {prefix}.{key_str}"),
+                Some(normalize_config_path(prefix)),
+                format!("unknown config entry: {key_str}"),
             );
         }
     }
@@ -914,7 +1090,7 @@ fn warn_unknown_entries(
 fn warn_unknown_list_entries(
     value: &Value,
     report: &mut Report,
-    path: &str,
+    _path: &str,
     prefix: &str,
     allowed: &[&str],
 ) {
@@ -928,12 +1104,24 @@ fn warn_unknown_list_entries(
         for (key, _) in map {
             let key_str = key.as_str().unwrap_or("<non-string>");
             if !allowed.contains(&key_str) {
+                let entry_path = format!("{prefix}[{idx}]");
                 report.warn(
-                    Some(path.to_string()),
-                    format!("unknown config entry: {prefix}[{idx}].{key_str}"),
+                    Some(normalize_config_path(&entry_path)),
+                    format!("unknown config entry: {key_str}"),
                 );
             }
         }
+    }
+}
+
+fn normalize_config_path(path: &str) -> String {
+    let trimmed = path.strip_prefix("stbl.yaml.").unwrap_or(path);
+    let trimmed = trimmed.strip_prefix("stbl.yaml").unwrap_or(trimmed);
+    let trimmed = trimmed.trim_start_matches('.');
+    if trimmed.is_empty() {
+        "<root>".to_string()
+    } else {
+        trimmed.to_string()
     }
 }
 
@@ -1060,5 +1248,118 @@ mod tests {
     #[test]
     fn validate_url_syntax_accepts_basic_http() {
         validate_url_syntax("https://example.com/path", "https").expect("valid");
+    }
+
+    #[test]
+    fn verify_tag_case_mismatch_reports_variants() {
+        let mut report = Report::default();
+        let mut header_a = Header::default();
+        header_a.tags = vec!["grpc".to_string()];
+        let mut header_b = Header::default();
+        header_b.tags = vec!["gRPC".to_string()];
+        let docs = vec![
+            DocInfo {
+                source_path: "articles/a.md".to_string(),
+                header: header_a,
+                header_present: true,
+                body_markdown: String::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                kind: DocKind::Page,
+                series_dir: None,
+            },
+            DocInfo {
+                source_path: "articles/b.md".to_string(),
+                header: header_b,
+                header_present: true,
+                body_markdown: String::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                kind: DocKind::Page,
+                series_dir: None,
+            },
+        ];
+
+        verify_tag_case_mismatches(&docs, &mut report);
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.message.contains("tag case mismatch")));
+    }
+
+    #[test]
+    fn index_markdown_is_ignored_for_new_articles() {
+        assert!(is_index_markdown("index.md"));
+        assert!(is_index_markdown("articles/index.md"));
+        assert!(!is_index_markdown("articles/post.md"));
+    }
+
+    #[test]
+    fn verify_series_headers_flags_part_outside_series_and_info_in_series() {
+        let mut report = Report::default();
+        let mut header_part = Header::default();
+        header_part.part = Some("1".to_string());
+        let mut header_info = Header::default();
+        header_info.template = Some(TemplateId::Info);
+        let docs = vec![
+            DocInfo {
+                source_path: "articles/standalone.md".to_string(),
+                header: header_part,
+                header_present: true,
+                body_markdown: String::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                kind: DocKind::Page,
+                series_dir: None,
+            },
+            DocInfo {
+                source_path: "articles/series/part1.md".to_string(),
+                header: header_info,
+                header_present: true,
+                body_markdown: String::new(),
+                mtime: SystemTime::UNIX_EPOCH,
+                kind: DocKind::SeriesPart,
+                series_dir: Some("articles/series".to_string()),
+            },
+        ];
+
+        verify_series_headers(&docs, &mut report);
+        let messages = report
+            .issues
+            .iter()
+            .map(|issue| issue.message.as_str())
+            .collect::<Vec<_>>();
+        assert!(messages
+            .iter()
+            .any(|message| message.contains("not part of a series")));
+        assert!(messages
+            .iter()
+            .any(|message| message.contains("must not use info template")));
+    }
+
+    #[test]
+    fn warn_unknown_entries_uses_schema_placeholders() {
+        let schema = serde_yaml::from_str::<Value>(
+            r#"
+comments:
+  <provider>:
+    template: string
+    <key>: string
+"#,
+        )
+        .expect("schema");
+        let value = serde_yaml::from_str::<Value>(
+            r#"
+comments:
+  disqus:
+    template: "x"
+    shortname: "y"
+unknown_root: true
+"#,
+        )
+        .expect("value");
+        let mut report = Report::default();
+        warn_unknown_entries_against_schema(&value, &schema, &mut report, "stbl.yaml");
+        assert!(report
+            .issues
+            .iter()
+            .any(|issue| issue.message.contains("unknown config entry")));
     }
 }

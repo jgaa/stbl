@@ -54,3 +54,20 @@ User interface:
    - Create directories
    - Render HTML, RSS, sitemap
    - Perform header write-back (if allowed)
+
+## Series
+
+A series is a group of articles under a directory with its own `index.md`. For example:
+
+```
+articles/my-series/index.md
+articles/my-series/part-1.md
+articles/my-series/part-2.md
+```
+
+Behavior and rules:
+- The series cover page is `index.md` in the series directory.
+- All other `.md` files in that directory are series parts.
+- Part numbers come from the header `part` field; if missing, they are assigned in assemble and written back when allowed.
+- Series index pages are rendered to `series-dir/index.html` even when `site.url_style` is `html`.
+- Series parts keep their normal output paths based on source structure.

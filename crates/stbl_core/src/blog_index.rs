@@ -1,7 +1,7 @@
 use crate::abstracts::derive_abstract_from_markdown;
 use crate::model::{DocId, Page, Project, Series, SeriesId};
 use crate::url::logical_key_from_source_path;
-use crate::visibility::is_blog_index_excluded;
+use crate::visibility::{is_blog_index_excluded, is_published_page};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone)]
@@ -42,10 +42,12 @@ pub struct FeedSeries {
 
 #[derive(Debug, Clone)]
 pub struct FeedSeriesPart {
+    pub part_no: i32,
     pub title: String,
     pub logical_key: String,
     pub published: Option<i64>,
     pub sort_date: i64,
+    pub abstract_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -430,7 +432,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         tag_set.insert(tag.clone());
     }
     for part in &series.parts {
-        if !include_page(&part.page, None) {
+        if !is_published_page(&part.page) {
             continue;
         }
         let sort_date = page_sort_date(&part.page);
@@ -441,6 +443,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
             title: part.page.header.title.as_deref(),
             published: timestamp_option(sort_date),
             sort_date,
+            page: &part.page,
         });
         part_ids.push(part.page.id);
         part_hashes.push(part.page.content_hash);
@@ -462,6 +465,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
         .iter()
         .take(blog_latest_parts(project))
         .map(|part| FeedSeriesPart {
+            part_no: part.part_no,
             title: part
                 .title
                 .map(|value| value.to_string())
@@ -469,6 +473,11 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
             logical_key: part.logical_key.clone(),
             published: part.published,
             sort_date: part.sort_date,
+            abstract_text: select_abstract_text(
+                project,
+                part.page.header.abstract_text.as_deref(),
+                &part.page.body_markdown,
+            ),
         })
         .collect::<Vec<_>>();
 
@@ -572,6 +581,7 @@ struct SeriesPartCandidate<'a> {
     title: Option<&'a str>,
     published: Option<i64>,
     sort_date: i64,
+    page: &'a Page,
 }
 
 #[cfg(test)]
