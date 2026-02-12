@@ -110,5 +110,12 @@ This generates the site in:
 
 An embedded web server is started on localhost, and your browser will open the front page automatically.
 
-In `stbl.yaml`, you can also specify a command to publish the site.
+In `stbl.yaml`, you can specify a command to publish the site. With that enabled, for example using `rsync`, you can generate and publish your site like this:
+
+```sh
+
+stbl_cli build --publish-to example.com:/var/www/yoursite
+
+```
+
 
