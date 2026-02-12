@@ -69,7 +69,7 @@ The only runtime dependency is `ffmpeg`. This is required only if you use videos
 
 ---
 
-## Quickstart
+# Quickstart
 
 ```sh
 mkdir myblog
