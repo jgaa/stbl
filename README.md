@@ -39,7 +39,7 @@ The directory contains special files such as CSS and templates for generating HT
 * **Scales media files** — images and videos are optimized for various screen sizes
 * **Fast rebuilds** — uses caching and only regenerates changed content (like *make*)
 * **Security features**, including scanning SVGs for hidden tracking
-* **Color schemes** — easily [change or modify colors](doc/color-themes.html)
+* **Color schemes** — easily [change or modify colors](docs/color-themes.html)
 * **Template-driven rendering** for maximum flexibility
 * **Macros** for dynamic content injection
 * Works fully **without JavaScript**
