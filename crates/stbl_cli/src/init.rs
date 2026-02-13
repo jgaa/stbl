@@ -2,7 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
+use crate::color_presets;
 use stbl_embedded_assets as embedded;
+
+const CONFIG_TEMPLATE: &str = include_str!("../assets/stbl.template.yaml");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InitKind {
@@ -43,7 +46,7 @@ pub fn init_site(options: InitOptions) -> Result<()> {
         &options.language,
         options.kind,
         options.color_theme.as_deref(),
-    );
+    )?;
     let config_path = target_dir.join("stbl.yaml");
     fs::write(&config_path, config)
         .with_context(|| format!("failed to write {}", config_path.display()))?;
@@ -115,37 +118,149 @@ fn render_config(
     language: &str,
     kind: InitKind,
     color_theme: Option<&str>,
-) -> String {
+) -> Result<String> {
     let title = yaml_string(title);
     let language = yaml_string(language);
     let base_url = yaml_string(base_url);
     let site_id = yaml_string(site_id);
+    let mut out = CONFIG_TEMPLATE
+        .replace("{{SITE_ID}}", &site_id)
+        .replace("{{TITLE}}", &title)
+        .replace("{{BASE_URL}}", &base_url)
+        .replace("{{LANG}}", &language);
+
+    let theme_block = match color_theme {
+        Some(theme) => render_theme_preset_block(theme)?,
+        None => render_commented_theme_block(),
+    };
+    out = out.replace("{{THEME_COLORS_BLOCK}}", &theme_block);
+
+    let blog_block = match kind {
+        InitKind::Blog => render_blog_pagination_block(),
+        InitKind::LandingPage => render_commented_blog_pagination_block(),
+    };
+    out = out.replace("{{BLOG_PAGINATION_BLOCK}}", &blog_block);
+
+    Ok(out)
+}
+
+fn render_theme_preset_block(theme: &str) -> Result<String> {
+    let presets = color_presets::load_color_presets()?;
+    let preset = presets.get(theme).ok_or_else(|| {
+        anyhow!("unknown color preset '{theme}' (use apply-colors --list-presets)")
+    })?;
+    color_presets::validate_preset(theme, preset)?;
+
     let mut out = String::new();
-    out.push_str("site:\n");
-    out.push_str(&format!("  id: \"{site_id}\"\n"));
-    out.push_str(&format!("  title: \"{title}\"\n"));
-    out.push_str(&format!("  base_url: \"{base_url}\"\n"));
-    out.push_str(&format!("  language: \"{language}\"\n"));
-    out.push_str("  url_style: html\n");
-    if let Some(theme) = color_theme {
-        let theme = yaml_string(theme);
-        out.push_str("theme:\n");
-        out.push_str(&format!("  variant: \"{theme}\"\n"));
+    out.push_str("  colors:\n");
+    push_color(&mut out, "bg", &preset.colors.bg, false);
+    push_color(&mut out, "fg", &preset.colors.fg, false);
+    push_color(&mut out, "heading", &preset.colors.heading, false);
+    push_color(&mut out, "title_fg", &preset.colors.title_fg, true);
+    push_color(&mut out, "accent", &preset.colors.accent, false);
+    push_color(&mut out, "link", &preset.colors.link, false);
+    push_color(&mut out, "muted", &preset.colors.muted, false);
+    push_color(&mut out, "surface", &preset.colors.surface, false);
+    push_color(&mut out, "border", &preset.colors.border, false);
+    push_color(&mut out, "link_hover", &preset.colors.link_hover, false);
+    push_color(&mut out, "code_bg", &preset.colors.code_bg, false);
+    push_color(&mut out, "code_fg", &preset.colors.code_fg, false);
+    push_color(&mut out, "quote_bg", &preset.colors.quote_bg, false);
+    push_color(&mut out, "quote_border", &preset.colors.quote_border, false);
+    push_color(&mut out, "wide_bg", &preset.colors.wide_bg, false);
+
+    out.push_str("  nav:\n");
+    push_color(&mut out, "bg", &preset.nav.bg, false);
+    push_color(&mut out, "fg", &preset.nav.fg, false);
+    push_color(&mut out, "border", &preset.nav.border, false);
+
+    if let Some(wide) = preset.wide_background.as_ref() {
+        out.push_str("  wide_background:\n");
+        push_color(&mut out, "color", &wide.color, false);
+        push_color(&mut out, "image", &wide.image, false);
+        if let Some(style) = wide.style {
+            let style = match style {
+                stbl_core::model::WideBackgroundStyle::Cover => "cover",
+                stbl_core::model::WideBackgroundStyle::Tile => "tile",
+            };
+            out.push_str(&format!("    style: \"{style}\"\n"));
+        }
+        if let Some(position) = wide.position.as_ref() {
+            let position = yaml_string(position);
+            out.push_str(&format!("    position: \"{position}\"\n"));
+        }
+        if let Some(opacity) = wide.opacity {
+            out.push_str(&format!("    opacity: {opacity}\n"));
+        }
     }
-    out.push_str("menu:\n");
-    out.push_str("  - title: \"Home\"\n");
-    out.push_str("    href: \"./\"\n");
-    out.push_str("  - title: \"About\"\n");
-    out.push_str("    href: \"./about.html\"\n");
-    out.push_str("  - title: \"Contact\"\n");
-    out.push_str("    href: \"./contact.html\"\n");
-    if kind == InitKind::Blog {
-        out.push_str("blog:\n");
-        out.push_str("  pagination:\n");
-        out.push_str("    enabled: true\n");
-        out.push_str("    page_size: 10\n");
-    }
+
+    let theme = yaml_string(theme);
+    out.push_str("  color_scheme:\n");
+    out.push_str(&format!("    name: \"{theme}\"\n"));
+    out.push_str("    mode: auto\n");
+    out.push_str("    source: preset\n");
+    out.push_str("    # base:\n");
+    out.push_str("    #   bg: \"#ffffff\"\n");
+    out.push_str("    #   fg: \"#111111\"\n");
+    out.push_str("    #   accent: \"#ff3366\"\n");
+    out.push_str("    #   link: \"#0033cc\"\n");
+    out.push_str("    #   heading: \"#111111\"\n");
+
+    Ok(out)
+}
+
+fn render_commented_theme_block() -> String {
+    let mut out = String::new();
+    out.push_str("  # colors:\n");
+    out.push_str("  #   bg: \"#ffffff\"\n");
+    out.push_str("  #   fg: \"#111111\"\n");
+    out.push_str("  #   heading: \"#111111\"\n");
+    out.push_str("  #   title_fg: \"#111111\"\n");
+    out.push_str("  #   accent: \"#ff3366\"\n");
+    out.push_str("  #   link: \"#0033cc\"\n");
+    out.push_str("  #   muted: \"#666666\"\n");
+    out.push_str("  #   surface: \"#f5f5f5\"\n");
+    out.push_str("  #   border: \"#dddddd\"\n");
+    out.push_str("  #   link_hover: \"#002299\"\n");
+    out.push_str("  #   code_bg: \"#f1f1f1\"\n");
+    out.push_str("  #   code_fg: \"#111111\"\n");
+    out.push_str("  #   quote_bg: \"#f7f7f7\"\n");
+    out.push_str("  #   quote_border: \"#dddddd\"\n");
+    out.push_str("  #   wide_bg: \"#fafafa\"\n");
+    out.push_str("  # nav:\n");
+    out.push_str("  #   bg: \"#ffffff\"\n");
+    out.push_str("  #   fg: \"#111111\"\n");
+    out.push_str("  #   border: \"#dddddd\"\n");
     out
+}
+
+fn render_blog_pagination_block() -> String {
+    let mut out = String::new();
+    out.push_str("  pagination:\n");
+    out.push_str("    enabled: true\n");
+    out.push_str("    page_size: 10\n");
+    out
+}
+
+fn render_commented_blog_pagination_block() -> String {
+    let mut out = String::new();
+    out.push_str("  # pagination:\n");
+    out.push_str("  #   enabled: false\n");
+    out.push_str("  #   page_size: 10\n");
+    out
+}
+
+fn push_color(out: &mut String, key: &str, value: &Option<String>, comment_if_missing: bool) {
+    match value.as_ref() {
+        Some(value) => {
+            let value = yaml_string(value);
+            out.push_str(&format!("    {key}: \"{value}\"\n"));
+        }
+        None if comment_if_missing => {
+            out.push_str(&format!("    # {key}: \"#ffffff\"\n"));
+        }
+        None => {}
+    }
 }
 
 fn write_article(path: &Path, title: &str, template: &str, body: &str) -> Result<()> {

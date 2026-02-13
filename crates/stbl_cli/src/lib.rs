@@ -1,4 +1,7 @@
 pub mod assets;
+pub mod color_apply;
+pub mod color_derive;
+pub mod color_presets;
 pub mod config_loader;
 pub mod exec;
 pub mod init;
