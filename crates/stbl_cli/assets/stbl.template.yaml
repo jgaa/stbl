@@ -1,0 +1,135 @@
+# stbl config (most settings are commented out with defaults).
+# Uncomment the settings you want to customize.
+
+# Site metadata (required).
+site:
+  id: "{{SITE_ID}}"
+  title: "{{TITLE}}"
+  base_url: "{{BASE_URL}}"
+  language: "{{LANG}}"
+  url_style: html
+  # tagline: "Short description shown under the title"
+  # logo: "images/logo.svg"
+  # copyright: "Copyright {YEAR} by {{TITLE}}"
+  # timezone: "America/New_York"
+
+# Theme configuration.
+theme:
+  # variant: "default"
+  # max_body_width: "72rem"
+  # breakpoints:
+  #   desktop_min: "768px"
+  #   wide_min: "1400px"
+{{THEME_COLORS_BLOCK}}
+  # header:
+  #   layout: stacked
+  #   menu_align: left
+  #   # title_size: "1.3rem"
+  #   # tagline_size: "1rem"
+  # wide_background:
+  #   color: "#ffffff"
+  #   image: "images/hero.jpg"
+  #   style: cover
+  #   position: "center"
+  #   opacity: 0.6
+  # color_scheme:
+  #   name: "preset-name"
+  #   mode: auto
+  #   source: preset
+  #   base:
+  #     bg: "#ffffff"
+  #     fg: "#111111"
+  #     accent: "#ff3366"
+  #     link: "#0033cc"
+  #     heading: "#111111"
+
+# Code block highlighting.
+syntax:
+  # highlight: true
+  # theme: "GitHub"
+  # line_numbers: true
+
+# Asset handling.
+assets:
+  # cache_busting: false
+
+# Image processing.
+media:
+  images:
+    # widths: [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
+    # quality: 90
+
+# Footer display.
+footer:
+  # show_stbl: true
+
+# Banner images (full-bleed).
+banner:
+  # widths: [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
+  # quality: 90
+  # align: 0
+
+# Main navigation menu.
+menu:
+  - title: "Home"
+    href: "./"
+  - title: "About"
+    href: "./about.html"
+  - title: "Contact"
+    href: "./contact.html"
+
+# People directory for author attribution.
+people:
+  # default: "person1"
+  # entries:
+  #   person1:
+  #     name: "John Doe"
+  #     email: "jdoe@example.com"
+  #     links:
+  #       - id: "website"
+  #         name: "John Doe"
+  #         url: "https://example.com/"
+  #         # icon: "icons/website.svg"
+
+# System formatting helpers.
+system:
+  date:
+    # format: "%Y-%m-%d"
+    # roundup_seconds: 0
+
+# Publish command (optional).
+publish:
+  # command: "rsync -az artifacts/ user@host:/var/www/site"
+
+# Blog configuration.
+blog:
+  # abstract:
+  #   enabled: true
+  #   max_chars: 200
+{{BLOG_PAGINATION_BLOCK}}
+  # series:
+  #   latest_parts: 3
+
+# RSS feed configuration.
+rss:
+  # enabled: false
+  # max_items: 10
+  # ttl_channel: 0
+  # ttl_days: 30
+
+# Sitemap metadata.
+seo:
+  sitemap:
+    # priority:
+    #   frontpage: 1.0
+    #   article: 0.8
+    #   series: 0.6
+    #   tag: 0.4
+    #   tags: 0.4
+
+# Comments providers.
+comments:
+  # default: "disqus"
+  # disqus:
+  #   template: "<section>{{disqus-src}}</section>"
+  #   src: "https://example.com/embed.js"

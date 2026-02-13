@@ -1,6 +1,0 @@
-/* Wide desktop: subtle background outside the max-width column */
-body { background: transparent; }
-
-.wide-bg {
-  min-height: 100vh;
-}
