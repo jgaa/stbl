@@ -702,16 +702,22 @@ fn load_schema_from_docs(root: &Path) -> Option<Value> {
     if let Ok(cwd) = std::env::current_dir() {
         candidates.push(cwd.join("doc/config-schema.md"));
     }
+    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../doc/config-schema.md"));
 
     for path in candidates {
         if !path.exists() {
             continue;
         }
-        let contents = fs::read_to_string(&path).ok()?;
-        let yaml = extract_schema_yaml(&contents)?;
-        if let Ok(schema) = serde_yaml::from_str::<Value>(&yaml) {
-            return Some(schema);
-        }
+        let Ok(contents) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Some(yaml) = extract_schema_yaml(&contents) else {
+            continue;
+        };
+        let Ok(schema) = serde_yaml::from_str::<Value>(&yaml) else {
+            continue;
+        };
+        return Some(schema);
     }
     None
 }
@@ -816,6 +822,7 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
         "banner",
         "menu",
         "theme",
+        "syntax",
         "assets",
         "security",
         "media",
@@ -842,6 +849,7 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
             "banner" => warn_unknown_entries(value, report, path, "banner", &["widths", "quality", "align"]),
             "menu" => warn_unknown_list_entries(value, report, path, "menu", &["title", "href"]),
             "theme" => warn_unknown_theme_entries(value, report, path),
+            "syntax" => warn_unknown_syntax_entries(value, report, path),
             "assets" => warn_unknown_entries(value, report, path, "assets", &["cache_busting"]),
             "security" => warn_unknown_security_entries(value, report, path),
             "media" => warn_unknown_media_entries(value, report, path),
@@ -850,7 +858,13 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
             "blog" => warn_unknown_blog_entries(value, report, path),
             "system" => warn_unknown_system_entries(value, report, path),
             "publish" => warn_unknown_entries(value, report, path, "publish", &["command"]),
-            "rss" => warn_unknown_entries(value, report, path, "rss", &["enabled", "max_items", "ttl_days"]),
+            "rss" => warn_unknown_entries(
+                value,
+                report,
+                path,
+                "rss",
+                &["enabled", "max_items", "ttl_channel", "ttl_days"],
+            ),
             "seo" => warn_unknown_seo_entries(value, report, path),
             "comments" | "chroma" | "plyr" => {}
             _ => {}
@@ -871,16 +885,22 @@ fn warn_unknown_site_entries(value: &Value, report: &mut Report, path: &str, pre
     let allowed = [
         "id",
         "title",
+        "tagline",
+        "logo",
         "abstract",
         "copyright",
         "base_url",
         "language",
         "timezone",
         "url_style",
+        "macros",
         "nav",
     ];
     warn_unknown_entries(value, report, path, prefix, &allowed);
     if let Some(map) = value.as_mapping() {
+        if let Some(macros_cfg) = map.get(&Value::String("macros".to_string())) {
+            warn_unknown_entries(macros_cfg, report, path, "site.macros", &["enabled"]);
+        }
         if let Some(nav) = map.get(&Value::String("nav".to_string())) {
             warn_unknown_list_entries(nav, report, path, "site.nav", &["label", "href"]);
         }
@@ -899,7 +919,9 @@ fn warn_unknown_theme_entries(value: &Value, report: &mut Report, path: &str) {
             "breakpoints",
             "colors",
             "nav",
+            "header",
             "wide_background",
+            "color_scheme",
         ],
     );
     if let Some(map) = value.as_mapping() {
@@ -922,6 +944,7 @@ fn warn_unknown_theme_entries(value: &Value, report: &mut Report, path: &str) {
                     "bg",
                     "fg",
                     "heading",
+                    "title_fg",
                     "accent",
                     "link",
                     "muted",
@@ -939,6 +962,15 @@ fn warn_unknown_theme_entries(value: &Value, report: &mut Report, path: &str) {
         if let Some(nav) = map.get(&Value::String("nav".to_string())) {
             warn_unknown_entries(nav, report, path, "theme.nav", &["bg", "fg", "border"]);
         }
+        if let Some(header) = map.get(&Value::String("header".to_string())) {
+            warn_unknown_entries(
+                header,
+                report,
+                path,
+                "theme.header",
+                &["layout", "menu_align", "title_size", "tagline_size"],
+            );
+        }
         if let Some(wide) = map.get(&Value::String("wide_background".to_string())) {
             warn_unknown_entries(
                 wide,
@@ -948,7 +980,37 @@ fn warn_unknown_theme_entries(value: &Value, report: &mut Report, path: &str) {
                 &["color", "image", "style", "position", "opacity"],
             );
         }
+        if let Some(color_scheme) = map.get(&Value::String("color_scheme".to_string())) {
+            warn_unknown_entries(
+                color_scheme,
+                report,
+                path,
+                "theme.color_scheme",
+                &["name", "mode", "source", "base"],
+            );
+            if let Some(color_scheme_map) = color_scheme.as_mapping() {
+                if let Some(base) = color_scheme_map.get(&Value::String("base".to_string())) {
+                    warn_unknown_entries(
+                        base,
+                        report,
+                        path,
+                        "theme.color_scheme.base",
+                        &["bg", "fg", "accent", "link", "heading"],
+                    );
+                }
+            }
+        }
     }
+}
+
+fn warn_unknown_syntax_entries(value: &Value, report: &mut Report, path: &str) {
+    warn_unknown_entries(
+        value,
+        report,
+        path,
+        "syntax",
+        &["highlight", "theme", "line_numbers"],
+    );
 }
 
 fn warn_unknown_media_entries(value: &Value, report: &mut Report, path: &str) {
@@ -1361,5 +1423,32 @@ unknown_root: true
             .issues
             .iter()
             .any(|issue| issue.message.contains("unknown config entry")));
+    }
+
+    #[test]
+    fn warn_unknown_config_entries_allows_site_branding_and_syntax() {
+        let value = serde_yaml::from_str::<Value>(
+            r#"
+site:
+  id: "demo"
+  title: "Demo"
+  tagline: "Quietly better"
+  logo: "images/logo.svg"
+  base_url: "https://example.com/"
+  language: "en"
+syntax:
+  highlight: true
+  theme: "GitHub"
+  line_numbers: true
+"#,
+        )
+        .expect("value");
+        let mut report = Report::default();
+        warn_unknown_config_entries(&value, &mut report, "stbl.yaml");
+        assert!(
+            report.issues.is_empty(),
+            "unexpected warnings: {:?}",
+            report.issues
+        );
     }
 }

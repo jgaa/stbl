@@ -583,7 +583,7 @@ fn render_with_context(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
-            home_href => UrlMapper::new(&project.config).map("index").href,
+            home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
             nav_items => nav_items,

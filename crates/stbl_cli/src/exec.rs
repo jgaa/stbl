@@ -1900,6 +1900,7 @@ mod tests {
         assert!(page_html.contains("<header"));
         assert!(page_html.contains("<main>"));
         assert!(page_html.contains("<footer>"));
+        assert!(page_html.contains("class=\"brand\" href=\"&#x2f;index.html\""));
 
         assert_eq!(count_h1(&index_html), 0);
         assert_eq!(count_h1(&page_html), 1);

@@ -112,11 +112,14 @@ header.header-stacked .nav-desktop {
 }
 
 .brand-logo {
-  width: 2.6rem;
-  height: 2.6rem;
-  object-fit: contain;
+  height: calc(
+    (var(--header-title-size) * 1.2) +
+    (var(--header-tagline-size) * 1.2)
+  );
+  width: auto;
   display: block;
 }
+
 
 .brand-text {
   display: flex;
