@@ -271,7 +271,7 @@ fn resolve_wide_background_opacity(
     let value = overrides
         .opacity
         .or(defaults.opacity)
-        .unwrap_or(0.0);
+        .unwrap_or(1.0);
     if !(0.0..=1.0).contains(&value) || !value.is_finite() {
         bail!("wide_background.opacity must be between 0.0 and 1.0");
     }
@@ -287,9 +287,27 @@ fn resolve_wide_background_image(
         .as_ref()
         .or_else(|| defaults.image.as_ref());
     match value {
-        Some(raw) if !raw.trim().is_empty() => Ok(format!("url(\"{}\")", raw.trim())),
+        Some(raw) if !raw.trim().is_empty() => {
+            let normalized = normalize_wide_background_image(raw.trim());
+            Ok(format!("url(\"{}\")", normalized))
+        }
         _ => Ok("none".to_string()),
     }
+}
+
+fn normalize_wide_background_image(raw: &str) -> String {
+    if raw.starts_with("url(") {
+        return raw.to_string();
+    }
+    if raw.starts_with('/')
+        || raw.starts_with("http://")
+        || raw.starts_with("https://")
+        || raw.starts_with("data:")
+    {
+        return raw.replace('"', "\\\"");
+    }
+    let trimmed = raw.trim_start_matches("./");
+    format!("/{}", trimmed).replace('"', "\\\"")
 }
 
 fn pick_color(
@@ -373,5 +391,52 @@ fn format_opacity(value: f32) -> String {
         "0".to_string()
     } else {
         trimmed.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_wide_background_image_prefixes_root_for_relative_paths() {
+        assert_eq!(
+            normalize_wide_background_image("images/background-image.jpg"),
+            "/images/background-image.jpg"
+        );
+        assert_eq!(
+            normalize_wide_background_image("./images/background-image.jpg"),
+            "/images/background-image.jpg"
+        );
+    }
+
+    #[test]
+    fn normalize_wide_background_image_keeps_absolute_and_url_values() {
+        assert_eq!(
+            normalize_wide_background_image("/images/background-image.jpg"),
+            "/images/background-image.jpg"
+        );
+        assert_eq!(
+            normalize_wide_background_image("https://example.com/bg.jpg"),
+            "https://example.com/bg.jpg"
+        );
+        assert_eq!(
+            normalize_wide_background_image("url(\"/images/background-image.jpg\")"),
+            "url(\"/images/background-image.jpg\")"
+        );
+    }
+
+    #[test]
+    fn wide_background_opacity_defaults_to_full_when_unset() {
+        let overrides = ThemeWideBackgroundOverrides::default();
+        let defaults = ThemeDefaultsWideBackground {
+            color: None,
+            image: None,
+            style: None,
+            position: None,
+            opacity: None,
+        };
+        let value = resolve_wide_background_opacity(&overrides, &defaults).expect("opacity");
+        assert_eq!(value, "1");
     }
 }

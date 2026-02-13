@@ -50,6 +50,9 @@ site:
   language: string
   timezone: string   # optional
   url_style: html   # default, safe for existing sites
+  nav:
+    - label: string
+      href: string   # optional; defaults to "{label-lowercase}.html"
 
 theme:
   variant: string          # default "default"
@@ -123,7 +126,7 @@ banner:
 
 menu:
   - title: string
-    href: string
+    href: string     # optional; defaults to "{title-lowercase}.html"
 
 people:
   default: "person1"

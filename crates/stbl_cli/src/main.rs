@@ -668,9 +668,6 @@ fn run_publish_command(command: &str, root: &Path) -> Result<()> {
 }
 
 fn run_upgrade(cli: &Cli, force: bool) -> Result<()> {
-    if cli.source_dir.is_none() {
-        anyhow::bail!("upgrade requires --source-dir");
-    }
     let root = root_dir(cli)?;
     let result = crate::upgrade::upgrade_site(&root, force)?;
     for warning in result.warnings {

@@ -44,6 +44,9 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
             paths.insert(resolved);
         }
     }
+    if let Some(path) = resolve_wide_background_image_path(project)? {
+        paths.insert(path);
+    }
 
     let mut sources = BTreeMap::new();
     let mut hashes = BTreeMap::new();
@@ -77,6 +80,38 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
         },
         lookup,
     ))
+}
+
+fn resolve_wide_background_image_path(project: &Project) -> Result<Option<String>> {
+    let Some(raw) = project.config.theme.wide_background.image.as_ref() else {
+        return Ok(None);
+    };
+    let value = raw.trim();
+    if value.is_empty()
+        || value.starts_with("http://")
+        || value.starts_with("https://")
+        || value.starts_with("data:")
+        || value.starts_with("url(")
+    {
+        return Ok(None);
+    }
+
+    let logical = value
+        .trim_start_matches("./")
+        .trim_start_matches('/')
+        .to_string();
+    if logical.is_empty() {
+        return Ok(None);
+    }
+    let candidate = project.root.join(&logical);
+    if candidate.exists() {
+        return Ok(Some(logical));
+    }
+
+    bail!(
+        "wide background image not found: {}",
+        project.root.join(value).display()
+    );
 }
 
 pub fn discover_videos(project: &Project) -> Result<(VideoPlanInput, VideoSourceLookup)> {
@@ -257,4 +292,38 @@ pub(crate) fn resolve_banner_name(root: &Path, name: &str) -> Result<String> {
 fn hash_file(path: &Path) -> Result<blake3::Hash> {
     let data = std::fs::read(path)?;
     Ok(blake3::hash(&data))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use stbl_core::config::load_site_config;
+    use stbl_core::model::{Project, SiteContent};
+    use tempfile::TempDir;
+
+    #[test]
+    fn resolve_wide_background_image_path_accepts_relative_images_path() {
+        let temp = TempDir::new().expect("tempdir");
+        let root = temp.path();
+        std::fs::create_dir_all(root.join("images")).expect("mkdir images");
+        std::fs::write(root.join("images/bg.jpg"), b"fake").expect("write image");
+        std::fs::write(
+            root.join("stbl.yaml"),
+            "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com\n  language: en\ntheme:\n  wide_background:\n    image: images/bg.jpg\n",
+        )
+        .expect("write config");
+
+        let config = load_site_config(&root.join("stbl.yaml")).expect("load config");
+        let project = Project {
+            root: root.to_path_buf(),
+            config,
+            content: SiteContent::default(),
+            image_alpha: BTreeMap::new(),
+            image_variants: BTreeMap::new(),
+            video_variants: BTreeMap::new(),
+        };
+
+        let path = resolve_wide_background_image_path(&project).expect("resolve path");
+        assert_eq!(path.as_deref(), Some("images/bg.jpg"));
+    }
 }

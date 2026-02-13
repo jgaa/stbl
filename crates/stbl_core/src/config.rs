@@ -19,7 +19,7 @@ struct SiteConfigRaw {
     site: SiteMetaRaw,
     banner: Option<BannerConfigRaw>,
     #[serde(default)]
-    menu: Vec<MenuItem>,
+    menu: Vec<MenuItemRaw>,
     theme: Option<ThemeConfigRaw>,
     syntax: Option<SyntaxConfigRaw>,
     assets: Option<AssetsConfigRaw>,
@@ -186,6 +186,12 @@ struct NavItemRaw {
 }
 
 #[derive(Debug, Deserialize)]
+struct MenuItemRaw {
+    title: Option<String>,
+    href: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 struct PeopleConfigRaw {
     default: Option<String>,
     entries: Option<BTreeMap<String, PersonEntry>>,
@@ -247,10 +253,11 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         },
     };
 
+    let menu = parse_menu_items(parsed.menu)?;
+
     let nav = match parsed.site.nav {
         Some(items) => parse_nav_items(items)?,
-        None if !parsed.menu.is_empty() => parsed
-            .menu
+        None if !menu.is_empty() => menu
             .iter()
             .map(|item| NavItem {
                 label: item.title.clone(),
@@ -641,7 +648,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
             quality: banner.quality.unwrap_or(90),
             align: banner.align.unwrap_or(0),
         }),
-        menu: parsed.menu,
+        menu,
         nav,
         theme,
         syntax,
@@ -682,10 +689,26 @@ fn parse_nav_items(items: Vec<NavItemRaw>) -> Result<Vec<NavItem>> {
     let mut out = Vec::with_capacity(items.len());
     for (idx, item) in items.into_iter().enumerate() {
         let label = required_string(item.label, &format!("site.nav[{idx}].label"))?;
-        let href = required_string(item.href, &format!("site.nav[{idx}].href"))?;
+        let href = optional_non_empty(item.href, &format!("site.nav[{idx}].href"))?
+            .unwrap_or_else(|| default_href_from_title(&label));
         out.push(NavItem { label, href });
     }
     Ok(out)
+}
+
+fn parse_menu_items(items: Vec<MenuItemRaw>) -> Result<Vec<MenuItem>> {
+    let mut out = Vec::with_capacity(items.len());
+    for (idx, item) in items.into_iter().enumerate() {
+        let title = required_string(item.title, &format!("menu[{idx}].title"))?;
+        let href = optional_non_empty(item.href, &format!("menu[{idx}].href"))?
+            .unwrap_or_else(|| default_href_from_title(&title));
+        out.push(MenuItem { title, href });
+    }
+    Ok(out)
+}
+
+fn default_href_from_title(title: &str) -> String {
+    format!("{}.html", title.trim().to_lowercase())
 }
 
 fn non_empty_or_default(value: Option<String>, default: &str, field: &str) -> Result<String> {
@@ -985,5 +1008,30 @@ media:\n  images:\n    widths: [200]\n",
         assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Center);
         assert_eq!(config.theme.header.title_size, "1.5rem");
         assert_eq!(config.theme.header.tagline_size, "1.1rem");
+    }
+
+    #[test]
+    fn site_nav_href_defaults_from_label_when_missing() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n  nav:\n    - label: \"About\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.nav.len(), 1);
+        assert_eq!(config.nav[0].label, "About");
+        assert_eq!(config.nav[0].href, "about.html");
+    }
+
+    #[test]
+    fn legacy_menu_href_defaults_from_title_when_missing() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nmenu:\n  - title: \"Contact\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.menu.len(), 1);
+        assert_eq!(config.menu[0].title, "Contact");
+        assert_eq!(config.menu[0].href, "contact.html");
+        assert_eq!(config.nav.len(), 1);
+        assert_eq!(config.nav[0].label, "Contact");
+        assert_eq!(config.nav[0].href, "contact.html");
     }
 }

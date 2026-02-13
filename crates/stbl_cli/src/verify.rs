@@ -201,7 +201,7 @@ fn verify_config(root: &Path, report: &mut Report) -> (Option<stbl_core::model::
         Err(err) => {
             report.error(
                 Some("stbl.yaml".to_string()),
-                format!("invalid config: {err}"),
+                format!("invalid config: {err:#}"),
             );
             (None, false)
         }

@@ -459,6 +459,7 @@ pub fn render_series_index(
     let header_layout = header_layout_value(project);
     let header_layout_class = header_layout_class(project);
     let page_title = page_title_or_filename(project, index);
+    let banner_html = render_banner_html(project, index, &rel);
     let intro_html = if index.body_markdown.trim().is_empty() {
         None
     } else {
@@ -485,6 +486,7 @@ pub fn render_series_index(
             header_layout => header_layout,
             header_layout_class => header_layout_class,
             page_title => page_title,
+            banner_html => banner_html,
             intro_html => intro_html,
             parts => parts,
             build_date_ymd => build_date_ymd,
@@ -1568,7 +1570,8 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
             SiteContent::default(),
         );
-        let index = simple_page("Series", "articles/series/index.md");
+        let mut index = simple_page("Series", "articles/series/index.md");
+        index.banner_name = Some("series-banner.svg".to_string());
         let parts = vec![
             SeriesIndexPart {
                 title: "Part 1".to_string(),
@@ -1596,6 +1599,8 @@ mod tests {
         let part1 = html.find("Part 1").expect("part1");
         let part2 = html.find("Part 2").expect("part2");
         assert!(part1 < part2);
+        assert!(html.contains("<div class=\"banner\">"));
+        assert!(html.contains("images/series-banner.svg"));
     }
 
     fn project_with_config(config: &str, content: SiteContent) -> Project {
