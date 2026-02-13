@@ -46,7 +46,6 @@ The directory contains special files such as CSS and templates for generating HT
 * [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
 * Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html)
 * Easy to add [commenting with IntenseDebate](https://lastviking.eu/stbl_with_intensedebate.html)
-* SVG safety checks for embedded assets (scan, warn/fail, or sanitize)
 
 ---
 
