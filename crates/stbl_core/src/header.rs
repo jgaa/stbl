@@ -1,6 +1,6 @@
 //! STBL header block parsing
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, FixedOffset, Local, LocalResult, NaiveDate, NaiveDateTime, TimeZone};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -275,15 +275,69 @@ fn parse_datetime(value: &str, key: &str) -> Result<Option<i64>, HeaderError> {
     if let Ok(parsed) = DateTime::parse_from_rfc2822(trimmed) {
         return Ok(Some(parsed.timestamp()));
     }
+    let explicit_offset_formats = [
+        "%Y-%m-%d %H:%M:%S %:z",
+        "%Y-%m-%d %H:%M:%S %z",
+        "%Y-%m-%d %H:%M %:z",
+        "%Y-%m-%d %H:%M %z",
+        "%Y-%m-%dT%H:%M:%S%:z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M%:z",
+        "%Y-%m-%dT%H:%M%z",
+    ];
+    for format in explicit_offset_formats {
+        if let Ok(parsed) = DateTime::parse_from_str(trimmed, format) {
+            return Ok(Some(parsed.timestamp()));
+        }
+    }
     let naive_formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%dT%H:%M",
     ];
+    if let Some((base, suffix)) = split_datetime_tz_suffix(trimmed) {
+        if let Some(offset) = parse_tz_suffix(suffix) {
+            for format in naive_formats {
+                if let Ok(parsed) = NaiveDateTime::parse_from_str(base, format) {
+                    let timestamp = match offset.from_local_datetime(&parsed) {
+                        LocalResult::Single(value) => value.timestamp(),
+                        LocalResult::Ambiguous(first, _) => first.timestamp(),
+                        LocalResult::None => {
+                            return Err(HeaderError::InvalidDatetime {
+                                key: key.to_string(),
+                                value: trimmed.to_string(),
+                            });
+                        }
+                    };
+                    return Ok(Some(timestamp));
+                }
+            }
+            if let Ok(parsed) = NaiveDate::parse_from_str(base, "%Y-%m-%d") {
+                let parsed =
+                    parsed
+                        .and_hms_opt(0, 0, 0)
+                        .ok_or_else(|| HeaderError::InvalidDatetime {
+                            key: key.to_string(),
+                            value: trimmed.to_string(),
+                        })?;
+                let timestamp = match offset.from_local_datetime(&parsed) {
+                    LocalResult::Single(value) => value.timestamp(),
+                    LocalResult::Ambiguous(first, _) => first.timestamp(),
+                    LocalResult::None => {
+                        return Err(HeaderError::InvalidDatetime {
+                            key: key.to_string(),
+                            value: trimmed.to_string(),
+                        });
+                    }
+                };
+                return Ok(Some(timestamp));
+            }
+        }
+    }
     for format in naive_formats {
         if let Ok(parsed) = NaiveDateTime::parse_from_str(trimmed, format) {
-            return Ok(Some(Utc.from_utc_datetime(&parsed).timestamp()));
+            return local_timestamp_from_naive(parsed, key, trimmed).map(Some);
         }
     }
     if let Ok(parsed) = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
@@ -293,12 +347,124 @@ fn parse_datetime(value: &str, key: &str) -> Result<Option<i64>, HeaderError> {
                 key: key.to_string(),
                 value: trimmed.to_string(),
             })?;
-        return Ok(Some(Utc.from_utc_datetime(&parsed).timestamp()));
+        return local_timestamp_from_naive(parsed, key, trimmed).map(Some);
     }
     Err(HeaderError::InvalidDatetime {
         key: key.to_string(),
         value: trimmed.to_string(),
     })
+}
+
+fn local_timestamp_from_naive(
+    parsed: NaiveDateTime,
+    key: &str,
+    original: &str,
+) -> Result<i64, HeaderError> {
+    match Local.from_local_datetime(&parsed) {
+        LocalResult::Single(value) => Ok(value.timestamp()),
+        LocalResult::Ambiguous(first, _) => Ok(first.timestamp()),
+        LocalResult::None => Err(HeaderError::InvalidDatetime {
+            key: key.to_string(),
+            value: original.to_string(),
+        }),
+    }
+}
+
+fn split_datetime_tz_suffix(value: &str) -> Option<(&str, &str)> {
+    let split_idx = value.rfind(char::is_whitespace)?;
+    let (base, suffix) = value.split_at(split_idx);
+    let base = base.trim_end();
+    let suffix = suffix.trim_start();
+    if base.is_empty() || suffix.is_empty() {
+        return None;
+    }
+    let starts_like_tz = suffix.starts_with('+')
+        || suffix.starts_with('-')
+        || suffix.eq_ignore_ascii_case("utc")
+        || suffix.eq_ignore_ascii_case("gmt")
+        || suffix.to_ascii_uppercase().starts_with("UTC+")
+        || suffix.to_ascii_uppercase().starts_with("UTC-")
+        || suffix.to_ascii_uppercase().starts_with("GMT+")
+        || suffix.to_ascii_uppercase().starts_with("GMT-")
+        || suffix.chars().all(|ch| ch.is_ascii_alphabetic());
+    if !starts_like_tz {
+        return None;
+    }
+    Some((base, suffix))
+}
+
+fn parse_tz_suffix(value: &str) -> Option<FixedOffset> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let upper = trimmed.to_ascii_uppercase();
+    if matches!(upper.as_str(), "Z" | "UTC" | "GMT") {
+        return FixedOffset::east_opt(0);
+    }
+    if let Some(rest) = upper.strip_prefix("UTC") {
+        return parse_signed_offset(rest);
+    }
+    if let Some(rest) = upper.strip_prefix("GMT") {
+        return parse_signed_offset(rest);
+    }
+    if upper.starts_with('+') || upper.starts_with('-') {
+        return parse_signed_offset(&upper);
+    }
+    let seconds = match upper.as_str() {
+        "UTC" | "GMT" => 0,
+        "EST" => -5 * 3600,
+        "EDT" => -4 * 3600,
+        "CST" => -6 * 3600,
+        "CDT" => -5 * 3600,
+        "MST" => -7 * 3600,
+        "MDT" => -6 * 3600,
+        "PST" => -8 * 3600,
+        "PDT" => -7 * 3600,
+        "CET" => 1 * 3600,
+        "CEST" => 2 * 3600,
+        "EET" => 2 * 3600,
+        "EEST" | "ESDT" => 3 * 3600,
+        _ => return None,
+    };
+    FixedOffset::east_opt(seconds)
+}
+
+fn parse_signed_offset(value: &str) -> Option<FixedOffset> {
+    if value.is_empty() {
+        return FixedOffset::east_opt(0);
+    }
+    let sign = match value.as_bytes().first().copied() {
+        Some(b'+') => 1,
+        Some(b'-') => -1,
+        _ => return None,
+    };
+    let rest = &value[1..];
+    if rest.is_empty() {
+        return FixedOffset::east_opt(0);
+    }
+    let (hours, minutes) = if let Some((h, m)) = rest.split_once(':') {
+        (h.parse::<i32>().ok()?, m.parse::<i32>().ok()?)
+    } else if rest.len() <= 2 {
+        (rest.parse::<i32>().ok()?, 0)
+    } else if rest.len() == 3 {
+        (
+            rest[..1].parse::<i32>().ok()?,
+            rest[1..].parse::<i32>().ok()?,
+        )
+    } else if rest.len() == 4 {
+        (
+            rest[..2].parse::<i32>().ok()?,
+            rest[2..].parse::<i32>().ok()?,
+        )
+    } else {
+        return None;
+    };
+    if !(0..=23).contains(&hours) || !(0..=59).contains(&minutes) {
+        return None;
+    }
+    let total = sign * ((hours * 3600) + (minutes * 60));
+    FixedOffset::east_opt(total)
 }
 
 fn parse_sitemap_priority(
@@ -504,6 +670,47 @@ banner: https://example.com/#frag
         let parsed = parse_header("updated: 2024-01-02T03:04:05\n", UnknownKeyPolicy::Error)
             .expect("parse should succeed");
         assert!(parsed.header.updated.is_some());
+    }
+
+    #[test]
+    fn datetimes_with_timezone_suffix_parse() {
+        let gmt = parse_header(
+            "published: 2024-01-02 03:04 GMT-3\n",
+            UnknownKeyPolicy::Error,
+        )
+        .expect("parse should succeed");
+        let iso = parse_header(
+            "published: 2024-01-02T03:04:00-03:00\n",
+            UnknownKeyPolicy::Error,
+        )
+        .expect("parse should succeed");
+        assert_eq!(gmt.header.published, iso.header.published);
+
+        let abbr = parse_header(
+            "published: 2024-01-02 03:04 ESDT\n",
+            UnknownKeyPolicy::Error,
+        )
+        .expect("parse should succeed");
+        let abbr_iso = parse_header(
+            "published: 2024-01-02T03:04:00+03:00\n",
+            UnknownKeyPolicy::Error,
+        )
+        .expect("parse should succeed");
+        assert_eq!(abbr.header.published, abbr_iso.header.published);
+    }
+
+    #[test]
+    fn naive_datetime_uses_local_timezone() {
+        let parsed = parse_header("updated: 2024-02-01 12:34\n", UnknownKeyPolicy::Error)
+            .expect("parse should succeed");
+        let naive = NaiveDateTime::parse_from_str("2024-02-01 12:34", "%Y-%m-%d %H:%M")
+            .expect("parse naive");
+        let expected = match Local.from_local_datetime(&naive) {
+            LocalResult::Single(value) => value.timestamp(),
+            LocalResult::Ambiguous(first, _) => first.timestamp(),
+            LocalResult::None => panic!("expected valid local datetime"),
+        };
+        assert_eq!(parsed.header.updated, Some(expected));
     }
 
     #[test]

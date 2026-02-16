@@ -18,13 +18,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use chrono::Local;
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_yaml::Value;
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::header::UnknownKeyPolicy;
-use stbl_core::model::DiagnosticLevel;
 use stbl_core::model::ThemeColorSchemeMode;
+use stbl_core::model::{DiagnosticLevel, SiteContent};
 use std::process::Command as ProcessCommand;
 use walkdir::WalkDir;
 
@@ -474,7 +475,7 @@ fn run_build(
         cli.unknown_header_keys.into(),
         cli.verbose,
     )?;
-    let content = match assemble_site(docs) {
+    let mut content = match assemble_site(docs) {
         Ok(site) => site,
         Err(diagnostics) => {
             for diag in diagnostics {
@@ -491,6 +492,7 @@ fn run_build(
             std::process::exit(1);
         }
     };
+    assign_missing_published_now(&mut content);
     let mut project = stbl_core::model::Project {
         root: root.clone(),
         config,
@@ -593,9 +595,14 @@ fn run_build(
         run_publish_command(&command, &root)?;
     }
 
-    let summary = handle_writeback(&root, cli, &project.content, WriteBackMode::DryRun)?;
-    println!("{summary}");
     let effective_preview = preview || preview_open;
+    let writeback_mode = if effective_preview {
+        WriteBackMode::DryRun
+    } else {
+        WriteBackMode::Apply
+    };
+    let summary = handle_writeback(&root, cli, &project.content, writeback_mode)?;
+    println!("{summary}");
     if should_beep(effective_preview, beep, no_beep) {
         print!("\x07");
     }
@@ -897,6 +904,74 @@ fn handle_writeback(
     Ok(format!("modified {} documents", doc_count))
 }
 
+fn assign_missing_published_now(site: &mut SiteContent) {
+    let now = Local::now();
+    let now_ts = now.timestamp();
+    let now_text = now.format("%Y-%m-%d %H:%M").to_string();
+    let mut updated_paths = std::collections::HashSet::new();
+
+    for page in &mut site.pages {
+        if fill_missing_published(&mut page.header, now_ts) {
+            updated_paths.insert(page.source_path.clone());
+        }
+    }
+    for series in &mut site.series {
+        if fill_missing_published(&mut series.index.header, now_ts) {
+            updated_paths.insert(series.index.source_path.clone());
+        }
+        for part in &mut series.parts {
+            if fill_missing_published(&mut part.page.header, now_ts) {
+                updated_paths.insert(part.page.source_path.clone());
+            }
+        }
+    }
+    if updated_paths.is_empty() {
+        return;
+    }
+    for edit in &mut site.write_back.edits {
+        if !updated_paths.contains(&edit.path) {
+            continue;
+        }
+        if let Some(header) = edit.new_header_text.as_mut() {
+            rewrite_published_header_line(header, &now_text);
+        }
+    }
+}
+
+fn fill_missing_published(header: &mut stbl_core::header::Header, now_ts: i64) -> bool {
+    if !header.is_published || !header.published_needs_writeback || header.published.is_some() {
+        return false;
+    }
+    header.published = Some(now_ts);
+    true
+}
+
+fn rewrite_published_header_line(header_text: &mut String, value: &str) {
+    let mut lines = header_text.lines().map(str::to_string).collect::<Vec<_>>();
+    let mut replaced = false;
+    for line in &mut lines {
+        let Some((key, _)) = line.split_once(':') else {
+            continue;
+        };
+        if key.trim() == "published" {
+            *line = format!("published: {value}");
+            replaced = true;
+            break;
+        }
+    }
+    if !replaced {
+        lines.push(format!("published: {value}"));
+    }
+    let mut updated = lines.join("\n");
+    if !updated.ends_with('\n') {
+        updated.push('\n');
+    }
+    if !updated.ends_with("\n\n") {
+        updated.push('\n');
+    }
+    *header_text = updated;
+}
+
 fn validate_flags(cli: &Cli) -> Result<()> {
     let is_preview = match &cli.command {
         Command::Build {
@@ -908,9 +983,6 @@ fn validate_flags(cli: &Cli) -> Result<()> {
     };
     if cli.include_unpublished && !is_preview {
         anyhow::bail!("--include-unpublished requires --preview");
-    }
-    if cli.no_writeback && !is_preview {
-        anyhow::bail!("--no-writeback requires --preview");
     }
     if cli.commit_writeback && cli.no_writeback {
         anyhow::bail!("--commit-writeback cannot be used with --no-writeback");
@@ -1238,11 +1310,29 @@ mod tests {
     }
 
     #[test]
-    fn no_writeback_requires_preview() {
+    fn no_writeback_allowed_without_preview() {
         let mut cli = base_cli();
+        cli.command = Command::Build {
+            articles_dir: PathBuf::from("articles"),
+            out: Some(PathBuf::from("out")),
+            publish_to: None,
+            no_cache: false,
+            cache_path: None,
+            fast_images: false,
+            precompress: true,
+            fast_compress: false,
+            regenerate_content: false,
+            jobs: None,
+            preview: false,
+            beep: false,
+            no_beep: false,
+            preview_host: "127.0.0.1".to_string(),
+            preview_port: 8080,
+            preview_open: false,
+            preview_index: "index.html".to_string(),
+        };
         cli.no_writeback = true;
-        let err = validate_flags(&cli).expect_err("expected error");
-        assert!(err.to_string().contains("no-writeback"));
+        validate_flags(&cli).expect("no-writeback should be allowed");
     }
 
     #[test]

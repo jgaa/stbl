@@ -1934,7 +1934,7 @@ mod tests {
         assert!(!index_html.contains("Part 2"));
         assert!(index_html.contains("Series abstract override."));
         assert!(index_html.contains("January 15, 2024"));
-        assert!(index_html.contains("datetime=\"2024-01-15T10:00:00+00:00\""));
+        assert!(index_html.contains("datetime=\""));
         assert!(!index_html.contains("<span class=\"meta\"></span>"));
 
         let page2_html = fs::read_to_string(out_dir.join("page/2.html")).expect("read page2");

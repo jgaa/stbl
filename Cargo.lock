@@ -1761,6 +1761,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "brotli",
+ "chrono",
  "clap",
  "flate2",
  "image",
