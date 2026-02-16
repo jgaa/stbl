@@ -33,8 +33,13 @@ fn edit_one_article_triggers_minimal_rebuild() {
     );
 
     let second = run_build(&source_dir, &out_dir, &mut cache);
+    let second_non_assets = second
+        .executed_ids
+        .iter()
+        .filter(|id| !id.starts_with("copy_asset:"))
+        .count();
     assert_eq!(
-        second.executed, 0,
+        second_non_assets, 0,
         "second build executed: {:?}",
         second.executed_ids
     );

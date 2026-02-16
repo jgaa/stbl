@@ -15,44 +15,7 @@
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/wide-desktop.css"] }}" media="(min-width: 1400px)">
 </head>
 <body class="wide-bg">
-  <header class="{{ header_layout_class }} {{ menu_align_class }}">
-    <div class="page">
-      <a class="brand" href="{{ home_href }}">
-        {% if site.logo %}<img class="brand-logo" src="{{ site.logo_url }}" alt="{{ site.title }} logo">{% endif %}
-        <span class="brand-text">
-          <span class="brand-title">{{ site.title }}</span>
-          {% if site.tagline %}<span class="brand-tagline">{{ site.tagline }}</span>{% endif %}
-        </span>
-      </a>
-      <nav aria-label="Primary" class="nav-desktop site-nav">
-        <ul>
-          {% for item in nav_items %}
-          <li>
-            <a href="{{ item.href }}"{% if item.is_active %} aria-current="page"{% endif %}>
-              {{ item.label }}
-            </a>
-          </li>
-          {% endfor %}
-        </ul>
-      </nav>
-      <nav aria-label="Primary" class="nav-mobile">
-        <details class="menu">
-          <summary aria-label="Open menu">☰ Menu</summary>
-          <div class="menu-overlay">
-            <ul>
-              {% for item in nav_items %}
-              <li>
-                <a href="{{ item.href }}"{% if item.is_active %} aria-current="page"{% endif %}>
-                  {{ item.label }}
-                </a>
-              </li>
-              {% endfor %}
-            </ul>
-          </div>
-        </details>
-      </nav>
-    </div>
-  </header>
+  {% include "partials/header.html" %}
   <main>
     <div class="page">
       {% block content %}{% endblock %}

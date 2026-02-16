@@ -299,8 +299,8 @@ fn main() -> Result<()> {
 
 fn run_scan(cli: &Cli, articles_dir: &PathBuf) -> Result<()> {
     let root = root_dir(cli)?;
-    let _config = crate::config_loader::load_config(&root)
-        .with_context(|| "failed to load stbl.yaml")?;
+    let _config =
+        crate::config_loader::load_config(&root).with_context(|| "failed to load stbl.yaml")?;
     let docs = walk::walk_content(
         &root,
         articles_dir,

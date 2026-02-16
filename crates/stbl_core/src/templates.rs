@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, FixedOffset, Utc};
 use chrono_tz::Tz;
 use minijinja::{AutoEscape, Environment, context};
+use stbl_embedded_assets as embedded;
+use std::collections::BTreeMap;
+use std::sync::{Mutex, OnceLock};
 
 use crate::assets::AssetManifest;
 use crate::blog_index::{canonical_tag_map, collect_tag_list, iter_visible_posts, tag_key};
@@ -15,24 +18,31 @@ use crate::url::UrlMapper;
 use crate::visibility::is_blog_index_excluded;
 use serde::Serialize;
 
-const BASE_TEMPLATE: &str = include_str!("templates/base.html");
-const PAGE_TEMPLATE: &str = include_str!("templates/page.html");
-const BLOG_INDEX_TEMPLATE: &str = include_str!("templates/blog_index.html");
-const TAG_INDEX_TEMPLATE: &str = include_str!("templates/tag_index.html");
-const SERIES_INDEX_TEMPLATE: &str = include_str!("templates/series_index.html");
-const LIST_ITEM_TEMPLATE: &str = include_str!("templates/partials/list_item.html");
-const FOOTER_TEMPLATE: &str = include_str!("templates/partials/footer.html");
+const DEFAULT_THEME_VARIANT: &str = "stbl";
+const REQUIRED_TEMPLATE_ASSETS: &[(&str, &str)] = &[
+    ("base", "templates/base.html"),
+    ("page", "templates/page.html"),
+    ("blog_index", "templates/partials/blog_index.html"),
+    ("tag_index", "templates/tag_index.html"),
+    ("series_index", "templates/series_index.html"),
+    ("list_item", "templates/partials/list_item.html"),
+    ("header", "templates/partials/header.html"),
+    ("footer", "templates/partials/footer.html"),
+];
 const DEFAULT_DATE_FORMAT: &str = "%B %-d, %Y at %H:%M %Z";
+static TEMPLATE_ASSET_CACHE: OnceLock<Mutex<BTreeMap<String, TemplateAssetMap>>> = OnceLock::new();
 
 pub fn templates_hash() -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
-    hasher.update(b"stbl2.templates.v2");
-    add_template_hash(&mut hasher, "base", BASE_TEMPLATE);
-    add_template_hash(&mut hasher, "page", PAGE_TEMPLATE);
-    add_template_hash(&mut hasher, "blog_index", BLOG_INDEX_TEMPLATE);
-    add_template_hash(&mut hasher, "tag_index", TAG_INDEX_TEMPLATE);
-    add_template_hash(&mut hasher, "series_index", SERIES_INDEX_TEMPLATE);
-    add_template_hash(&mut hasher, "list_item", LIST_ITEM_TEMPLATE);
+    hasher.update(b"stbl2.templates.v3");
+    let templates = template_assets_for_variant(DEFAULT_THEME_VARIANT)
+        .expect("embedded stbl templates should always be available");
+    for (name, path) in REQUIRED_TEMPLATE_ASSETS {
+        let contents = templates
+            .get(*path)
+            .unwrap_or_else(|| panic!("missing required embedded template asset: {}", path));
+        add_template_hash(&mut hasher, name, contents);
+    }
     *hasher.finalize().as_bytes()
 }
 
@@ -44,6 +54,85 @@ fn add_template_hash(hasher: &mut blake3::Hasher, name: &str, contents: &str) {
 fn add_str(hasher: &mut blake3::Hasher, value: &str) {
     hasher.update(&(value.len() as u64).to_le_bytes());
     hasher.update(value.as_bytes());
+}
+
+type TemplateAssetMap = BTreeMap<String, &'static str>;
+
+fn normalize_theme_variant(theme_variant: &str) -> &str {
+    let trimmed = theme_variant.trim();
+    if trimmed.is_empty() || trimmed == "default" {
+        DEFAULT_THEME_VARIANT
+    } else {
+        trimmed
+    }
+}
+
+fn template_assets_for_variant(theme_variant: &str) -> Result<TemplateAssetMap> {
+    let normalized = normalize_theme_variant(theme_variant).to_string();
+    let cache = TEMPLATE_ASSET_CACHE.get_or_init(|| Mutex::new(BTreeMap::new()));
+    if let Some(cached) = cache
+        .lock()
+        .expect("template cache lock")
+        .get(&normalized)
+        .cloned()
+    {
+        return Ok(cached);
+    }
+
+    let mut merged = load_template_assets_from_embedded(DEFAULT_THEME_VARIANT)?;
+    if normalized != DEFAULT_THEME_VARIANT {
+        if let Some(overrides) = load_template_assets_from_embedded_optional(&normalized)? {
+            for (path, contents) in overrides {
+                merged.insert(path, contents);
+            }
+        }
+    }
+
+    {
+        let mut guard = cache.lock().expect("template cache lock");
+        guard.insert(normalized, merged.clone());
+    }
+    Ok(merged)
+}
+
+fn load_template_assets_from_embedded_optional(
+    theme_variant: &str,
+) -> Result<Option<TemplateAssetMap>> {
+    let Some(template) = embedded::template(theme_variant) else {
+        return Ok(None);
+    };
+    let mut out = TemplateAssetMap::new();
+    for entry in template.assets {
+        if !(entry.path.starts_with("templates/") && entry.path.ends_with(".html")) {
+            continue;
+        }
+        let bytes = embedded::decompress_to_vec(&entry.hash).with_context(|| {
+            format!(
+                "failed to decompress embedded template asset {} for theme {}",
+                entry.path, theme_variant
+            )
+        })?;
+        let contents = String::from_utf8(bytes).with_context(|| {
+            format!(
+                "embedded template asset {} in theme {} is not utf-8",
+                entry.path, theme_variant
+            )
+        })?;
+        out.insert(
+            entry.path.to_string(),
+            Box::leak(contents.into_boxed_str()) as &'static str,
+        );
+    }
+    Ok(Some(out))
+}
+
+fn load_template_assets_from_embedded(theme_variant: &str) -> Result<TemplateAssetMap> {
+    load_template_assets_from_embedded_optional(theme_variant)?.with_context(|| {
+        format!(
+            "embedded theme '{}' not found while loading HTML templates",
+            theme_variant
+        )
+    })
 }
 
 pub fn render_page(
@@ -287,7 +376,8 @@ pub fn render_blog_index(
     build_date_ymd: &str,
     show_page_title: bool,
 ) -> Result<String> {
-    let env = template_env().context("failed to initialize templates")?;
+    let env =
+        template_env(&project.config.theme.variant).context("failed to initialize templates")?;
     let template = env
         .get_template("blog_index.html")
         .context("missing blog_index template")?;
@@ -367,7 +457,8 @@ pub fn render_tag_index(
     current_href: &str,
     build_date_ymd: &str,
 ) -> Result<String> {
-    let env = template_env().context("failed to initialize templates")?;
+    let env =
+        template_env(&project.config.theme.variant).context("failed to initialize templates")?;
     let template = env
         .get_template("tag_index.html")
         .context("missing tag_index template")?;
@@ -437,7 +528,8 @@ pub fn render_series_index(
     build_date_ymd: &str,
     include_provider: Option<&dyn IncludeProvider>,
 ) -> Result<String> {
-    let env = template_env().context("failed to initialize templates")?;
+    let env =
+        template_env(&project.config.theme.variant).context("failed to initialize templates")?;
     let template = env
         .get_template("series_index.html")
         .context("missing series_index template")?;
@@ -520,7 +612,33 @@ pub fn render_redirect_page(
     )
 }
 
-fn template_env() -> Result<Environment<'static>> {
+fn template_env(theme_variant: &str) -> Result<Environment<'static>> {
+    let templates = template_assets_for_variant(theme_variant)?;
+    let base_template = templates
+        .get("templates/base.html")
+        .context("missing base template asset")?;
+    let page_template = templates
+        .get("templates/page.html")
+        .context("missing page template asset")?;
+    let blog_index_template = templates
+        .get("templates/partials/blog_index.html")
+        .context("missing blog_index template asset")?;
+    let tag_index_template = templates
+        .get("templates/tag_index.html")
+        .context("missing tag_index template asset")?;
+    let series_index_template = templates
+        .get("templates/series_index.html")
+        .context("missing series_index template asset")?;
+    let list_item_template = templates
+        .get("templates/partials/list_item.html")
+        .context("missing list_item template asset")?;
+    let footer_template = templates
+        .get("templates/partials/footer.html")
+        .context("missing footer template asset")?;
+    let header_template = templates
+        .get("templates/partials/header.html")
+        .context("missing header template asset")?;
+
     let mut env = Environment::new();
     env.set_auto_escape_callback(|name| {
         if name.ends_with(".html") {
@@ -529,13 +647,14 @@ fn template_env() -> Result<Environment<'static>> {
             AutoEscape::None
         }
     });
-    env.add_template("base.html", BASE_TEMPLATE)?;
-    env.add_template("page.html", PAGE_TEMPLATE)?;
-    env.add_template("blog_index.html", BLOG_INDEX_TEMPLATE)?;
-    env.add_template("tag_index.html", TAG_INDEX_TEMPLATE)?;
-    env.add_template("series_index.html", SERIES_INDEX_TEMPLATE)?;
-    env.add_template("partials/list_item.html", LIST_ITEM_TEMPLATE)?;
-    env.add_template("partials/footer.html", FOOTER_TEMPLATE)?;
+    env.add_template("base.html", base_template)?;
+    env.add_template("page.html", page_template)?;
+    env.add_template("blog_index.html", blog_index_template)?;
+    env.add_template("tag_index.html", tag_index_template)?;
+    env.add_template("series_index.html", series_index_template)?;
+    env.add_template("partials/list_item.html", list_item_template)?;
+    env.add_template("partials/header.html", header_template)?;
+    env.add_template("partials/footer.html", footer_template)?;
     Ok(env)
 }
 
@@ -558,7 +677,8 @@ fn render_with_context(
     series_nav: Option<SeriesNavView>,
     redirect_href: Option<String>,
 ) -> Result<String> {
-    let env = template_env().context("failed to initialize templates")?;
+    let env =
+        template_env(&project.config.theme.variant).context("failed to initialize templates")?;
     let template = env
         .get_template("page.html")
         .context("missing page template")?;

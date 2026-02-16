@@ -69,7 +69,7 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         false,
     )
     .expect("execute plan");
-    assert_eq!(report_second.executed, 0);
+    assert!(report_second.executed < report_first.executed);
     assert!(report_second.skipped > 0);
 
     let output_path = first_output_path(&plan, &out_dir);

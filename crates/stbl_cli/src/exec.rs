@@ -144,22 +144,26 @@ impl CommentTemplateProvider for FsCommentTemplateProvider {
 }
 
 fn load_embedded_comment_template(template: &str, theme_variant: &str) -> Result<Option<String>> {
-    let embedded_template = match embedded::template(normalize_theme_variant(theme_variant)) {
-        Some(template) => template,
-        None => return Ok(None),
-    };
     let candidates = embedded_template_candidates(template);
-    for candidate in candidates {
-        if let Some(entry) = embedded_template
-            .assets
-            .iter()
-            .find(|entry| entry.path == candidate)
-        {
-            let bytes = embedded::decompress_to_vec(&entry.hash)
-                .ok_or_else(|| anyhow!("failed to decompress embedded template {}", candidate))?;
-            let contents = String::from_utf8(bytes)
-                .map_err(|err| anyhow!("embedded template {} is not utf-8: {}", candidate, err))?;
-            return Ok(Some(contents));
+    let normalized_theme = normalize_theme_variant(theme_variant);
+    for theme in theme_fallback_chain(normalized_theme) {
+        let Some(embedded_template) = embedded::template(theme) else {
+            continue;
+        };
+        for candidate in &candidates {
+            if let Some(entry) = embedded_template
+                .assets
+                .iter()
+                .find(|entry| entry.path == candidate)
+            {
+                let bytes = embedded::decompress_to_vec(&entry.hash).ok_or_else(|| {
+                    anyhow!("failed to decompress embedded template {}", candidate)
+                })?;
+                let contents = String::from_utf8(bytes).map_err(|err| {
+                    anyhow!("embedded template {} is not utf-8: {}", candidate, err)
+                })?;
+                return Ok(Some(contents));
+            }
         }
     }
     Ok(None)
@@ -172,10 +176,15 @@ fn embedded_template_candidates(template: &str) -> Vec<String> {
     }
     let mut candidates = Vec::new();
     if trimmed.contains('/') || trimmed.contains('\\') {
-        candidates.push(trimmed.replace('\\', "/"));
+        let normalized = trimmed.replace('\\', "/");
+        candidates.push(normalized.clone());
+        if let Some(stripped) = normalized.strip_prefix("templates/") {
+            candidates.push(format!("templates/partials/{stripped}"));
+        }
     } else {
         candidates.push(trimmed.to_string());
         candidates.push(format!("templates/{trimmed}"));
+        candidates.push(format!("templates/partials/{trimmed}"));
     }
     candidates
 }
@@ -187,15 +196,13 @@ fn comment_template_candidates(
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
     let raw_path = Path::new(template);
-    let theme_dir = site_root
-        .join("stbl")
-        .join("templates")
-        .join(normalize_theme_variant(theme_variant));
-    out.push(theme_dir.join(raw_path));
-
     let trimmed = template.trim().replace('\\', "/");
-    if let Some(stripped) = trimmed.strip_prefix("templates/") {
-        out.push(theme_dir.join(stripped));
+    for theme in theme_fallback_chain(normalize_theme_variant(theme_variant)) {
+        let theme_dir = site_root.join("stbl").join("templates").join(theme);
+        out.push(theme_dir.join(raw_path));
+        if let Some(stripped) = trimmed.strip_prefix("templates/") {
+            out.push(theme_dir.join(stripped));
+        }
     }
     out
 }
@@ -206,6 +213,14 @@ fn normalize_theme_variant(theme_variant: &str) -> &str {
         "stbl"
     } else {
         trimmed
+    }
+}
+
+fn theme_fallback_chain<'a>(theme_variant: &'a str) -> Vec<&'a str> {
+    if theme_variant == "stbl" {
+        vec![theme_variant]
+    } else {
+        vec![theme_variant, "stbl"]
     }
 }
 
@@ -221,8 +236,12 @@ fn load_theme_defaults_yaml(project: &Project) -> Result<Vec<u8>> {
             .with_context(|| format!("failed to read {}", local_path.display()));
     }
 
-    let defaults = stbl_embedded_assets::template_colors_yaml(variant)
-        .map_err(|err| anyhow!("theme defaults for {}: {}", variant, err))?;
+    if let Ok(defaults) = stbl_embedded_assets::template_colors_yaml(variant) {
+        return Ok(defaults.to_vec());
+    }
+
+    let defaults = stbl_embedded_assets::template_colors_yaml("stbl")
+        .map_err(|err| anyhow!("theme defaults for {} (fallback stbl): {}", variant, err))?;
     Ok(defaults.to_vec())
 }
 

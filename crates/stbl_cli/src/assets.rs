@@ -28,7 +28,12 @@ pub enum AssetSource {
 
 #[allow(dead_code)]
 pub fn embedded_default_template() -> Result<&'static embedded::Template> {
-    embedded_theme_template(DEFAULT_THEME_VARIANT)
+    embedded::template(DEFAULT_THEME_VARIANT).ok_or_else(|| {
+        anyhow!(
+            "embedded assets template '{}' not found",
+            DEFAULT_THEME_VARIANT
+        )
+    })
 }
 
 pub fn iter_embedded_assets(template: &embedded::Template) -> Result<Vec<(String, Vec<u8>)>> {
@@ -56,15 +61,9 @@ pub fn discover_assets_for_theme(
     let theme_variant = normalize_theme_variant(theme_variant);
     let mut resolved: BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)> =
         BTreeMap::new();
-    let template = embedded_theme_template(theme_variant)?;
-    for (rel_path, bytes) in iter_embedded_assets(template)? {
-        let rel = normalize_rel_path(Path::new(&rel_path))?;
-        if rel.0 == "css/vars.css" {
-            continue;
-        }
-        let content_hash = blake3::hash(&bytes).to_hex().to_string();
-        let source_id = AssetSourceId(format!("embedded:{content_hash}"));
-        resolved.insert(rel, (source_id, AssetSource::Embedded(bytes), content_hash));
+    overlay_embedded_theme_assets(DEFAULT_THEME_VARIANT, &mut resolved, true)?;
+    if theme_variant != DEFAULT_THEME_VARIANT {
+        overlay_embedded_theme_assets(theme_variant, &mut resolved, false)?;
     }
 
     let stbl_root = project_root.join("stbl");
@@ -109,15 +108,9 @@ fn discover_assets_legacy(
     let theme_variant = normalize_theme_variant(theme_variant);
     let mut resolved: BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)> =
         BTreeMap::new();
-    let template = embedded_theme_template(theme_variant)?;
-    for (rel_path, bytes) in iter_embedded_assets(template)? {
-        let rel = normalize_rel_path(Path::new(&rel_path))?;
-        if rel.0 == "css/vars.css" {
-            continue;
-        }
-        let content_hash = blake3::hash(&bytes).to_hex().to_string();
-        let source_id = AssetSourceId(format!("embedded:{content_hash}"));
-        resolved.insert(rel, (source_id, AssetSource::Embedded(bytes), content_hash));
+    overlay_embedded_theme_assets(DEFAULT_THEME_VARIANT, &mut resolved, true)?;
+    if theme_variant != DEFAULT_THEME_VARIANT {
+        overlay_embedded_theme_assets(theme_variant, &mut resolved, false)?;
     }
 
     collect_site_assets_mapped(site_root, "", &mut resolved)?;
@@ -138,9 +131,29 @@ fn discover_assets_legacy(
     Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
 }
 
-fn embedded_theme_template(theme_variant: &str) -> Result<&'static embedded::Template> {
-    embedded::template(theme_variant)
-        .ok_or_else(|| anyhow!("embedded assets template '{}' not found", theme_variant))
+fn overlay_embedded_theme_assets(
+    theme_variant: &str,
+    resolved: &mut BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)>,
+    required: bool,
+) -> Result<()> {
+    let template = match embedded::template(theme_variant) {
+        Some(template) => template,
+        None if required => {
+            bail!("embedded assets template '{}' not found", theme_variant);
+        }
+        None => return Ok(()),
+    };
+
+    for (rel_path, bytes) in iter_embedded_assets(template)? {
+        let rel = normalize_rel_path(Path::new(&rel_path))?;
+        if rel.0 == "css/vars.css" {
+            continue;
+        }
+        let content_hash = blake3::hash(&bytes).to_hex().to_string();
+        let source_id = AssetSourceId(format!("embedded:{content_hash}"));
+        resolved.insert(rel, (source_id, AssetSource::Embedded(bytes), content_hash));
+    }
+    Ok(())
 }
 
 fn normalize_theme_variant(theme_variant: &str) -> &str {
