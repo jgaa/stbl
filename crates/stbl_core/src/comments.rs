@@ -102,11 +102,15 @@ fn build_comment_vars(
     vars.insert("page-url".to_string(), page_url);
 
     for (key, value) in provider_map {
-        let Some(key_str) = key.as_str() else { continue };
+        let Some(key_str) = key.as_str() else {
+            continue;
+        };
         if key_str == "template" {
             continue;
         }
-        let Some(value_str) = yaml_value_to_string(value) else { continue };
+        let Some(value_str) = yaml_value_to_string(value) else {
+            continue;
+        };
         let var_key = format!("{provider_name}-{key_str}");
         vars.insert(var_key, value_str);
     }
@@ -171,8 +175,8 @@ fn render_template_placeholders(template: &str, vars: &BTreeMap<String, String>)
 mod tests {
     use super::*;
     use crate::config::load_site_config;
-    use crate::model::{DocId, Page, Project, SiteContent};
     use crate::header::Header;
+    use crate::model::{DocId, Page, Project, SiteContent};
     use std::fs;
     use std::path::PathBuf;
     use uuid::Uuid;

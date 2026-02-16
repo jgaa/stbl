@@ -111,6 +111,8 @@ mod tests {
 
     #[test]
     fn missing_language_returns_none() {
-        assert!(highlight_code_html_classed("fn main() {}", "no-such-lang-xyz", "GitHub").is_none());
+        assert!(
+            highlight_code_html_classed("fn main() {}", "no-such-lang-xyz", "GitHub").is_none()
+        );
     }
 }

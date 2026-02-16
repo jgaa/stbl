@@ -36,7 +36,11 @@ impl std::fmt::Display for AssetError {
                 write!(f, "missing asset {} in template {}", path, template)
             }
             AssetError::DecompressFailed { template, path } => {
-                write!(f, "failed to decompress asset {} in template {}", path, template)
+                write!(
+                    f,
+                    "failed to decompress asset {} in template {}",
+                    path, template
+                )
             }
         }
     }
@@ -51,7 +55,9 @@ pub fn template_names() -> &'static [&'static str] {
 }
 
 pub fn template(name: &str) -> Option<&'static Template> {
-    generated::TEMPLATES.iter().find(|template| template.name == name)
+    generated::TEMPLATES
+        .iter()
+        .find(|template| template.name == name)
 }
 
 pub fn asset_bytes_gzip(hash: &[u8; 32]) -> Option<&'static [u8]> {
@@ -81,7 +87,11 @@ pub fn template_colors_yaml(variant: &str) -> Result<&'static [u8], AssetError> 
     })?;
     let path = format!("{}.colors.yaml", variant);
 
-    if let Some(cache) = COLORS_CACHE.get_or_init(|| Mutex::new(BTreeMap::new())).lock().ok() {
+    if let Some(cache) = COLORS_CACHE
+        .get_or_init(|| Mutex::new(BTreeMap::new()))
+        .lock()
+        .ok()
+    {
         if let Some(bytes) = cache.get(variant) {
             return Ok(bytes);
         }

@@ -15,7 +15,7 @@ site:
 
 # Theme configuration.
 theme:
-  # variant: "default"
+  # variant: "stbl"
   # max_body_width: "72rem"
   # breakpoints:
   #   desktop_min: "768px"

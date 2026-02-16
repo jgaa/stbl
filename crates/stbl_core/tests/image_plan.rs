@@ -36,12 +36,7 @@ fn image_plan_orders_tasks_and_paths() {
         alpha,
         dimensions,
     };
-    let tasks = plan_image_tasks(
-        &input,
-        &[1280, 480],
-        90,
-        ImageFormatMode::Normal,
-    );
+    let tasks = plan_image_tasks(&input, &[1280, 480], 90, ImageFormatMode::Normal);
     let out_paths = tasks
         .iter()
         .map(|task| task.outputs[0].path.to_string_lossy().to_string())
@@ -82,12 +77,7 @@ fn fast_mode_skips_avif_outputs() {
         alpha,
         dimensions,
     };
-    let tasks = plan_image_tasks(
-        &input,
-        &[480],
-        90,
-        ImageFormatMode::Fast,
-    );
+    let tasks = plan_image_tasks(&input, &[480], 90, ImageFormatMode::Fast);
     let out_paths = tasks
         .iter()
         .flat_map(|task| task.outputs.iter())

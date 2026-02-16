@@ -1,5 +1,7 @@
 use anyhow::{Result, bail};
-use stbl_core::model::{ThemeColorOverrides, ThemeColorSchemeMode, ThemeNavOverrides, ThemeWideBackgroundOverrides};
+use stbl_core::model::{
+    ThemeColorOverrides, ThemeColorSchemeMode, ThemeNavOverrides, ThemeWideBackgroundOverrides,
+};
 
 #[derive(Debug, Clone)]
 pub struct BaseColorsInput {
@@ -68,12 +70,7 @@ pub fn derive_from_base(input: BaseColorsInput) -> Result<DerivedScheme> {
         blend(fg, Rgb::new(0, 0, 0), 0.08)
     };
 
-    let muted = ensure_contrast(
-        blend(fg, bg, 0.5),
-        bg,
-        3.0,
-        prefers_lighter(mode),
-    )?;
+    let muted = ensure_contrast(blend(fg, bg, 0.5), bg, 3.0, prefers_lighter(mode))?;
 
     let surface = if prefers_lighter(mode) {
         blend(bg, fg, 0.12)
@@ -250,14 +247,17 @@ fn parse_hex(input: &str) -> Result<Rgb> {
         3 => {
             let mut out = [0u8; 3];
             for (idx, ch) in hex.chars().enumerate() {
-                let digit = ch.to_digit(16).ok_or_else(|| anyhow::anyhow!("invalid hex digit"))? as u8;
+                let digit = ch
+                    .to_digit(16)
+                    .ok_or_else(|| anyhow::anyhow!("invalid hex digit"))?
+                    as u8;
                 out[idx] = digit * 17;
             }
             out
         }
         6 => {
-            let parsed = u32::from_str_radix(hex, 16)
-                .map_err(|_| anyhow::anyhow!("invalid hex color"))?;
+            let parsed =
+                u32::from_str_radix(hex, 16).map_err(|_| anyhow::anyhow!("invalid hex color"))?;
             [
                 ((parsed >> 16) & 0xFF) as u8,
                 ((parsed >> 8) & 0xFF) as u8,

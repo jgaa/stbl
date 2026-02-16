@@ -1,5 +1,5 @@
-use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::model::ImageFormatMode;
+use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 
 #[test]
 fn managed_video_renders_html5_video_markup() {

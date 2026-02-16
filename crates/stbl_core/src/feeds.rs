@@ -350,7 +350,7 @@ mod tests {
             menu: Vec::new(),
             nav: Vec::new(),
             theme: crate::model::ThemeConfig {
-                variant: "default".to_string(),
+                variant: "stbl".to_string(),
                 max_body_width: "72rem".to_string(),
                 breakpoints: crate::model::ThemeBreakpoints {
                     desktop_min: "768px".to_string(),

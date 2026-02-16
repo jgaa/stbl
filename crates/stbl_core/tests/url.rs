@@ -1,10 +1,11 @@
 use stbl_core::model::{
     AssetsConfig, ImageFormatMode, MacrosConfig, SecurityConfig, SiteConfig, SiteMeta,
-    SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, ThemeBreakpoints, ThemeConfig,
-    ThemeColorOverrides, ThemeHeaderConfig, ThemeNavOverrides, ThemeWideBackgroundOverrides,
-    UrlStyle,
+    SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, ThemeBreakpoints, ThemeColorOverrides,
+    ThemeConfig, ThemeHeaderConfig, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
 };
-use stbl_core::url::{Redirect, UrlMapper, UrlMapping, logical_key_from_source_path, map_series_index};
+use stbl_core::url::{
+    Redirect, UrlMapper, UrlMapping, logical_key_from_source_path, map_series_index,
+};
 
 fn base_config(style: UrlStyle) -> SiteConfig {
     SiteConfig {
@@ -24,7 +25,7 @@ fn base_config(style: UrlStyle) -> SiteConfig {
         menu: Vec::new(),
         nav: Vec::new(),
         theme: ThemeConfig {
-            variant: "default".to_string(),
+            variant: "stbl".to_string(),
             max_body_width: "72rem".to_string(),
             breakpoints: ThemeBreakpoints {
                 desktop_min: "768px".to_string(),

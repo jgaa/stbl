@@ -36,7 +36,7 @@ fn video_pipeline_generates_variants_and_posters() {
         UnknownKeyPolicy::Error,
         false,
     )
-        .expect("walk content");
+    .expect("walk content");
     let content = assemble_site(docs).expect("assemble site");
     let mut project = Project {
         root: root.clone(),

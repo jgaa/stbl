@@ -2,8 +2,8 @@ use anyhow::Result;
 
 use crate::blog_index::{canonical_tag_map, collect_blog_posts, iter_visible_posts, tag_key};
 use crate::model::{Page, Project};
-use crate::url::{UrlMapper, logical_key_from_source_path};
 use crate::templates::format_timestamp_ymd;
+use crate::url::{UrlMapper, logical_key_from_source_path};
 use crate::visibility::is_blog_index_excluded;
 use pulldown_cmark::{Options as CmarkOptions, Parser};
 use pulldown_cmark_toc::{HeadingLevel, Options as TocOptions, TableOfContents};
@@ -179,7 +179,9 @@ impl<'a> MacroInvocation<'a> {
 
 fn parse_macro_invocation(input: &str, start: usize) -> Option<MacroInvocation<'_>> {
     let name_start = start + 2;
-    let name_end = input[name_start..].find(']').map(|offset| name_start + offset)?;
+    let name_end = input[name_start..]
+        .find(']')
+        .map(|offset| name_start + offset)?;
     let name = input[name_start..name_end].trim();
     if name.is_empty() {
         return None;
@@ -226,9 +228,7 @@ fn expand_macro(
     match name.as_str() {
         "blogitems" => Some(expand_blogitems(invocation.args(), ctx)),
         "include" => Some(expand_include(invocation.args(), ctx, options, state)),
-        "note" | "tip" | "info" | "warning" | "danger" => {
-            expand_callout(invocation, &name, ctx)
-        }
+        "note" | "tip" | "info" | "warning" | "danger" => expand_callout(invocation, &name, ctx),
         "quote" => expand_quote(invocation, ctx),
         "figure" => Some(expand_figure(invocation.args(), ctx)),
         "kbd" => Some(expand_kbd_key(invocation, "kbd")),
@@ -964,8 +964,9 @@ fn expand_series(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
         if let Some(part_idx) = match_info.part_index {
             if part_idx > 0 {
                 let prev = &series.parts[part_idx - 1];
-                let prev_href =
-                    mapper.map(&logical_key_from_source_path(&prev.page.source_path)).href;
+                let prev_href = mapper
+                    .map(&logical_key_from_source_path(&prev.page.source_path))
+                    .href;
                 out.push_str("<a rel=\"prev\" href=\"");
                 out.push_str(&escape_attr(&prev_href));
                 out.push_str("\">&lt;- Previous</a>");
@@ -975,8 +976,9 @@ fn expand_series(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
             out.push_str("\">All parts</a>");
             if part_idx + 1 < total_parts {
                 let next = &series.parts[part_idx + 1];
-                let next_href =
-                    mapper.map(&logical_key_from_source_path(&next.page.source_path)).href;
+                let next_href = mapper
+                    .map(&logical_key_from_source_path(&next.page.source_path))
+                    .href;
                 out.push_str("<a rel=\"next\" href=\"");
                 out.push_str(&escape_attr(&next_href));
                 out.push_str("\">Next -&gt;</a>");
@@ -992,7 +994,9 @@ fn expand_series(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
     if list {
         out.push_str("<ol class=\"series-parts\">");
         for part in &series.parts {
-            let href = mapper.map(&logical_key_from_source_path(&part.page.source_path)).href;
+            let href = mapper
+                .map(&logical_key_from_source_path(&part.page.source_path))
+                .href;
             let label = part
                 .page
                 .header
@@ -1092,11 +1096,7 @@ fn expand_related(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
             .then_with(|| a.page.source_path.cmp(&b.page.source_path))
     });
 
-    let mut selected: Vec<&Page> = scored
-        .iter()
-        .take(items)
-        .map(|item| item.page)
-        .collect();
+    let mut selected: Vec<&Page> = scored.iter().take(items).map(|item| item.page).collect();
 
     if selected.len() < items {
         for candidate in visible_related_pages_sorted(ctx.project) {
@@ -1142,12 +1142,9 @@ fn expand_related(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
         out.push_str("\">");
         out.push_str(&escape_html_text(&title));
         out.push_str("</a>");
-        if let Some(published) = format_timestamp_ymd(
-            related
-                .header
-                .published
-                .or(related.header.updated),
-        ) {
+        if let Some(published) =
+            format_timestamp_ymd(related.header.published.or(related.header.updated))
+        {
             out.push_str("<span class=\"meta\">");
             out.push_str(&escape_html_text(&published));
             out.push_str("</span>");
@@ -1164,9 +1161,7 @@ struct RelatedCandidate<'a> {
     published: i64,
 }
 
-fn build_series_lookup(
-    project: &Project,
-) -> HashMap<crate::model::DocId, crate::model::SeriesId> {
+fn build_series_lookup(project: &Project) -> HashMap<crate::model::DocId, crate::model::SeriesId> {
     let mut lookup = HashMap::new();
     for series in &project.content.series {
         lookup.insert(series.index.id, series.id);
@@ -1216,10 +1211,7 @@ struct SeriesMatch<'a> {
     part_index: Option<usize>,
 }
 
-fn find_series_for_page<'a>(
-    project: &'a Project,
-    page: &Page,
-) -> Option<SeriesMatch<'a>> {
+fn find_series_for_page<'a>(project: &'a Project, page: &Page) -> Option<SeriesMatch<'a>> {
     for series in &project.content.series {
         if series.index.id == page.id {
             return Some(SeriesMatch {
@@ -1358,7 +1350,6 @@ fn escape_markdown_text(text: &str) -> String {
     out
 }
 
-
 fn skip_to_next_comma(input: &str, mut idx: usize) -> usize {
     while let Some((ch, len)) = next_char(input, idx) {
         idx += len;
@@ -1406,13 +1397,13 @@ fn warning_block(message: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::anyhow;
     use crate::header::Header;
     use crate::model::{
         DocId, ImageFormatMode, MacrosConfig, SecurityConfig, Series, SeriesId, SeriesPart,
         SiteConfig, SiteContent, SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides,
         ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
+    use anyhow::anyhow;
     use std::path::PathBuf;
 
     fn base_config() -> SiteConfig {
@@ -1433,7 +1424,7 @@ mod tests {
             menu: Vec::new(),
             nav: Vec::new(),
             theme: crate::model::ThemeConfig {
-                variant: "default".to_string(),
+                variant: "stbl".to_string(),
                 max_body_width: "72rem".to_string(),
                 breakpoints: crate::model::ThemeBreakpoints {
                     desktop_min: "768px".to_string(),
@@ -1557,7 +1548,11 @@ mod tests {
         let mut index_header = Header::default();
         index_header.is_published = true;
         index_header.title = Some(title.to_string());
-        let index = make_page("series-index", &format!("articles/{dir}/index.md"), index_header);
+        let index = make_page(
+            "series-index",
+            &format!("articles/{dir}/index.md"),
+            index_header,
+        );
 
         let mut part_vec = Vec::new();
         for (part_no, part_title) in parts {
@@ -1565,11 +1560,7 @@ mod tests {
             header.is_published = true;
             header.title = Some((*part_title).to_string());
             let seed = format!("{dir}-part-{part_no}");
-            let page = make_page(
-                &seed,
-                &format!("articles/{dir}/part{part_no}.md"),
-                header,
-            );
+            let page = make_page(&seed, &format!("articles/{dir}/part{part_no}.md"), header);
             part_vec.push(SeriesPart {
                 part_no: *part_no,
                 page,
@@ -1626,11 +1617,7 @@ mod tests {
                 }
             }
             RenderedMedia {
-                html: format!(
-                    "<img src=\"{}\" alt=\"{}\">",
-                    src,
-                    escape_attr(alt.trim())
-                ),
+                html: format!("<img src=\"{}\" alt=\"{}\">", src, escape_attr(alt.trim())),
                 maxw,
                 maxh,
             }
@@ -2003,10 +1990,8 @@ mod tests {
             syntax_line_numbers: true,
         };
 
-        let html = crate::render::render_markdown_to_html_with_media(
-            "@[blogitems](items=3)",
-            &options,
-        );
+        let html =
+            crate::render::render_markdown_to_html_with_media("@[blogitems](items=3)", &options);
 
         let idx6 = html.find("Post 6").expect("post 6");
         let idx5 = html.find("Post 5").expect("post 5");
@@ -2118,7 +2103,9 @@ Hello *world*.
         let input = "@[blogitems](items=2)\nBody line\nMore";
         let invocation = parse_macro_invocation(input, 0).expect("parse");
         match invocation {
-            MacroInvocation::Inline { name, args, end, .. } => {
+            MacroInvocation::Inline {
+                name, args, end, ..
+            } => {
                 assert_eq!(name, "blogitems");
                 assert_eq!(args, Some("items=2"));
                 assert!(end < input.len());
@@ -2210,14 +2197,15 @@ Hello *world*.
             &ctx,
         )
         .expect("expand");
-        assert!(output.contains("<blockquote class=\"quote-body\"><p>Best **idea**.</p></blockquote>"));
-        assert!(output.contains("<figcaption class=\"quote-caption\">&mdash; Alan Kay</figcaption>"));
+        assert!(
+            output.contains("<blockquote class=\"quote-body\"><p>Best **idea**.</p></blockquote>")
+        );
+        assert!(
+            output.contains("<figcaption class=\"quote-caption\">&mdash; Alan Kay</figcaption>")
+        );
 
-        let output = expand_macros(
-            "@[quote](source=\"Talk\")\nBest **idea**.\n@[/quote]",
-            &ctx,
-        )
-        .expect("expand");
+        let output = expand_macros("@[quote](source=\"Talk\")\nBest **idea**.\n@[/quote]", &ctx)
+            .expect("expand");
         assert!(output.contains("<figcaption class=\"quote-caption\">&mdash; Talk</figcaption>"));
 
         let output = expand_macros(
@@ -2323,7 +2311,10 @@ Hello *world*.
     fn include_macro_detects_recursion() {
         let project = project_with_pages(Vec::new());
         let mut map = std::collections::BTreeMap::new();
-        map.insert("loop.md".to_string(), "@[include](path=\"loop.md\")".to_string());
+        map.insert(
+            "loop.md".to_string(),
+            "@[include](path=\"loop.md\")".to_string(),
+        );
         let provider = FakeIncludeProvider { map };
         let ctx = MacroContext {
             project: &project,

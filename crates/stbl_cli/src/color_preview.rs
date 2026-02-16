@@ -15,7 +15,10 @@ struct Rgb {
 
 pub fn default_color_preview_path() -> Result<PathBuf> {
     let home = std::env::var("HOME").context("HOME not set for preview output path")?;
-    Ok(PathBuf::from(home).join(".cache").join("stbl").join("color-themes.html"))
+    Ok(PathBuf::from(home)
+        .join(".cache")
+        .join("stbl")
+        .join("color-themes.html"))
 }
 
 pub fn write_color_theme_preview(
@@ -293,8 +296,23 @@ fn render_color_theme_preview(presets: &BTreeMap<String, ColorPreset>) -> Result
 
         let style = format!(
             "--c-bg:{};--c-fg:{};--c-heading:{};--c-accent:{};--c-link:{};--c-link-hover:{};--c-muted:{};--c-surface:{};--c-border:{};--c-code-bg:{};--c-code-fg:{};--c-quote-bg:{};--c-quote-border:{};--c-wide-bg:{};--c-nav-bg:{};--c-nav-fg:{};--c-nav-border:{};",
-            bg, fg, heading, accent, link, link_hover, muted, surface, border, code_bg, code_fg,
-            quote_bg, quote_border, wide_bg, nav_bg, nav_fg, nav_border
+            bg,
+            fg,
+            heading,
+            accent,
+            link,
+            link_hover,
+            muted,
+            surface,
+            border,
+            code_bg,
+            code_fg,
+            quote_bg,
+            quote_border,
+            wide_bg,
+            nav_bg,
+            nav_fg,
+            nav_border
         );
 
         html.push_str(&format!(

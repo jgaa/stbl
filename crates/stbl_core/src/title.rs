@@ -47,8 +47,7 @@ mod tests {
 
     #[test]
     fn deduces_title_from_series_index_dir() {
-        let title =
-            deduce_title_from_source_path("articles/fun_with_gRPC_and_C++/index.md");
+        let title = deduce_title_from_source_path("articles/fun_with_gRPC_and_C++/index.md");
         assert_eq!(title.as_deref(), Some("Fun with gRPC and C++"));
     }
 

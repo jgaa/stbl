@@ -6,7 +6,9 @@ use std::time::SystemTime;
 use anyhow::Result;
 use pulldown_cmark::{Event, Parser, Tag};
 use serde_yaml::Value;
-use stbl_core::header::{Header, HeaderError, HeaderWarning, TemplateId, UnknownKeyPolicy, parse_header};
+use stbl_core::header::{
+    Header, HeaderError, HeaderWarning, TemplateId, UnknownKeyPolicy, parse_header,
+};
 use stbl_core::model::DocKind;
 use stbl_core::url::{UrlMapper, logical_key_from_source_path};
 
@@ -463,11 +465,7 @@ fn validate_url_syntax(url: &str, scheme: &str) -> Result<(), String> {
     match scheme {
         "http" | "https" => {
             let rest = url.strip_prefix(&format!("{scheme}://")).unwrap_or("");
-            let host = rest
-                .split(['/', '?', '#'])
-                .next()
-                .unwrap_or("")
-                .trim();
+            let host = rest.split(['/', '?', '#']).next().unwrap_or("").trim();
             if host.is_empty() {
                 return Err(format!("missing host in {url}"));
             }
@@ -524,7 +522,10 @@ fn verify_duplicate_uuids(docs: &[DocInfo], report: &mut Report) {
             if flagged.insert(uuid_text.clone()) {
                 report.error(
                     Some(existing.clone()),
-                    format!("duplicate uuid {uuid_text} (also used by {})", doc.source_path),
+                    format!(
+                        "duplicate uuid {uuid_text} (also used by {})",
+                        doc.source_path
+                    ),
                 );
             }
         } else {
@@ -564,9 +565,7 @@ fn verify_tag_case_mismatches(docs: &[DocInfo], report: &mut Report) {
 fn verify_series_headers(docs: &[DocInfo], report: &mut Report) {
     for doc in docs {
         let source = Some(doc.source_path.clone());
-        if doc.series_dir.is_none()
-            && doc.header.part.as_deref().unwrap_or("").trim().len() > 0
-        {
+        if doc.series_dir.is_none() && doc.header.part.as_deref().unwrap_or("").trim().len() > 0 {
             report.warn(
                 source.clone(),
                 "series part header is set but page is not part of a series".to_string(),
@@ -608,22 +607,10 @@ fn verify_url_collisions(
         };
         let mapping = mapper.map(&logical_key);
         let primary = mapping.primary_output.to_string_lossy().replace('\\', "/");
-        record_collision(
-            doc,
-            &primary,
-            &mut outputs,
-            &mut flagged,
-            report,
-        );
+        record_collision(doc, &primary, &mut outputs, &mut flagged, report);
         if let Some(fallback) = mapping.fallback {
             let fallback_path = fallback.from.to_string_lossy().replace('\\', "/");
-            record_collision(
-                doc,
-                &fallback_path,
-                &mut outputs,
-                &mut flagged,
-                report,
-            );
+            record_collision(doc, &fallback_path, &mut outputs, &mut flagged, report);
         }
     }
 }
@@ -644,7 +631,10 @@ fn record_collision(
         if flagged.insert(key) {
             report.error(
                 Some(existing.clone()),
-                format!("output collision at {output_path} (also used by {})", doc.source_path),
+                format!(
+                    "output collision at {output_path} (also used by {})",
+                    doc.source_path
+                ),
             );
         }
     } else {
@@ -755,7 +745,10 @@ fn warn_unknown_config_entries_with_schema(
     path: &str,
 ) {
     if !matches!(value, Value::Mapping(_)) {
-        report.warn(Some(path.to_string()), "config root must be a map".to_string());
+        report.warn(
+            Some(path.to_string()),
+            "config root must be a map".to_string(),
+        );
         return;
     }
     warn_unknown_entries_against_schema(value, schema, report, path);
@@ -785,7 +778,12 @@ fn warn_unknown_entries_against_schema(
                 if allowed_keys.contains(key_str) {
                     if let Some(schema_value) = schema_map.get(key) {
                         let child_path = format!("{path}.{key_str}");
-                        warn_unknown_entries_against_schema(value, schema_value, report, &child_path);
+                        warn_unknown_entries_against_schema(
+                            value,
+                            schema_value,
+                            report,
+                            &child_path,
+                        );
                     }
                     continue;
                 }
@@ -814,26 +812,15 @@ fn warn_unknown_entries_against_schema(
 
 fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
     let Some(map) = value.as_mapping() else {
-        report.warn(Some(path.to_string()), "config root must be a map".to_string());
+        report.warn(
+            Some(path.to_string()),
+            "config root must be a map".to_string(),
+        );
         return;
     };
     let allowed = [
-        "site",
-        "banner",
-        "menu",
-        "theme",
-        "syntax",
-        "assets",
-        "security",
-        "media",
-        "footer",
-        "people",
-        "blog",
-        "system",
-        "publish",
-        "rss",
-        "seo",
-        "comments",
+        "site", "banner", "menu", "theme", "syntax", "assets", "security", "media", "footer",
+        "people", "blog", "system", "publish", "rss", "seo", "comments",
     ];
     for (key, value) in map {
         let key = key.as_str().unwrap_or("<non-string>");
@@ -846,7 +833,13 @@ fn warn_unknown_config_entries(value: &Value, report: &mut Report, path: &str) {
         }
         match key {
             "site" => warn_unknown_site_entries(value, report, path, "site"),
-            "banner" => warn_unknown_entries(value, report, path, "banner", &["widths", "quality", "align"]),
+            "banner" => warn_unknown_entries(
+                value,
+                report,
+                path,
+                "banner",
+                &["widths", "quality", "align"],
+            ),
             "menu" => warn_unknown_list_entries(value, report, path, "menu", &["title", "href"]),
             "theme" => warn_unknown_theme_entries(value, report, path),
             "syntax" => warn_unknown_syntax_entries(value, report, path),
@@ -1017,13 +1010,7 @@ fn warn_unknown_media_entries(value: &Value, report: &mut Report, path: &str) {
     warn_unknown_entries(value, report, path, "media", &["images", "video"]);
     if let Some(map) = value.as_mapping() {
         if let Some(images) = map.get(&Value::String("images".to_string())) {
-            warn_unknown_entries(
-                images,
-                report,
-                path,
-                "media.images",
-                &["widths", "quality"],
-            );
+            warn_unknown_entries(images, report, path, "media.images", &["widths", "quality"]);
         }
         if let Some(video) = map.get(&Value::String("video".to_string())) {
             warn_unknown_entries(
@@ -1054,7 +1041,13 @@ fn warn_unknown_people_entries(value: &Value, report: &mut Report, path: &str) {
         warn_unknown_entries(value, report, path, &prefix, &["name", "email", "links"]);
         if let Some(entry_map) = value.as_mapping() {
             if let Some(links) = entry_map.get(&Value::String("links".to_string())) {
-                warn_unknown_list_entries(links, report, path, &format!("{prefix}.links"), &["id", "name", "url", "icon"]);
+                warn_unknown_list_entries(
+                    links,
+                    report,
+                    path,
+                    &format!("{prefix}.links"),
+                    &["id", "name", "url", "icon"],
+                );
             }
         }
     }
@@ -1341,10 +1334,12 @@ mod tests {
         ];
 
         verify_tag_case_mismatches(&docs, &mut report);
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.message.contains("tag case mismatch")));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.message.contains("tag case mismatch"))
+        );
     }
 
     #[test]
@@ -1388,12 +1383,16 @@ mod tests {
             .iter()
             .map(|issue| issue.message.as_str())
             .collect::<Vec<_>>();
-        assert!(messages
-            .iter()
-            .any(|message| message.contains("not part of a series")));
-        assert!(messages
-            .iter()
-            .any(|message| message.contains("must not use info template")));
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("not part of a series"))
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|message| message.contains("must not use info template"))
+        );
     }
 
     #[test]
@@ -1419,10 +1418,12 @@ unknown_root: true
         .expect("value");
         let mut report = Report::default();
         warn_unknown_entries_against_schema(&value, &schema, &mut report, "stbl.yaml");
-        assert!(report
-            .issues
-            .iter()
-            .any(|issue| issue.message.contains("unknown config entry")));
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.message.contains("unknown config entry"))
+        );
     }
 
     #[test]

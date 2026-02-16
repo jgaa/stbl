@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, anyhow, bail};
 use crate::color_presets;
+use anyhow::{Context, Result, anyhow, bail};
 use stbl_embedded_assets as embedded;
 
 const CONFIG_TEMPLATE: &str = include_str!("../assets/stbl.template.yaml");
@@ -93,8 +93,7 @@ fn create_required_dirs(target_dir: &Path, copy_all: bool) -> Result<()> {
         dirs.push(target_dir.join("assets/css"));
     }
     for dir in dirs {
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("failed to create {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| format!("failed to create {}", dir.display()))?;
     }
     Ok(())
 }
@@ -288,8 +287,8 @@ folder inside `out/`).\n";
 }
 
 fn copy_embedded_assets(assets_root: &Path) -> Result<()> {
-    let template = embedded::template("default")
-        .ok_or_else(|| anyhow!("embedded assets template 'default' not found"))?;
+    let template = embedded::template("stbl")
+        .ok_or_else(|| anyhow!("embedded assets template 'stbl' not found"))?;
     for asset in template.assets {
         if !asset.path.starts_with("css/") {
             continue;

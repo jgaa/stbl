@@ -306,7 +306,5 @@ fn find_task_id(
 }
 
 fn is_sorted(tasks: &[stbl_core::model::BuildTask]) -> bool {
-    tasks
-        .windows(2)
-        .all(|pair| pair[0].id.0 <= pair[1].id.0)
+    tasks.windows(2).all(|pair| pair[0].id.0 <= pair[1].id.0)
 }

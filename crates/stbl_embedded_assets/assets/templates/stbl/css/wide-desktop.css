@@ -51,5 +51,5 @@ body { background: transparent; }
 .wide-bg footer .page {
   border-top: 1px solid var(--c-border);
   margin-top: 0;
-  padding: 1.5rem 0 2rem;
+  padding: 1.5rem 1rem 2rem;
 }

@@ -1,7 +1,9 @@
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
-use crate::model::{SiteConfig, ThemeColorOverrides, ThemeWideBackgroundOverrides, WideBackgroundStyle};
+use crate::model::{
+    SiteConfig, ThemeColorOverrides, ThemeWideBackgroundOverrides, WideBackgroundStyle,
+};
 
 #[derive(Debug, Clone)]
 pub struct ResolvedThemeVars {
@@ -75,8 +77,8 @@ struct Rgb {
 }
 
 pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<ResolvedThemeVars> {
-    let defaults: ThemeDefaultsYaml = serde_yaml::from_slice(defaults_yaml)
-        .context("failed to parse theme defaults yaml")?;
+    let defaults: ThemeDefaultsYaml =
+        serde_yaml::from_slice(defaults_yaml).context("failed to parse theme defaults yaml")?;
     let base_defaults = defaults.base.unwrap_or(ThemeDefaultsBase {
         bg: None,
         fg: None,
@@ -89,27 +91,47 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         fg: None,
         border: None,
     });
-    let wide_defaults = defaults.wide_background.unwrap_or(ThemeDefaultsWideBackground {
-        color: None,
-        image: None,
-        style: None,
-        position: None,
-        opacity: None,
-    });
+    let wide_defaults = defaults
+        .wide_background
+        .unwrap_or(ThemeDefaultsWideBackground {
+            color: None,
+            image: None,
+            style: None,
+            position: None,
+            opacity: None,
+        });
 
     let overrides = &config.theme.colors;
     let nav_overrides = &config.theme.nav;
     let wide_overrides = &config.theme.wide_background;
 
-    let bg = pick_color(overrides.bg.as_ref(), base_defaults.bg.as_ref(), "bg", Rgb::new(255, 255, 255))?;
-    let fg = pick_color(overrides.fg.as_ref(), base_defaults.fg.as_ref(), "fg", Rgb::new(0, 0, 0))?;
+    let bg = pick_color(
+        overrides.bg.as_ref(),
+        base_defaults.bg.as_ref(),
+        "bg",
+        Rgb::new(255, 255, 255),
+    )?;
+    let fg = pick_color(
+        overrides.fg.as_ref(),
+        base_defaults.fg.as_ref(),
+        "fg",
+        Rgb::new(0, 0, 0),
+    )?;
 
-    let accent = pick_color_optional(overrides.accent.as_ref(), base_defaults.accent.as_ref(), "accent")?
-        .unwrap_or(fg);
-    let heading = pick_color_optional(overrides.heading.as_ref(), base_defaults.heading.as_ref(), "heading")?
-        .unwrap_or(accent);
-    let title_fg = pick_color_optional(overrides.title_fg.as_ref(), None, "title_fg")?
-        .unwrap_or(heading);
+    let accent = pick_color_optional(
+        overrides.accent.as_ref(),
+        base_defaults.accent.as_ref(),
+        "accent",
+    )?
+    .unwrap_or(fg);
+    let heading = pick_color_optional(
+        overrides.heading.as_ref(),
+        base_defaults.heading.as_ref(),
+        "heading",
+    )?
+    .unwrap_or(accent);
+    let title_fg =
+        pick_color_optional(overrides.title_fg.as_ref(), None, "title_fg")?.unwrap_or(heading);
     let link = pick_color_optional(overrides.link.as_ref(), base_defaults.link.as_ref(), "link")?
         .unwrap_or(accent);
 
@@ -149,7 +171,8 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
     )?
     .unwrap_or(nav_fg);
 
-    let (wide_bg_repeat, wide_bg_size) = resolve_wide_background_style(wide_overrides, &wide_defaults)?;
+    let (wide_bg_repeat, wide_bg_size) =
+        resolve_wide_background_style(wide_overrides, &wide_defaults)?;
     let wide_bg_position = resolve_wide_background_position(wide_overrides, &wide_defaults)?;
     let wide_bg_opacity = resolve_wide_background_opacity(wide_overrides, &wide_defaults)?;
     let wide_bg_image = resolve_wide_background_image(wide_overrides, &wide_defaults)?;
@@ -268,10 +291,7 @@ fn resolve_wide_background_opacity(
     overrides: &ThemeWideBackgroundOverrides,
     defaults: &ThemeDefaultsWideBackground,
 ) -> Result<String> {
-    let value = overrides
-        .opacity
-        .or(defaults.opacity)
-        .unwrap_or(1.0);
+    let value = overrides.opacity.or(defaults.opacity).unwrap_or(1.0);
     if !(0.0..=1.0).contains(&value) || !value.is_finite() {
         bail!("wide_background.opacity must be between 0.0 and 1.0");
     }
@@ -282,10 +302,7 @@ fn resolve_wide_background_image(
     overrides: &ThemeWideBackgroundOverrides,
     defaults: &ThemeDefaultsWideBackground,
 ) -> Result<String> {
-    let value = overrides
-        .image
-        .as_ref()
-        .or_else(|| defaults.image.as_ref());
+    let value = overrides.image.as_ref().or_else(|| defaults.image.as_ref());
     match value {
         Some(raw) if !raw.trim().is_empty() => {
             let normalized = normalize_wide_background_image(raw.trim());
@@ -371,7 +388,11 @@ fn parse_color(input: &str, label: &str) -> Result<Rgb> {
         }
         6 => {
             let parsed = u32::from_str_radix(hex, 16).context("invalid hex color")?;
-            [((parsed >> 16) & 0xFF) as u8, ((parsed >> 8) & 0xFF) as u8, (parsed & 0xFF) as u8]
+            [
+                ((parsed >> 16) & 0xFF) as u8,
+                ((parsed >> 8) & 0xFF) as u8,
+                (parsed & 0xFF) as u8,
+            ]
         }
         _ => bail!("invalid color for {}: {}", label, input),
     };

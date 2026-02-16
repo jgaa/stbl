@@ -8,10 +8,10 @@ use serde::Deserialize;
 use crate::model::{
     AssetsConfig, BannerConfig, FooterConfig, ImageConfig, ImageFormatMode, MediaConfig, MenuAlign,
     MenuItem, NavItem, PeopleConfig, PersonEntry, PublishConfig, RssConfig, SecurityConfig,
-    SeoConfig, SiteConfig, SiteMeta, SvgSecurityConfig, SvgSecurityMode, SyntaxConfig, SystemConfig,
-    ThemeBreakpoints, ThemeColorOverrides, ThemeColorScheme, ThemeConfig, ThemeHeaderConfig,
-    ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle, VideoConfig,
-    WideBackgroundStyle,
+    SeoConfig, SiteConfig, SiteMeta, SvgSecurityConfig, SvgSecurityMode, SyntaxConfig,
+    SystemConfig, ThemeBreakpoints, ThemeColorOverrides, ThemeColorScheme, ThemeConfig,
+    ThemeHeaderConfig, ThemeHeaderLayout, ThemeNavOverrides, ThemeWideBackgroundOverrides,
+    UrlStyle, VideoConfig, WideBackgroundStyle,
 };
 
 #[derive(Debug, Deserialize)]
@@ -249,7 +249,11 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         timezone: parsed.site.timezone,
         url_style: parsed.site.url_style.unwrap_or_default(),
         macros: crate::model::MacrosConfig {
-            enabled: parsed.site.macros.and_then(|macros| macros.enabled).unwrap_or(true),
+            enabled: parsed
+                .site
+                .macros
+                .and_then(|macros| macros.enabled)
+                .unwrap_or(true),
         },
     };
 
@@ -375,12 +379,17 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
     };
 
     let theme_raw = parsed.theme.as_ref();
+    let mut theme_variant = non_empty_or_default(
+        theme_raw.and_then(|theme| theme.variant.clone()),
+        "stbl",
+        "theme.variant",
+    )?;
+    if theme_variant == "default" {
+        theme_variant = "stbl".to_string();
+    }
+
     let theme = ThemeConfig {
-        variant: non_empty_or_default(
-            theme_raw.and_then(|theme| theme.variant.clone()),
-            "default",
-            "theme.variant",
-        )?,
+        variant: theme_variant,
         max_body_width: non_empty_or_default(
             theme_raw.and_then(|theme| theme.max_body_width.clone()),
             "72rem",
@@ -816,7 +825,7 @@ mod tests {
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
         );
         let config = load_site_config(&path).expect("config should load");
-        assert_eq!(config.theme.variant, "default");
+        assert_eq!(config.theme.variant, "stbl");
         assert_eq!(config.theme.max_body_width, "72rem");
         assert_eq!(config.theme.breakpoints.desktop_min, "768px");
         assert_eq!(config.theme.breakpoints.wide_min, "1400px");
@@ -827,7 +836,10 @@ mod tests {
             config.theme.header.layout,
             crate::model::ThemeHeaderLayout::Stacked
         );
-        assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Right);
+        assert_eq!(
+            config.theme.header.menu_align,
+            crate::model::MenuAlign::Right
+        );
         assert_eq!(config.theme.header.title_size, "1.3rem");
         assert_eq!(config.theme.header.tagline_size, "1rem");
     }
@@ -853,12 +865,24 @@ mod tests {
     }
 
     #[test]
+    fn theme_variant_default_aliases_to_stbl() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\ntheme:\n  variant: \"default\"\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        assert_eq!(config.theme.variant, "stbl");
+    }
+
+    #[test]
     fn security_svg_defaults_to_warn() {
         let path = write_temp(
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
         );
         let config = load_site_config(&path).expect("config should load");
-        assert_eq!(config.security.svg.mode, crate::model::SvgSecurityMode::Warn);
+        assert_eq!(
+            config.security.svg.mode,
+            crate::model::SvgSecurityMode::Warn
+        );
     }
 
     #[test]
@@ -1005,7 +1029,10 @@ media:\n  images:\n    widths: [200]\n",
             config.theme.header.layout,
             crate::model::ThemeHeaderLayout::Inline
         );
-        assert_eq!(config.theme.header.menu_align, crate::model::MenuAlign::Center);
+        assert_eq!(
+            config.theme.header.menu_align,
+            crate::model::MenuAlign::Center
+        );
         assert_eq!(config.theme.header.title_size, "1.5rem");
         assert_eq!(config.theme.header.tagline_size, "1.1rem");
     }

@@ -2,8 +2,8 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::net::SocketAddr;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -72,7 +72,11 @@ pub fn spawn_preview(opts: PreviewOpts) -> Result<PreviewHandle> {
     let index = opts.index.clone();
     let join = thread::spawn(move || serve_loop(server, out_dir, index, Some(shutdown_thread)));
 
-    Ok(PreviewHandle { url, shutdown, join })
+    Ok(PreviewHandle {
+        url,
+        shutdown,
+        join,
+    })
 }
 
 fn resolve_site_dir(cwd: &Path, site_dir: Option<PathBuf>) -> Result<PathBuf> {
@@ -106,8 +110,8 @@ fn validate_out_dir(out_dir: &Path) -> Result<()> {
 
 fn bind_server(host: &str, port: u16) -> Result<(Server, SocketAddr)> {
     let addr = format!("{host}:{port}");
-    let server = Server::http(&addr)
-        .map_err(|err| anyhow::anyhow!("failed to bind to {addr}: {err}"))?;
+    let server =
+        Server::http(&addr).map_err(|err| anyhow::anyhow!("failed to bind to {addr}: {err}"))?;
     let actual = server
         .server_addr()
         .to_ip()
@@ -197,11 +201,9 @@ fn handle_request(
 
     if let Some((start, end)) = parse_range_header(request, file_size)? {
         let length = end.saturating_sub(start).saturating_add(1);
-        let content_range = Header::from_bytes(
-            "Content-Range",
-            format!("bytes {start}-{end}/{file_size}"),
-        )
-        .expect("valid header");
+        let content_range =
+            Header::from_bytes("Content-Range", format!("bytes {start}-{end}/{file_size}"))
+                .expect("valid header");
         let headers = vec![content_type, accept_ranges, content_range];
 
         if request.method() == &Method::Head {
@@ -295,10 +297,7 @@ fn content_type_header(path: &Path) -> Header {
     Header::from_bytes("Content-Type", content_type_for(path)).expect("valid header")
 }
 
-fn parse_range_header(
-    request: &tiny_http::Request,
-    file_size: u64,
-) -> Result<Option<(u64, u64)>> {
+fn parse_range_header(request: &tiny_http::Request, file_size: u64) -> Result<Option<(u64, u64)>> {
     let header = match request.headers().iter().find(|h| h.field.equiv("Range")) {
         Some(header) => header,
         None => return Ok(None),

@@ -1,4 +1,4 @@
-use anyhow::{Result, bail, Context};
+use anyhow::{Context, Result, bail};
 use serde_yaml::{Mapping, Value};
 use stbl_core::model::{
     ThemeColorScheme, ThemeColorSchemeBase, ThemeColorSchemeSource, ThemeWideBackgroundOverrides,
@@ -19,7 +19,8 @@ pub fn apply_preset_to_yaml(
         .or_insert_with(|| Value::Mapping(Mapping::new()));
     let theme = ensure_mapping(theme_value, "theme")?;
 
-    let colors_value = serde_yaml::to_value(&preset.colors).context("failed to serialize colors")?;
+    let colors_value =
+        serde_yaml::to_value(&preset.colors).context("failed to serialize colors")?;
     theme.insert(Value::String("colors".to_string()), colors_value);
 
     let nav_value = serde_yaml::to_value(&preset.nav).context("failed to serialize nav colors")?;
@@ -80,8 +81,7 @@ pub fn apply_derived_to_yaml(doc: &mut Value, derived: &color_derive::DerivedSch
             heading: derived.base.heading.clone(),
         }),
     };
-    let scheme_value =
-        serde_yaml::to_value(&scheme).context("failed to serialize color_scheme")?;
+    let scheme_value = serde_yaml::to_value(&scheme).context("failed to serialize color_scheme")?;
     theme.insert(Value::String("color_scheme".to_string()), scheme_value);
 
     Ok(())
@@ -97,17 +97,26 @@ fn ensure_mapping<'a>(value: &'a mut Value, label: &str) -> Result<&'a mut Mappi
 fn wide_background_to_value(wide: &ThemeWideBackgroundOverrides) -> Result<Value> {
     let mut map = Mapping::new();
     if let Some(value) = wide.color.as_ref() {
-        map.insert(Value::String("color".to_string()), Value::String(value.clone()));
+        map.insert(
+            Value::String("color".to_string()),
+            Value::String(value.clone()),
+        );
     }
     if let Some(value) = wide.image.as_ref() {
-        map.insert(Value::String("image".to_string()), Value::String(value.clone()));
+        map.insert(
+            Value::String("image".to_string()),
+            Value::String(value.clone()),
+        );
     }
     if let Some(value) = wide.style {
         let style = match value {
             WideBackgroundStyle::Cover => "cover",
             WideBackgroundStyle::Tile => "tile",
         };
-        map.insert(Value::String("style".to_string()), Value::String(style.to_string()));
+        map.insert(
+            Value::String("style".to_string()),
+            Value::String(style.to_string()),
+        );
     }
     if let Some(value) = wide.position.as_ref() {
         map.insert(
@@ -116,7 +125,10 @@ fn wide_background_to_value(wide: &ThemeWideBackgroundOverrides) -> Result<Value
         );
     }
     if let Some(value) = wide.opacity {
-        map.insert(Value::String("opacity".to_string()), Value::from(value as f64));
+        map.insert(
+            Value::String("opacity".to_string()),
+            Value::from(value as f64),
+        );
     }
     Ok(Value::Mapping(map))
 }

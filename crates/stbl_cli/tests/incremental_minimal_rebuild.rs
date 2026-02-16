@@ -27,14 +27,17 @@ fn edit_one_article_triggers_minimal_rebuild() {
         .filter(|id| !id.starts_with("copy_asset:"))
         .count();
     assert_eq!(
-        skipped_non_assets,
-        0,
+        skipped_non_assets, 0,
         "first build skipped: {:?}",
         first.skipped_ids
     );
 
     let second = run_build(&source_dir, &out_dir, &mut cache);
-    assert_eq!(second.executed, 0, "second build executed: {:?}", second.executed_ids);
+    assert_eq!(
+        second.executed, 0,
+        "second build executed: {:?}",
+        second.executed_ids
+    );
     assert!(second.skipped > 0);
 
     let edited_path = source_dir.join("articles").join("page1.md");
@@ -99,10 +102,7 @@ fn edit_one_article_triggers_minimal_rebuild() {
         rebuild_diff(&third, &must_include, &must_exclude)
     );
     assert!(
-        third
-            .executed_ids
-            .iter()
-            .any(|id| id == "generate_sitemap"),
+        third.executed_ids.iter().any(|id| id == "generate_sitemap"),
         "{}",
         rebuild_diff(&third, &must_include, &must_exclude)
     );
@@ -116,7 +116,11 @@ fn edit_one_article_triggers_minimal_rebuild() {
     );
 }
 
-fn rebuild_diff(summary: &exec::ExecSummary, must_include: &[&str], must_exclude: &[&str]) -> String {
+fn rebuild_diff(
+    summary: &exec::ExecSummary,
+    must_include: &[&str],
+    must_exclude: &[&str],
+) -> String {
     let mut out = String::new();
     out.push_str("rebuild diff\\n");
     out.push_str("executed_ids:\\n");
@@ -172,10 +176,8 @@ fn run_build(source_dir: &Path, out_dir: &Path, cache: &mut SqliteCacheStore) ->
         &video_plan,
         &project.config.media.video.heights,
     );
-    let asset_manifest = stbl_core::assets::build_asset_manifest(
-        &asset_index,
-        project.config.assets.cache_busting,
-    );
+    let asset_manifest =
+        stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     exec::execute_plan(

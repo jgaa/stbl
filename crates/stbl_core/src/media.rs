@@ -344,8 +344,7 @@ pub fn plan_image_tasks(
             out_rel: original_out.clone(),
         };
         let copy_id = TaskId::new("img_copy", &[path.as_str()]);
-        let copy_fingerprint =
-            fingerprint_image_task(&copy_id, "CopyImageOriginal", input_hash);
+        let copy_fingerprint = fingerprint_image_task(&copy_id, "CopyImageOriginal", input_hash);
         tasks.push(BuildTask {
             id: copy_id,
             kind: copy_kind,
@@ -376,8 +375,7 @@ pub fn plan_image_tasks(
             }
             for format in &formats {
                 let ext = format_extension(*format);
-                let out_rel =
-                    format!("images/_scale_{width}/{}", replace_extension(rel, ext));
+                let out_rel = format!("images/_scale_{width}/{}", replace_extension(rel, ext));
                 let width_label = format!("w={width}");
                 let quality_label = format!("q={quality}");
                 let format_label = format!("f={}", ext);
@@ -392,8 +390,7 @@ pub fn plan_image_tasks(
                     "img_scale",
                     &[path.as_str(), &width_label, &quality_label, &format_label],
                 );
-                let fingerprint =
-                    fingerprint_image_task(&id, "ResizeImage", input_hash);
+                let fingerprint = fingerprint_image_task(&id, "ResizeImage", input_hash);
                 tasks.push(BuildTask {
                     id,
                     kind,
@@ -467,10 +464,7 @@ pub fn build_image_variant_index(
     index
 }
 
-pub fn build_video_variant_index(
-    videos: &VideoPlanInput,
-    heights: &[u32],
-) -> VideoVariantIndex {
+pub fn build_video_variant_index(videos: &VideoPlanInput, heights: &[u32]) -> VideoVariantIndex {
     let mut index = BTreeMap::new();
     let mut heights = heights.to_vec();
     heights.sort_unstable();
@@ -496,10 +490,7 @@ pub fn build_video_variant_index(
     index
 }
 
-pub fn image_output_formats(
-    mode: ImageFormatMode,
-    has_alpha: bool,
-) -> Vec<ImageOutputFormat> {
+pub fn image_output_formats(mode: ImageFormatMode, has_alpha: bool) -> Vec<ImageOutputFormat> {
     let mut formats = Vec::new();
     if mode == ImageFormatMode::Normal && cfg!(feature = "avif") {
         formats.push(ImageOutputFormat::Avif);
@@ -585,8 +576,7 @@ pub fn plan_video_tasks(
             out_rel: original_out.clone(),
         };
         let copy_id = TaskId::new("vid_copy", &[path.as_str()]);
-        let copy_fingerprint =
-            fingerprint_video_task(&copy_id, "CopyVideoOriginal", input_hash);
+        let copy_fingerprint = fingerprint_video_task(&copy_id, "CopyVideoOriginal", input_hash);
         tasks.push(BuildTask {
             id: copy_id,
             kind: copy_kind,
@@ -605,11 +595,8 @@ pub fn plan_video_tasks(
         };
         let poster_label = format!("t={poster_time_sec}");
         let poster_id = TaskId::new("vid_poster", &[path.as_str(), &poster_label]);
-        let poster_fingerprint = fingerprint_video_task(
-            &poster_id,
-            "ExtractVideoPoster",
-            input_hash,
-        );
+        let poster_fingerprint =
+            fingerprint_video_task(&poster_id, "ExtractVideoPoster", input_hash);
         tasks.push(BuildTask {
             id: poster_id,
             kind: poster_kind,
@@ -632,8 +619,7 @@ pub fn plan_video_tasks(
                         out_rel: out_rel.clone(),
                     };
                     let id = TaskId::new("vid_mp4", &[path.as_str(), &height_label]);
-                    let fingerprint =
-                        fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
+                    let fingerprint = fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
                     tasks.push(BuildTask {
                         id,
                         kind,
@@ -664,8 +650,7 @@ pub fn plan_video_tasks(
                 out_rel: out_rel.clone(),
             };
             let id = TaskId::new("vid_scale", &[path.as_str(), &height_label]);
-            let fingerprint =
-                fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
+            let fingerprint = fingerprint_video_task(&id, "TranscodeVideoMp4", input_hash);
             tasks.push(BuildTask {
                 id,
                 kind,

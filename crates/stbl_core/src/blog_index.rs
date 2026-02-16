@@ -142,7 +142,10 @@ pub fn collect_tag_map(project: &Project) -> BTreeMap<String, Vec<FeedItem>> {
     for item in &items {
         for tag in item.tags() {
             let key = tag_key(tag);
-            let canonical = canonical_tags.get(&key).cloned().unwrap_or_else(|| tag.clone());
+            let canonical = canonical_tags
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| tag.clone());
             tag_map.entry(canonical).or_default().push(item.clone());
         }
     }
@@ -589,8 +592,8 @@ mod tests {
     use super::*;
     use crate::header::TemplateId;
     use crate::model::{
-        BlogConfig, BlogPaginationConfig, ImageFormatMode, MacrosConfig, SecurityConfig, SiteConfig,
-        SiteContent, SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides,
+        BlogConfig, BlogPaginationConfig, ImageFormatMode, MacrosConfig, SecurityConfig,
+        SiteConfig, SiteContent, SiteMeta, SvgSecurityConfig, SvgSecurityMode, ThemeColorOverrides,
         ThemeNavOverrides, ThemeWideBackgroundOverrides, UrlStyle,
     };
     use crate::url::UrlMapper;
@@ -614,7 +617,7 @@ mod tests {
             menu: Vec::new(),
             nav: Vec::new(),
             theme: crate::model::ThemeConfig {
-                variant: "default".to_string(),
+                variant: "stbl".to_string(),
                 max_body_width: "72rem".to_string(),
                 breakpoints: crate::model::ThemeBreakpoints {
                     desktop_min: "768px".to_string(),

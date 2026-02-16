@@ -2,11 +2,12 @@ use anyhow::{Context, Result, anyhow, bail};
 use blake3;
 use stbl_core::assets::{AssetIndex, AssetRelPath, AssetSourceId, ResolvedAsset};
 use stbl_core::model::{BuildTask, SecurityConfig, SiteConfig, SvgSecurityMode, TaskKind};
+use stbl_embedded_assets as embedded;
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use walkdir::WalkDir;
-use stbl_embedded_assets as embedded;
 use xmltree::{Element, XMLNode};
+const DEFAULT_THEME_VARIANT: &str = "stbl";
 
 #[derive(Debug, Default, Clone)]
 pub struct AssetSourceLookup {
@@ -25,14 +26,12 @@ pub enum AssetSource {
     Embedded(Vec<u8>),
 }
 
+#[allow(dead_code)]
 pub fn embedded_default_template() -> Result<&'static embedded::Template> {
-    embedded::template("default")
-        .ok_or_else(|| anyhow!("embedded assets template 'default' not found"))
+    embedded_theme_template(DEFAULT_THEME_VARIANT)
 }
 
-pub fn iter_embedded_assets(
-    template: &embedded::Template,
-) -> Result<Vec<(String, Vec<u8>)>> {
+pub fn iter_embedded_assets(template: &embedded::Template) -> Result<Vec<(String, Vec<u8>)>> {
     let mut assets = Vec::new();
     for entry in template.assets {
         let bytes = embedded::decompress_to_vec(&entry.hash)
@@ -42,10 +41,22 @@ pub fn iter_embedded_assets(
     Ok(assets)
 }
 
+#[allow(dead_code)]
 pub fn discover_assets(site_root: &Path) -> Result<(AssetIndex, AssetSourceLookup)> {
+    if site_root.join("stbl.yaml").is_file() {
+        return discover_assets_for_theme(site_root, DEFAULT_THEME_VARIANT);
+    }
+    discover_assets_legacy(site_root, DEFAULT_THEME_VARIANT)
+}
+
+pub fn discover_assets_for_theme(
+    project_root: &Path,
+    theme_variant: &str,
+) -> Result<(AssetIndex, AssetSourceLookup)> {
+    let theme_variant = normalize_theme_variant(theme_variant);
     let mut resolved: BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)> =
         BTreeMap::new();
-    let template = embedded_default_template()?;
+    let template = embedded_theme_template(theme_variant)?;
     for (rel_path, bytes) in iter_embedded_assets(template)? {
         let rel = normalize_rel_path(Path::new(&rel_path))?;
         if rel.0 == "css/vars.css" {
@@ -53,15 +64,26 @@ pub fn discover_assets(site_root: &Path) -> Result<(AssetIndex, AssetSourceLooku
         }
         let content_hash = blake3::hash(&bytes).to_hex().to_string();
         let source_id = AssetSourceId(format!("embedded:{content_hash}"));
-        resolved.insert(
-            rel,
-            (source_id, AssetSource::Embedded(bytes), content_hash),
-        );
+        resolved.insert(rel, (source_id, AssetSource::Embedded(bytes), content_hash));
     }
 
-    if site_root.exists() {
-        collect_site_assets(site_root, &mut resolved)?;
-    }
+    let stbl_root = project_root.join("stbl");
+    collect_site_assets_mapped(
+        &stbl_root.join("templates").join(theme_variant),
+        "templates",
+        &mut resolved,
+    )?;
+    collect_site_assets_mapped(
+        &stbl_root.join("css").join(theme_variant),
+        "css",
+        &mut resolved,
+    )?;
+    collect_site_assets_mapped(
+        &stbl_root.join("assets").join(theme_variant),
+        "",
+        &mut resolved,
+    )?;
+    collect_site_assets_mapped(&project_root.join("assets"), "", &mut resolved)?;
 
     let mut sources = BTreeMap::new();
     let assets = resolved
@@ -77,6 +99,57 @@ pub fn discover_assets(site_root: &Path) -> Result<(AssetIndex, AssetSourceLooku
         .collect::<Vec<_>>();
 
     Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
+}
+
+#[allow(dead_code)]
+fn discover_assets_legacy(
+    site_root: &Path,
+    theme_variant: &str,
+) -> Result<(AssetIndex, AssetSourceLookup)> {
+    let theme_variant = normalize_theme_variant(theme_variant);
+    let mut resolved: BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)> =
+        BTreeMap::new();
+    let template = embedded_theme_template(theme_variant)?;
+    for (rel_path, bytes) in iter_embedded_assets(template)? {
+        let rel = normalize_rel_path(Path::new(&rel_path))?;
+        if rel.0 == "css/vars.css" {
+            continue;
+        }
+        let content_hash = blake3::hash(&bytes).to_hex().to_string();
+        let source_id = AssetSourceId(format!("embedded:{content_hash}"));
+        resolved.insert(rel, (source_id, AssetSource::Embedded(bytes), content_hash));
+    }
+
+    collect_site_assets_mapped(site_root, "", &mut resolved)?;
+
+    let mut sources = BTreeMap::new();
+    let assets = resolved
+        .into_iter()
+        .map(|(rel, (source, asset_source, content_hash))| {
+            sources.insert(source.clone(), asset_source);
+            ResolvedAsset {
+                rel,
+                source,
+                content_hash,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
+}
+
+fn embedded_theme_template(theme_variant: &str) -> Result<&'static embedded::Template> {
+    embedded::template(theme_variant)
+        .ok_or_else(|| anyhow!("embedded assets template '{}' not found", theme_variant))
+}
+
+fn normalize_theme_variant(theme_variant: &str) -> &str {
+    let trimmed = theme_variant.trim();
+    if trimmed.is_empty() || trimmed == "default" {
+        DEFAULT_THEME_VARIANT
+    } else {
+        trimmed
+    }
 }
 
 pub struct LogoAsset {
@@ -109,7 +182,10 @@ pub fn resolve_site_logo(root: &Path, raw: &str) -> Result<LogoAsset> {
 
     for candidate in candidates {
         if candidate.is_file() {
-            return Ok(LogoAsset { rel, path: candidate });
+            return Ok(LogoAsset {
+                rel,
+                path: candidate,
+            });
         }
     }
 
@@ -198,20 +274,18 @@ fn write_svg_asset(
     }
     let text = match std::str::from_utf8(bytes) {
         Ok(text) => text,
-        Err(err) => {
-            match security.svg.mode {
-                SvgSecurityMode::Fail => {
-                    bail!("svg security: {rel}: invalid UTF-8: {err}");
-                }
-                SvgSecurityMode::Warn | SvgSecurityMode::Sanitize => {
-                    eprintln!("warning: svg security: {rel}: invalid UTF-8: {err}");
-                    std::fs::write(out_path, bytes)
-                        .with_context(|| format!("failed to write {}", out_path.display()))?;
-                    return Ok(());
-                }
-                SvgSecurityMode::Off => unreachable!(),
+        Err(err) => match security.svg.mode {
+            SvgSecurityMode::Fail => {
+                bail!("svg security: {rel}: invalid UTF-8: {err}");
             }
-        }
+            SvgSecurityMode::Warn | SvgSecurityMode::Sanitize => {
+                eprintln!("warning: svg security: {rel}: invalid UTF-8: {err}");
+                std::fs::write(out_path, bytes)
+                    .with_context(|| format!("failed to write {}", out_path.display()))?;
+                return Ok(());
+            }
+            SvgSecurityMode::Off => unreachable!(),
+        },
     };
     let scan = match scan_svg(text) {
         Ok(scan) => scan,
@@ -278,8 +352,7 @@ struct SvgScanResult {
 }
 
 fn scan_svg(text: &str) -> Result<SvgScanResult> {
-    let doc = roxmltree::Document::parse(text)
-        .map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
+    let doc = roxmltree::Document::parse(text).map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
     let mut result = SvgScanResult::default();
     for node in doc.descendants().filter(|node| node.is_element()) {
         let name = node.tag_name().name();
@@ -336,15 +409,15 @@ fn scan_svg(text: &str) -> Result<SvgScanResult> {
 }
 
 fn sanitize_svg_text(text: &str) -> Result<String> {
-    let mut element = Element::parse(text.as_bytes())
-        .map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
+    let mut element =
+        Element::parse(text.as_bytes()).map_err(|err| anyhow!("invalid SVG XML: {err}"))?;
     sanitize_element(&mut element);
     let mut out = Vec::new();
     element
         .write(&mut out)
         .map_err(|err| anyhow!("failed to write sanitized SVG: {err}"))?;
-    let sanitized = String::from_utf8(out)
-        .map_err(|err| anyhow!("sanitized SVG is not UTF-8: {err}"))?;
+    let sanitized =
+        String::from_utf8(out).map_err(|err| anyhow!("sanitized SVG is not UTF-8: {err}"))?;
     Ok(sanitized)
 }
 
@@ -361,8 +434,7 @@ fn sanitize_element(element: &mut Element) {
         match child {
             XMLNode::Element(mut child_elem) => {
                 let name = child_elem.name.clone();
-                if name.eq_ignore_ascii_case("script")
-                    || name.eq_ignore_ascii_case("foreignObject")
+                if name.eq_ignore_ascii_case("script") || name.eq_ignore_ascii_case("foreignObject")
                 {
                     continue;
                 }
@@ -463,8 +535,8 @@ fn add_file_asset(
     if asset_index.assets.iter().any(|asset| asset.rel == *rel) {
         return Ok(());
     }
-    let bytes = std::fs::read(path)
-        .with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
     let content_hash = blake3::hash(&bytes).to_hex().to_string();
     let source = AssetSourceId(path.to_string_lossy().to_string());
     lookup
@@ -478,10 +550,14 @@ fn add_file_asset(
     Ok(())
 }
 
-fn collect_site_assets(
+fn collect_site_assets_mapped(
     root: &Path,
+    out_prefix: &str,
     out: &mut BTreeMap<AssetRelPath, (AssetSourceId, AssetSource, String)>,
 ) -> Result<()> {
+    if !root.exists() {
+        return Ok(());
+    }
     for entry in WalkDir::new(root).follow_links(false) {
         let entry = entry?;
         if !entry.file_type().is_file() {
@@ -493,7 +569,12 @@ fn collect_site_assets(
                 entry.path().display()
             )
         })?;
-        let rel = normalize_rel_path(rel)?;
+        let mut mapped = PathBuf::new();
+        if !out_prefix.is_empty() {
+            mapped.push(out_prefix);
+        }
+        mapped.push(rel);
+        let rel = normalize_rel_path(&mapped)?;
         if rel.0 == "README.md" {
             continue;
         }
@@ -538,7 +619,7 @@ fn normalize_rel_path(path: &Path) -> Result<AssetRelPath> {
 
 #[cfg(test)]
 mod tests {
-    use super::{sanitize_svg_text, scan_svg, SvgIssueKind};
+    use super::{SvgIssueKind, sanitize_svg_text, scan_svg};
 
     #[test]
     fn scan_svg_reports_unsafe_features() {
@@ -575,7 +656,11 @@ mod tests {
 </svg>"#;
         let sanitized = sanitize_svg_text(svg).expect("sanitize svg");
         let result = scan_svg(&sanitized).expect("scan sanitized");
-        assert!(result.issues.is_empty(), "issues after sanitize: {:?}", result.issues);
+        assert!(
+            result.issues.is_empty(),
+            "issues after sanitize: {:?}",
+            result.issues
+        );
         assert!(sanitized.contains("url(#safe)"));
     }
 }

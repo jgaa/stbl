@@ -2,12 +2,12 @@ use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, T
 use pulldown_cmark_toc::{GitHubSlugifier, Slugify};
 use std::collections::BTreeMap;
 
+use crate::macros::{
+    IncludeProvider, MacroContext, MarkdownRenderer, MediaRenderer, RenderedMedia, expand_macros,
+};
 use crate::media::{
     ImageVariantIndex, ImageVariantSet, MediaRef, VideoVariantIndex, fallback_format,
     format_extension, format_mime, image_output_formats, parse_media_destination,
-};
-use crate::macros::{
-    IncludeProvider, MacroContext, MarkdownRenderer, MediaRenderer, RenderedMedia, expand_macros,
 };
 use crate::model::{ImageFormatMode, ImageOutputFormat, Page, Project};
 use crate::syntax_highlight::highlight_code_html_classed;
@@ -335,7 +335,10 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     html
 }
 
-fn render_image_picture_html(image: &crate::media::ImageRef, options: &RenderOptions<'_>) -> String {
+fn render_image_picture_html(
+    image: &crate::media::ImageRef,
+    options: &RenderOptions<'_>,
+) -> String {
     if !image.has_args {
         return render_plain_media_image(image, options);
     }
@@ -344,16 +347,11 @@ fn render_image_picture_html(image: &crate::media::ImageRef, options: &RenderOpt
     let is_svg = rel.to_lowercase().ends_with(".svg");
     let has_alpha = image_has_alpha(path, options);
     let fallback = fallback_format(has_alpha);
-    let variants = options
-        .image_variants
-        .and_then(|index| index.get(path));
+    let variants = options.image_variants.and_then(|index| index.get(path));
     let use_original =
         !is_svg && options.image_variants.is_some() && variants.map_or(true, |v| v.is_empty());
     let (src, srcset) = if is_svg || use_original {
-        (
-            format!("{}images/{rel}", options.rel_prefix),
-            None,
-        )
+        (format!("{}images/{rel}", options.rel_prefix), None)
     } else if let Some(variants) = variants {
         let src = fallback_src_from_variants(variants, options.rel_prefix);
         let src = if src.is_empty() {
@@ -500,12 +498,7 @@ fn fallback_src_from_variants(
     String::new()
 }
 
-fn srcset_for_format(
-    rel: &str,
-    widths: &[u32],
-    ext: &str,
-    rel_prefix: &str,
-) -> Option<String> {
+fn srcset_for_format(rel: &str, widths: &[u32], ext: &str, rel_prefix: &str) -> Option<String> {
     let mut widths = widths.to_vec();
     widths.sort_unstable();
     widths.dedup();
@@ -546,10 +539,7 @@ fn image_has_alpha(path: &str, options: &RenderOptions<'_>) -> bool {
         }
     }
     match path.rsplit_once('.') {
-        Some((_, ext)) => matches!(
-            ext.to_ascii_lowercase().as_str(),
-            "png" | "apng" | "gif"
-        ),
+        Some((_, ext)) => matches!(ext.to_ascii_lowercase().as_str(), "png" | "apng" | "gif"),
         None => false,
     }
 }
@@ -630,7 +620,10 @@ fn render_video_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> 
     wrapped
 }
 
-fn render_video_element_html(video: &crate::media::VideoRef, options: &RenderOptions<'_>) -> String {
+fn render_video_element_html(
+    video: &crate::media::VideoRef,
+    options: &RenderOptions<'_>,
+) -> String {
     let video_path = video.path.raw.as_str();
     let heights = match options
         .video_variants
@@ -763,10 +756,7 @@ fn image_sizes(attrs: &[crate::media::ImageAttr], options: &RenderOptions<'_>) -
     }
     format!(
         "(min-width: {}) {}, (min-width: {}) {}, 100vw",
-        options.wide_min,
-        options.max_body_width,
-        options.desktop_min,
-        options.max_body_width
+        options.wide_min, options.max_body_width, options.desktop_min, options.max_body_width
     )
 }
 
@@ -924,7 +914,10 @@ mod tests {
         assert!(html.contains("<p>Hello <strong>world</strong>.</p>"));
     }
 
-    fn base_render_options<'a>(video_heights: &'a [u32], image_widths: &'a [u32]) -> RenderOptions<'a> {
+    fn base_render_options<'a>(
+        video_heights: &'a [u32],
+        image_widths: &'a [u32],
+    ) -> RenderOptions<'a> {
         RenderOptions {
             macro_project: None,
             macro_page: None,
@@ -986,9 +979,11 @@ mod tests {
         assert!(html.contains(
             "<button type=\"button\" class=\"codeblock__copy\" data-copy-button aria-label=\"Copy code\">Copy</button>"
         ));
-        assert!(html.contains(
-            "<pre class=\"code-block\"><code class=\"language-rust has-line-numbers\">"
-        ));
+        assert!(
+            html.contains(
+                "<pre class=\"code-block\"><code class=\"language-rust has-line-numbers\">"
+            )
+        );
         assert!(html.contains("&lt;tag&gt;"));
         assert!(html.contains("&quot;"));
         assert!(html.contains("&amp;"));

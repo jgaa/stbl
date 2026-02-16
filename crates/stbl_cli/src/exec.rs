@@ -18,16 +18,14 @@ use stbl_core::feeds::{render_rss, render_sitemap};
 use stbl_core::macros::{IncludeProvider, IncludeRequest, IncludeResponse};
 use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
-use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
-    TagLink,
-    TagListingPage, format_timestamp_display, format_timestamp_long_date, format_timestamp_rfc3339,
-    normalize_timestamp,
-    page_title_or_filename,
-    render_banner_html, render_blog_index, render_markdown_page, render_page,
-    render_page_with_series_nav, render_redirect_page, render_series_index, render_tag_index,
+    TagLink, TagListingPage, format_timestamp_display, format_timestamp_long_date,
+    format_timestamp_rfc3339, normalize_timestamp, page_title_or_filename, render_banner_html,
+    render_blog_index, render_markdown_page, render_page, render_page_with_series_nav,
+    render_redirect_page, render_series_index, render_tag_index,
 };
+use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::url::{UrlMapper, logical_key_from_source_path, map_series_index};
 use stbl_core::visibility::is_published_page;
 use stbl_embedded_assets as embedded;
@@ -92,15 +90,18 @@ impl IncludeProvider for FsIncludeProvider {
 struct FsCommentTemplateProvider {
     site_root: PathBuf,
     canonical_root: PathBuf,
+    theme_variant: String,
 }
 
 impl FsCommentTemplateProvider {
-    fn new(site_root: &Path) -> Result<Self> {
+    fn new(site_root: &Path, theme_variant: &str) -> Result<Self> {
         let canonical_root = fs::canonicalize(site_root)
             .with_context(|| format!("failed to canonicalize site root {}", site_root.display()))?;
+        let normalized_theme = normalize_theme_variant(theme_variant).to_string();
         Ok(Self {
             site_root: site_root.to_path_buf(),
             canonical_root,
+            theme_variant: normalized_theme,
         })
     }
 }
@@ -112,7 +113,8 @@ impl CommentTemplateProvider for FsCommentTemplateProvider {
             bail!("comments template path must be relative");
         }
 
-        let mut candidates = Vec::new();
+        let mut candidates =
+            comment_template_candidates(&self.site_root, &self.theme_variant, template);
         candidates.push(self.site_root.join(raw_path));
         if !template.contains('/') && !template.contains('\\') {
             candidates.push(self.site_root.join("templates").join(raw_path));
@@ -133,7 +135,7 @@ impl CommentTemplateProvider for FsCommentTemplateProvider {
             return Ok(Some(contents));
         }
 
-        if let Some(contents) = load_embedded_comment_template(template)? {
+        if let Some(contents) = load_embedded_comment_template(template, &self.theme_variant)? {
             return Ok(Some(contents));
         }
 
@@ -141,8 +143,8 @@ impl CommentTemplateProvider for FsCommentTemplateProvider {
     }
 }
 
-fn load_embedded_comment_template(template: &str) -> Result<Option<String>> {
-    let embedded_template = match embedded::template("default") {
+fn load_embedded_comment_template(template: &str, theme_variant: &str) -> Result<Option<String>> {
+    let embedded_template = match embedded::template(normalize_theme_variant(theme_variant)) {
         Some(template) => template,
         None => return Ok(None),
     };
@@ -178,6 +180,52 @@ fn embedded_template_candidates(template: &str) -> Vec<String> {
     candidates
 }
 
+fn comment_template_candidates(
+    site_root: &Path,
+    theme_variant: &str,
+    template: &str,
+) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let raw_path = Path::new(template);
+    let theme_dir = site_root
+        .join("stbl")
+        .join("templates")
+        .join(normalize_theme_variant(theme_variant));
+    out.push(theme_dir.join(raw_path));
+
+    let trimmed = template.trim().replace('\\', "/");
+    if let Some(stripped) = trimmed.strip_prefix("templates/") {
+        out.push(theme_dir.join(stripped));
+    }
+    out
+}
+
+fn normalize_theme_variant(theme_variant: &str) -> &str {
+    let trimmed = theme_variant.trim();
+    if trimmed.is_empty() || trimmed == "default" {
+        "stbl"
+    } else {
+        trimmed
+    }
+}
+
+fn load_theme_defaults_yaml(project: &Project) -> Result<Vec<u8>> {
+    let variant = normalize_theme_variant(&project.config.theme.variant);
+    let local_path = project
+        .root
+        .join("stbl")
+        .join("color-presets")
+        .join(format!("{variant}.yaml"));
+    if local_path.is_file() {
+        return fs::read(&local_path)
+            .with_context(|| format!("failed to read {}", local_path.display()));
+    }
+
+    let defaults = stbl_embedded_assets::template_colors_yaml(variant)
+        .map_err(|err| anyhow!("theme defaults for {}: {}", variant, err))?;
+    Ok(defaults.to_vec())
+}
+
 pub fn execute_plan(
     project: &Project,
     plan: &BuildPlan,
@@ -209,9 +257,8 @@ pub fn execute_plan(
                 fs::create_dir_all(parent)
                     .with_context(|| format!("failed to create {}", parent.display()))?;
             }
-            let defaults = stbl_embedded_assets::template_colors_yaml(&project.config.theme.variant)
-                .map_err(|err| anyhow!("theme defaults for {}: {}", project.config.theme.variant, err))?;
-            let resolved = resolve_theme_vars(defaults, &project.config)?;
+            let defaults = load_theme_defaults_yaml(project)?;
+            let resolved = resolve_theme_vars(&defaults, &project.config)?;
             let contents = render_vars_css(&resolved);
             fs::write(&out_path, contents)
                 .with_context(|| format!("failed to write {}", out_path.display()))?;
@@ -291,12 +338,7 @@ pub fn execute_plan(
     }
     if !image_jobs.is_empty() {
         let max_threads = jobs.unwrap_or_else(max_parallelism);
-        let results = run_parallel_image_jobs(
-            image_jobs,
-            max_threads,
-            out_dir,
-            image_lookup,
-        )?;
+        let results = run_parallel_image_jobs(image_jobs, max_threads, out_dir, image_lookup)?;
         for (task, result) in results {
             result?;
             report.executed += output_count(&task);
@@ -307,12 +349,7 @@ pub fn execute_plan(
     if !video_jobs.is_empty() {
         let max_threads = jobs.unwrap_or_else(max_parallelism);
         let video_threads = std::cmp::max(1, max_threads / 4);
-        let results = run_parallel_video_jobs(
-            video_jobs,
-            video_threads,
-            out_dir,
-            video_lookup,
-        )?;
+        let results = run_parallel_video_jobs(video_jobs, video_threads, out_dir, video_lookup)?;
         for (task, result) in results {
             result?;
             report.executed += output_count(&task);
@@ -323,7 +360,12 @@ pub fn execute_plan(
     if !copy_asset_jobs.is_empty() {
         let used_icons = collect_used_icons(out_dir, asset_index, asset_lookup, asset_manifest)?;
         for task in copy_asset_jobs {
-            let TaskKind::CopyAsset { rel, source, out_rel } = &task.kind else {
+            let TaskKind::CopyAsset {
+                rel,
+                source,
+                out_rel,
+            } = &task.kind
+            else {
                 continue;
             };
             let is_icon = is_icon_asset(&rel.0);
@@ -341,7 +383,13 @@ pub fn execute_plan(
                 report.skipped_ids.push(task.id.0.clone());
                 continue;
             }
-            copy_asset_to_out(out_dir, out_rel, source, asset_lookup, &project.config.security)?;
+            copy_asset_to_out(
+                out_dir,
+                out_rel,
+                source,
+                asset_lookup,
+                &project.config.security,
+            )?;
             report.executed += output_count(&task);
             report.executed_ids.push(task.id.0.clone());
             cache_put(&mut cache, &task);
@@ -475,9 +523,7 @@ fn scan_with_prefix<F: FnMut(&str)>(text: &str, prefix: &str, mut on_match: F) {
         let mut end = start + prefix.len();
         while end < bytes.len() {
             let ch = bytes[end];
-            if ch.is_ascii_alphanumeric()
-                || matches!(ch, b'.' | b'/' | b'_' | b'-' | b'~' | b'+')
-            {
+            if ch.is_ascii_alphanumeric() || matches!(ch, b'.' | b'/' | b'_' | b'-' | b'~' | b'+') {
                 end += 1;
                 continue;
             }
@@ -507,13 +553,7 @@ fn run_parallel_image_jobs(
             format,
             out_rel,
         } => resize_image(
-            &out_dir,
-            out_rel,
-            source,
-            *width,
-            *quality,
-            *format,
-            &lookup,
+            &out_dir, out_rel, source, *width, *quality, *format, &lookup,
         ),
         _ => Ok(()),
     })
@@ -565,17 +605,19 @@ where
         let rx = Arc::clone(&rx);
         let result_tx = result_tx.clone();
         let worker = Arc::clone(&worker);
-        handles.push(thread::spawn(move || loop {
-            let task = {
-                let rx = rx.lock().expect("lock receiver");
-                rx.recv()
-            };
-            match task {
-                Ok(task) => {
-                    let result = (worker)(&task);
-                    let _ = result_tx.send((task, result));
+        handles.push(thread::spawn(move || {
+            loop {
+                let task = {
+                    let rx = rx.lock().expect("lock receiver");
+                    rx.recv()
+                };
+                match task {
+                    Ok(task) => {
+                        let result = (worker)(&task);
+                        let _ = result_tx.send((task, result));
+                    }
+                    Err(_) => break,
                 }
-                Err(_) => break,
             }
         }));
     }
@@ -614,7 +656,9 @@ fn output_count(task: &BuildTask) -> usize {
 fn outputs_exist(outputs: &[String], out_dir: &Path) -> bool {
     outputs.iter().all(|output| {
         let path = out_dir.join(output);
-        fs::metadata(&path).map(|meta| meta.is_file()).unwrap_or(false)
+        fs::metadata(&path)
+            .map(|meta| meta.is_file())
+            .unwrap_or(false)
     })
 }
 
@@ -1001,7 +1045,8 @@ fn render_primary_html(
     build_date_ymd: &str,
 ) -> Result<String> {
     let include_provider = FsIncludeProvider::new(&project.root)?;
-    let comment_template_provider = FsCommentTemplateProvider::new(&project.root)?;
+    let comment_template_provider =
+        FsCommentTemplateProvider::new(&project.root, &project.config.theme.variant)?;
     let current_href = current_href_for_task(project, mapper, kind)?;
     match kind {
         TaskKind::RenderPage { page } => render_page_by_id(
@@ -1033,16 +1078,14 @@ fn render_primary_html(
             build_date_ymd,
             &include_provider,
         ),
-        TaskKind::RenderTagIndex { tag } => {
-            render_tag_index_page(
-                project,
-                tag,
-                asset_manifest,
-                &current_href,
-                build_date_ymd,
-                &include_provider,
-            )
-        }
+        TaskKind::RenderTagIndex { tag } => render_tag_index_page(
+            project,
+            tag,
+            asset_manifest,
+            &current_href,
+            build_date_ymd,
+            &include_provider,
+        ),
         TaskKind::RenderTagsIndex => render_markdown_page(
             project,
             "Tags",
@@ -1147,8 +1190,8 @@ fn render_series(
                 .unwrap_or_else(|| "Untitled".to_string()),
             href: resolve_root_href(
                 &mapper
-                .map(&logical_key_from_source_path(&part.page.source_path))
-                .href,
+                    .map(&logical_key_from_source_path(&part.page.source_path))
+                    .href,
                 &rel,
             ),
             published_display: format_timestamp_display(
@@ -1157,7 +1200,8 @@ fn render_series(
                 project.config.site.timezone.as_deref(),
             ),
             published_raw: {
-                let ts = normalize_timestamp(part.page.header.published, project.config.system.as_ref());
+                let ts =
+                    normalize_timestamp(part.page.header.published, project.config.system.as_ref());
                 format_timestamp_rfc3339(ts)
             },
         })
@@ -1367,7 +1411,14 @@ fn render_blog_index_page(
         None
     };
     let last_href = if page_range.total_pages > 2 && page_range.page_no < page_range.total_pages {
-        Some(mapper.map(&blog_index_page_logical_key(&base_key, page_range.total_pages)).href)
+        Some(
+            mapper
+                .map(&blog_index_page_logical_key(
+                    &base_key,
+                    page_range.total_pages,
+                ))
+                .href,
+        )
     } else {
         None
     };
@@ -1428,8 +1479,7 @@ fn build_date_ymd_now() -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64;
-    format_timestamp_long_date(Some(timestamp))
-        .unwrap_or_else(|| "January 1, 1970".to_string())
+    format_timestamp_long_date(Some(timestamp)).unwrap_or_else(|| "January 1, 1970".to_string())
 }
 
 fn root_prefix_for_base_url(base_url: &str) -> String {
@@ -1437,10 +1487,7 @@ fn root_prefix_for_base_url(base_url: &str) -> String {
     if trimmed.is_empty() {
         return "/".to_string();
     }
-    let without_scheme = trimmed
-        .split("://")
-        .nth(1)
-        .unwrap_or(trimmed);
+    let without_scheme = trimmed.split("://").nth(1).unwrap_or(trimmed);
     let path = match without_scheme.find('/') {
         Some(idx) => &without_scheme[idx..],
         None => "",
@@ -1630,9 +1677,13 @@ mod tests {
         let config_path = root.join("stbl.yaml");
         let mut config = load_site_config(&config_path).expect("load config");
         config.site.url_style = url_style;
-        let docs =
-            crate::walk::walk_content(&root, &root.join("articles"), UnknownKeyPolicy::Error, false)
-                .expect("walk content");
+        let docs = crate::walk::walk_content(
+            &root,
+            &root.join("articles"),
+            UnknownKeyPolicy::Error,
+            false,
+        )
+        .expect("walk content");
         let content = assemble_site(docs).expect("assemble site");
         Project {
             root,
@@ -1666,8 +1717,13 @@ mod tests {
         let site_assets_root = project.root.join("assets");
         let (mut asset_index, mut asset_lookup) =
             crate::assets::discover_assets(&site_assets_root).expect("discover assets");
-        crate::assets::include_site_logo(&project.root, &project.config, &mut asset_index, &mut asset_lookup)
-            .expect("resolve site.logo");
+        crate::assets::include_site_logo(
+            &project.root,
+            &project.config,
+            &mut asset_index,
+            &mut asset_lookup,
+        )
+        .expect("resolve site.logo");
         let (image_plan, image_lookup) =
             crate::media::discover_images(&project).expect("discover images");
         project.image_alpha = image_plan.alpha.clone();
@@ -1800,9 +1856,8 @@ mod tests {
     #[test]
     fn vars_css_wide_background_tile_sets_repeat_auto() {
         let mut project = build_project(UrlStyle::Html);
-        project.config.theme.wide_background.style = Some(
-            stbl_core::model::WideBackgroundStyle::Tile,
-        );
+        project.config.theme.wide_background.style =
+            Some(stbl_core::model::WideBackgroundStyle::Tile);
         let (_temp, out_dir) = build_project_into_temp(project);
         let vars_path = out_dir.join("artifacts/css/vars.css");
         let contents = fs::read_to_string(vars_path).expect("read vars css");
@@ -1950,8 +2005,18 @@ mod tests {
 
     fn is_long_date(value: &str) -> bool {
         let months = [
-            "January", "February", "March", "April", "May", "June", "July", "August", "September",
-            "October", "November", "December",
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
         ];
         let (month, rest) = match value.split_once(' ') {
             Some(parts) => parts,

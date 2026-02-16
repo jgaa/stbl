@@ -74,11 +74,7 @@ fn compact_numeric_lists(input: &str) -> String {
                 out.push_str(trimmed);
                 out.push('\n');
             } else {
-                out.push_str(&format!(
-                    "{indent}{} [{}]\n",
-                    key,
-                    values.join(", ")
-                ));
+                out.push_str(&format!("{indent}{} [{}]\n", key, values.join(", ")));
             }
             continue;
         }
@@ -327,7 +323,8 @@ fn convert_legacy(root: &Node, source_dir: &Path) -> Result<(UpgradeConfig, Vec<
         .map(|block| parse_rss(block, &mut warnings))
         .transpose()?;
 
-    let comments = block_of(root, "comments").and_then(|block| parse_comments(block, &mut warnings));
+    let comments =
+        block_of(root, "comments").and_then(|block| parse_comments(block, &mut warnings));
 
     if block_of(root, "chroma").is_some() {
         warnings.push("legacy chroma section ignored".to_string());
@@ -486,14 +483,7 @@ fn parse_people(block: &Node, warnings: &mut Vec<String>) -> Result<Option<Peopl
                 icon: None,
             });
         }
-        entries.insert(
-            entry.key.clone(),
-            PersonOut {
-                name,
-                email,
-                links,
-            },
-        );
+        entries.insert(entry.key.clone(), PersonOut { name, email, links });
     }
 
     if entries.is_empty() {
@@ -586,7 +576,11 @@ fn parse_comments(block: &Node, warnings: &mut Vec<String>) -> Option<serde_yaml
         serde_yaml::Value::Mapping(map) if map.is_empty() => None,
         serde_yaml::Value::Mapping(map) => {
             if let Some(default) = map.get(&serde_yaml::Value::String("default".to_string())) {
-                if default.as_str().map(|val| val.trim().is_empty()).unwrap_or(true) {
+                if default
+                    .as_str()
+                    .map(|val| val.trim().is_empty())
+                    .unwrap_or(true)
+                {
                     warnings.push("comments.default is empty and was ignored".to_string());
                 }
             }
@@ -935,8 +929,16 @@ plyr {
         let map = comments.as_mapping().expect("mapping");
         assert!(map.contains_key(&serde_yaml::Value::String("default".to_string())));
         assert!(map.contains_key(&serde_yaml::Value::String("disqus".to_string())));
-        assert!(warnings.iter().any(|warning| warning.contains("chroma section ignored")));
-        assert!(warnings.iter().any(|warning| warning.contains("plyr section ignored")));
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("chroma section ignored"))
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|warning| warning.contains("plyr section ignored"))
+        );
     }
 
     #[test]

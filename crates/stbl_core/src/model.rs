@@ -102,7 +102,8 @@ fn encode_task_id_component(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for &byte in value.as_bytes() {
         let ch = byte as char;
-        let is_safe = ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' || ch == '/';
+        let is_safe =
+            ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.' || ch == '/';
         if is_safe {
             out.push(ch);
         } else {

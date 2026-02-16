@@ -20,13 +20,9 @@ fn build_project(root: &PathBuf, format_mode: ImageFormatMode) -> Project {
     let config = load_site_config(&root.join("stbl.yaml")).expect("load config");
     let mut config = config;
     config.media.images.format_mode = format_mode;
-    let docs = stbl_cli::walk::walk_content(
-        root,
-        &root.join("articles"),
-        UnknownKeyPolicy::Error,
-        false,
-    )
-    .expect("walk content");
+    let docs =
+        stbl_cli::walk::walk_content(root, &root.join("articles"), UnknownKeyPolicy::Error, false)
+            .expect("walk content");
     let content = assemble_site(docs).expect("assemble site");
     Project {
         root: root.clone(),
@@ -83,9 +79,7 @@ fn precompress_writes_gzip_for_text_assets() {
 
     assert!(out_dir.join("index.html.gz").exists());
     assert!(out_dir.join("artifacts/css/common.css.gz").exists());
-    assert!(!out_dir
-        .join("images/_scale_720/alpha.png.gz")
-        .exists());
+    assert!(!out_dir.join("images/_scale_720/alpha.png.gz").exists());
 }
 
 #[test]

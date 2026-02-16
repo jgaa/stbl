@@ -5,32 +5,18 @@
   <h1>{{ page_title }}</h1>
   {% endif %}
 
+  {% if banner_html %}
+  <div class="banner">
+    {{ banner_html | safe }}
+  </div>
+  {% endif %}
+
   {% if authors or published or updated or (tags and tags | length > 0) %}
-  <div class="meta">
+  <div class="meta page-meta">
     {% if published or updated %}
-    <p>
+    <p class="meta-dates">
       {% if published %}
       Published <time class="js-local-time" datetime="{{ published_raw }}">{{ published }}</time>
-      {% if authors and authors | length > 0 %}
-      <span class="meta-sep"> · </span>
-      <span class="meta-authors">
-        By
-        {% for author in authors %}
-        <span class="author">
-          <span class="author-name">{{ author.name }}</span>
-          {% if author.links and author.links | length > 0 %}
-          <span class="author-links">
-            {% for link in author.links %}
-            <a class="author-link" href="{{ link.href }}" aria-label="{{ link.name }}" title="{{ link.name }}">
-              <img class="author-icon" src="{{ (rel ~ asset_manifest[link.icon]) | safe }}" alt="" width="16" height="16">
-            </a>
-            {% endfor %}
-          </span>
-          {% endif %}
-        </span>{% if not loop.last %}, {% endif %}
-        {% endfor %}
-      </span>
-      {% endif %}
       {% endif %}
       {% if updated %}
       {% if published %} · {% endif %}
@@ -39,19 +25,33 @@
     </p>
     {% endif %}
 
-  {% if tags and tags | length > 0 %}
-  <ul class="tags">
-    {% for tag in tags %}
-    <li><a class="tag" href="{{ tag.href }}">{{ tag.label }}</a></li>
-    {% endfor %}
-  </ul>
-  {% endif %}
-  </div>
-  {% endif %}
+    {% if authors and authors | length > 0 %}
+    <p class="meta-authors">
+      By
+      {% for author in authors %}
+      <span class="author">
+        <span class="author-name">{{ author.name }}</span>
+        {% if author.links and author.links | length > 0 %}
+        <span class="author-links">
+          {% for link in author.links %}
+          <a class="author-link" href="{{ link.href }}" aria-label="{{ link.name }}" title="{{ link.name }}">
+            <img class="author-icon" src="{{ (rel ~ asset_manifest[link.icon]) | safe }}" alt="" width="16" height="16">
+          </a>
+          {% endfor %}
+        </span>
+        {% endif %}
+      </span>{% if not loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+    {% endif %}
 
-  {% if banner_html %}
-  <div class="banner">
-    {{ banner_html | safe }}
+    {% if tags and tags | length > 0 %}
+    <ul class="tags page-tags">
+      {% for tag in tags %}
+      <li><a class="tag" href="{{ tag.href }}">{{ tag.label }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
   </div>
   {% endif %}
 

@@ -140,8 +140,7 @@ impl CacheStore for SqliteCacheStore {
         )?;
         tx.execute("DELETE FROM outputs WHERE task_id = ?1", params![task_id])?;
         if !outputs.is_empty() {
-            let mut stmt = tx
-                .prepare("INSERT INTO outputs (task_id, path) VALUES (?1, ?2)")?;
+            let mut stmt = tx.prepare("INSERT INTO outputs (task_id, path) VALUES (?1, ?2)")?;
             for output in outputs {
                 stmt.execute(params![task_id, output])?;
             }

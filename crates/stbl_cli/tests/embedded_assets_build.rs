@@ -17,11 +17,7 @@ fn build_uses_embedded_assets_with_overrides() {
 
     let assets_dir = source_dir.join("assets");
     fs::create_dir_all(&assets_dir).expect("create assets dir");
-    fs::write(
-        assets_dir.join("README.md"),
-        "embedded assets test\n",
-    )
-    .expect("write readme");
+    fs::write(assets_dir.join("README.md"), "embedded assets test\n").expect("write readme");
 
     let out_dir = temp.path().join("out");
     run_build(&source_dir, &out_dir);
@@ -75,10 +71,8 @@ fn run_build(source_dir: &Path, out_dir: &Path) {
         &video_plan,
         &project.config.media.video.heights,
     );
-    let asset_manifest = stbl_core::assets::build_asset_manifest(
-        &asset_index,
-        project.config.assets.cache_busting,
-    );
+    let asset_manifest =
+        stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     exec::execute_plan(

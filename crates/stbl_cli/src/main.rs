@@ -1,7 +1,7 @@
 mod assets;
 mod color_apply;
-mod color_presets;
 mod color_derive;
+mod color_presets;
 mod color_preview;
 mod config_loader;
 mod exec;
@@ -22,10 +22,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde_yaml::Value;
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
-use stbl_core::config::load_site_config;
 use stbl_core::header::UnknownKeyPolicy;
-use stbl_core::model::ThemeColorSchemeMode;
 use stbl_core::model::DiagnosticLevel;
+use stbl_core::model::ThemeColorSchemeMode;
 use std::process::Command as ProcessCommand;
 use walkdir::WalkDir;
 
@@ -294,15 +293,14 @@ fn main() -> Result<()> {
             *dry_run,
             *backup,
         ),
-        Command::ShowColorThemes { out, open } => run_show_color_themes(out.as_ref(), *open),
+        Command::ShowColorThemes { out, open } => run_show_color_themes(&cli, out.as_ref(), *open),
     }
 }
 
 fn run_scan(cli: &Cli, articles_dir: &PathBuf) -> Result<()> {
     let root = root_dir(cli)?;
-    let config_path = root.join("stbl.yaml");
-    let _config = load_site_config(&config_path)
-        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let _config = crate::config_loader::load_config(&root)
+        .with_context(|| "failed to load stbl.yaml")?;
     let docs = walk::walk_content(
         &root,
         articles_dir,
@@ -336,9 +334,8 @@ fn run_scan(cli: &Cli, articles_dir: &PathBuf) -> Result<()> {
 
 fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<()> {
     let root = root_dir(cli)?;
-    let config_path = root.join("stbl.yaml");
-    let config = load_site_config(&config_path)
-        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let config =
+        crate::config_loader::load_config(&root).with_context(|| "failed to load stbl.yaml")?;
     let docs = walk::walk_content(
         &root,
         articles_dir,
@@ -370,9 +367,9 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
         image_variants: Default::default(),
         video_variants: Default::default(),
     };
-    let site_assets_root = root.join("assets");
-    let (mut asset_index, mut asset_lookup) = assets::discover_assets(&site_assets_root)
-        .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    let (mut asset_index, mut asset_lookup) =
+        assets::discover_assets_for_theme(&root, &project.config.theme.variant)
+            .with_context(|| format!("failed to discover assets under {}", root.display()))?;
     assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.logo")?;
     let (image_plan, _image_lookup) =
@@ -427,9 +424,8 @@ fn run_verify(cli: &Cli, articles_dir: &PathBuf, strict: bool) -> Result<()> {
 
 fn run_clean(cli: &Cli) -> Result<()> {
     let root = root_dir(cli)?;
-    let config_path = root.join("stbl.yaml");
-    let config = load_site_config(&config_path)
-        .with_context(|| format!("failed to load {}", config_path.display()))?;
+    let config =
+        crate::config_loader::load_config(&root).with_context(|| "failed to load stbl.yaml")?;
     let cache_dir = default_cache_dir_for_config(&config)?;
     if cache_dir.exists() {
         std::fs::remove_dir_all(&cache_dir)
@@ -464,8 +460,11 @@ fn run_build(
     let root = root_dir(cli)?;
     let mut config = crate::config_loader::load_config_for_build(&root)
         .with_context(|| "failed to load stbl.yaml")?;
-    let publish_command = require_publish_command(publish_to.map(|value| value.as_str()), config.publish.as_ref())?
-        .map(|command| command.to_string());
+    let publish_command = require_publish_command(
+        publish_to.map(|value| value.as_str()),
+        config.publish.as_ref(),
+    )?
+    .map(|command| command.to_string());
     if fast_images {
         config.media.images.format_mode = stbl_core::model::ImageFormatMode::Fast;
     }
@@ -500,9 +499,9 @@ fn run_build(
         image_variants: Default::default(),
         video_variants: Default::default(),
     };
-    let site_assets_root = root.join("assets");
-    let (mut asset_index, mut asset_lookup) = assets::discover_assets(&site_assets_root)
-        .with_context(|| format!("failed to discover assets under {}", site_assets_root.display()))?;
+    let (mut asset_index, mut asset_lookup) =
+        assets::discover_assets_for_theme(&root, &project.config.theme.variant)
+            .with_context(|| format!("failed to discover assets under {}", root.display()))?;
     assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.logo")?;
     let (image_plan, image_lookup) =
@@ -640,9 +639,7 @@ fn require_publish_command<'a>(
     let command = publish
         .map(|config| config.command.trim())
         .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            anyhow::anyhow!("publish.command must be set when using --publish-to")
-        })?;
+        .ok_or_else(|| anyhow::anyhow!("publish.command must be set when using --publish-to"))?;
     Ok(Some(command))
 }
 
@@ -695,7 +692,7 @@ fn run_init(
         InitKindArg::LandingPage => crate::init::InitKind::LandingPage,
     };
     if let Some(theme) = color_theme {
-        let presets = color_presets::load_color_presets()?;
+        let presets = color_presets::load_color_presets_for_root(&target_dir)?;
         if !presets.contains_key(theme) {
             bail!("unknown color preset '{theme}' (use apply-colors --list-presets)");
         }
@@ -726,7 +723,8 @@ fn run_apply_colors(
     dry_run: bool,
     backup: bool,
 ) -> Result<()> {
-    let presets = color_presets::load_color_presets()?;
+    let root = root_dir(cli)?;
+    let presets = color_presets::load_color_presets_for_root(&root)?;
     if list_presets {
         for preset in presets.keys() {
             println!("{preset}");
@@ -738,7 +736,8 @@ fn run_apply_colors(
             bail!("cannot combine preset name with --from-base");
         }
         let bg = bg.ok_or_else(|| anyhow::anyhow!("--bg is required with --from-base"))?;
-        let accent = accent.ok_or_else(|| anyhow::anyhow!("--accent is required with --from-base"))?;
+        let accent =
+            accent.ok_or_else(|| anyhow::anyhow!("--accent is required with --from-base"))?;
         let derived = color_derive::derive_from_base(color_derive::BaseColorsInput {
             bg: bg.to_string(),
             fg: fg.cloned(),
@@ -748,7 +747,6 @@ fn run_apply_colors(
             mode: mode.into(),
             brand: brand.clone(),
         })?;
-        let root = root_dir(cli)?;
         let config_path = root.join("stbl.yaml");
         if !config_path.exists() {
             bail!("missing stbl.yaml in {}", root.display());
@@ -784,15 +782,13 @@ fn run_apply_colors(
         .get(name)
         .ok_or_else(|| anyhow::anyhow!("unknown preset '{name}' (use --list-presets)"))?;
     color_presets::validate_preset(name, preset)?;
-    let root = root_dir(cli)?;
     let config_path = root.join("stbl.yaml");
     if !config_path.exists() {
         bail!("missing stbl.yaml in {}", root.display());
     }
     let raw = fs::read_to_string(&config_path)
         .with_context(|| format!("failed to read {}", config_path.display()))?;
-    let mut doc: Value =
-        serde_yaml::from_str(&raw).with_context(|| "failed to parse stbl.yaml")?;
+    let mut doc: Value = serde_yaml::from_str(&raw).with_context(|| "failed to parse stbl.yaml")?;
     color_apply::apply_preset_to_yaml(&mut doc, name, preset)?;
     let mut yaml = serde_yaml::to_string(&doc).context("failed to serialize stbl.yaml")?;
     if !yaml.ends_with('\n') {
@@ -813,8 +809,9 @@ fn run_apply_colors(
     Ok(())
 }
 
-fn run_show_color_themes(out: Option<&PathBuf>, open: bool) -> Result<()> {
-    let presets = color_presets::load_color_presets()?;
+fn run_show_color_themes(cli: &Cli, out: Option<&PathBuf>, open: bool) -> Result<()> {
+    let root = root_dir(cli)?;
+    let presets = color_presets::load_color_presets_for_root(&root)?;
     let out_path = match out {
         Some(path) => path.to_path_buf(),
         None => color_preview::default_color_preview_path()?,
@@ -918,7 +915,10 @@ fn validate_flags(cli: &Cli) -> Result<()> {
     if cli.commit_writeback && cli.no_writeback {
         anyhow::bail!("--commit-writeback cannot be used with --no-writeback");
     }
-    if let Command::Build { jobs: Some(value), .. } = &cli.command {
+    if let Command::Build {
+        jobs: Some(value), ..
+    } = &cli.command
+    {
         if *value == 0 {
             anyhow::bail!("--jobs must be at least 1");
         }
@@ -1072,11 +1072,7 @@ fn render_dot(plan: &stbl_core::model::BuildPlan) -> String {
         ));
     }
     for (from, to) in &plan.edges {
-        output.push_str(&format!(
-            "  \"{}\" -> \"{}\";\n",
-            from.0,
-            to.0
-        ));
+        output.push_str(&format!("  \"{}\" -> \"{}\";\n", from.0, to.0));
     }
     output.push_str("}\n");
     output
@@ -1134,7 +1130,9 @@ fn prune_out_dir(
     Ok(())
 }
 
-fn collect_expected_outputs(plan: &stbl_core::model::BuildPlan) -> std::collections::HashSet<String> {
+fn collect_expected_outputs(
+    plan: &stbl_core::model::BuildPlan,
+) -> std::collections::HashSet<String> {
     let mut expected = std::collections::HashSet::new();
     for task in &plan.tasks {
         for output in &task.outputs {
@@ -1155,7 +1153,10 @@ fn collect_files_outputs(source_dir: &Path) -> Result<std::collections::HashSet<
         if entry.file_type().is_dir() {
             continue;
         }
-        let rel = entry.path().strip_prefix(source_dir).unwrap_or(entry.path());
+        let rel = entry
+            .path()
+            .strip_prefix(source_dir)
+            .unwrap_or(entry.path());
         expected.insert(normalize_path(rel));
     }
     Ok(expected)
@@ -1169,7 +1170,10 @@ fn copy_files_dir(source_dir: &Path, out_dir: &Path) -> Result<usize> {
     let mut copied = 0usize;
     for entry in WalkDir::new(&files_dir).min_depth(0) {
         let entry = entry?;
-        let rel = entry.path().strip_prefix(source_dir).unwrap_or(entry.path());
+        let rel = entry
+            .path()
+            .strip_prefix(source_dir)
+            .unwrap_or(entry.path());
         let out_path = out_dir.join(rel);
         if entry.file_type().is_dir() {
             fs::create_dir_all(&out_path)
@@ -1289,8 +1293,11 @@ mod tests {
 
     #[test]
     fn render_publish_command_replaces_tokens() {
-        let command =
-            render_publish_command("rsync {{local-site}} {{destination}}", Path::new("out"), "dest");
+        let command = render_publish_command(
+            "rsync {{local-site}} {{destination}}",
+            Path::new("out"),
+            "dest",
+        );
         assert!(command.contains("out"));
         assert!(command.contains("dest"));
         assert!(!command.contains("{{local-site}}"));

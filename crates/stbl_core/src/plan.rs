@@ -260,8 +260,11 @@ pub fn build_plan(
         }
     }
 
-    let (asset_tasks, _manifest) =
-        plan_assets(asset_index, project.config.assets.cache_busting, ctx.render_config_hash);
+    let (asset_tasks, _manifest) = plan_assets(
+        asset_index,
+        project.config.assets.cache_busting,
+        ctx.render_config_hash,
+    );
     tasks.extend(asset_tasks);
 
     let image_tasks = plan_image_tasks(
@@ -463,7 +466,11 @@ fn task_id_generate_vars_css(out_rel: &str) -> TaskId {
     TaskId::new("generate_vars_css", &[out_rel])
 }
 
-fn fingerprint_render_page(task_id: &TaskId, ctx: &PlanHashContext, page: &crate::model::Page) -> InputFingerprint {
+fn fingerprint_render_page(
+    task_id: &TaskId,
+    ctx: &PlanHashContext,
+    page: &crate::model::Page,
+) -> InputFingerprint {
     let mut hasher = task_fingerprint_hasher(task_id, "RenderPage");
     add_hash_bytes(&mut hasher, &ctx.render_config_hash);
     add_hash_bytes(&mut hasher, &ctx.templates_hash);
@@ -471,7 +478,11 @@ fn fingerprint_render_page(task_id: &TaskId, ctx: &PlanHashContext, page: &crate
     finish_fingerprint(hasher)
 }
 
-fn fingerprint_render_series(task_id: &TaskId, ctx: &PlanHashContext, series: &crate::model::Series) -> InputFingerprint {
+fn fingerprint_render_series(
+    task_id: &TaskId,
+    ctx: &PlanHashContext,
+    series: &crate::model::Series,
+) -> InputFingerprint {
     let mut hasher = task_fingerprint_hasher(task_id, "RenderSeries");
     add_hash_bytes(&mut hasher, &ctx.render_config_hash);
     add_hash_bytes(&mut hasher, &ctx.templates_hash);
@@ -524,7 +535,10 @@ fn fingerprint_render_frontpage(
     let mut hasher = task_fingerprint_hasher(task_id, "RenderFrontPage");
     add_hash_bytes(&mut hasher, &ctx.render_config_hash);
     add_hash_bytes(&mut hasher, &ctx.templates_hash);
-    let mut hashes = pages.iter().map(|page| page.content_hash).collect::<Vec<_>>();
+    let mut hashes = pages
+        .iter()
+        .map(|page| page.content_hash)
+        .collect::<Vec<_>>();
     hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
     add_hash_list(&mut hasher, &hashes);
     finish_fingerprint(hasher)
@@ -553,7 +567,10 @@ fn fingerprint_generate_rss(
 ) -> InputFingerprint {
     let mut hasher = task_fingerprint_hasher(task_id, "GenerateRss");
     add_hash_bytes(&mut hasher, &ctx.render_config_hash);
-    let mut hashes = pages.iter().map(|page| page.content_hash).collect::<Vec<_>>();
+    let mut hashes = pages
+        .iter()
+        .map(|page| page.content_hash)
+        .collect::<Vec<_>>();
     hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
     add_hash_list(&mut hasher, &hashes);
     finish_fingerprint(hasher)
@@ -567,7 +584,10 @@ fn fingerprint_generate_sitemap(
 ) -> InputFingerprint {
     let mut hasher = task_fingerprint_hasher(task_id, "GenerateSitemap");
     add_hash_bytes(&mut hasher, &ctx.render_config_hash);
-    let mut hashes = pages.iter().map(|page| page.content_hash).collect::<Vec<_>>();
+    let mut hashes = pages
+        .iter()
+        .map(|page| page.content_hash)
+        .collect::<Vec<_>>();
     hashes.sort_by_key(|hash| hash.as_bytes().to_vec());
     add_hash_list(&mut hasher, &hashes);
     let tags = tag_map.keys().cloned().collect::<Vec<_>>();

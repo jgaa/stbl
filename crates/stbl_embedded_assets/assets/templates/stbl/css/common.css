@@ -154,6 +154,22 @@ h1, h2, h3, h4, h5, h6 { color: var(--c-heading); }
   color: var(--c-muted);
 }
 
+.page-meta {
+  margin: 0.25rem 0 0.9rem;
+}
+
+.page-meta > * {
+  margin: 0;
+}
+
+.page-meta > * + * {
+  margin-top: 0.35rem;
+}
+
+.page-meta .tags {
+  margin: 0;
+}
+
 .meta-sep {
   padding: 0 0.15rem;
 }

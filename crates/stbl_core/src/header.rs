@@ -184,8 +184,7 @@ pub fn parse_header(
             "comments" => header.comments = non_empty(value),
             "part" => header.part = non_empty(value),
             "sitemap-priority" => {
-                header.sitemap_priority =
-                    parse_sitemap_priority(value, &mut warnings, &mut notices)
+                header.sitemap_priority = parse_sitemap_priority(value, &mut warnings, &mut notices)
             }
             "sitemap-changefreq" => header.sitemap_changefreq = parse_sitemap_changefreq(value)?,
             "published" => {
@@ -528,10 +527,7 @@ banner: https://example.com/#frag
         let parsed =
             parse_header("sitemap-priority: -1\n", UnknownKeyPolicy::Error).expect("parse");
         assert!(parsed.warnings.is_empty());
-        assert_eq!(
-            parsed.notices,
-            vec![HeaderNotice::SitemapPriorityDefault]
-        );
+        assert_eq!(parsed.notices, vec![HeaderNotice::SitemapPriorityDefault]);
         assert!(parsed.header.sitemap_priority.is_none());
     }
 

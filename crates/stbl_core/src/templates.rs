@@ -4,15 +4,15 @@ use chrono_tz::Tz;
 use minijinja::{AutoEscape, Environment, context};
 
 use crate::assets::AssetManifest;
-use crate::comments::{CommentTemplateProvider, render_comments_html};
 use crate::blog_index::{canonical_tag_map, collect_tag_list, iter_visible_posts, tag_key};
+use crate::comments::{CommentTemplateProvider, render_comments_html};
+use crate::macros::IncludeProvider;
 use crate::model::{
     MenuAlign, NavItem, Page, PersonLink, Project, SystemConfig, ThemeHeaderLayout,
 };
-use crate::macros::IncludeProvider;
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
-use crate::visibility::is_blog_index_excluded;
 use crate::url::UrlMapper;
+use crate::visibility::is_blog_index_excluded;
 use serde::Serialize;
 
 const BASE_TEMPLATE: &str = include_str!("templates/base.html");
@@ -119,7 +119,8 @@ pub fn render_page_with_series_nav(
     }
     let tags = tag_links;
     let published_ts = normalize_timestamp(page.header.published, project.config.system.as_ref());
-    let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref()) {
+    let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref())
+    {
         Some(updated) if Some(updated) == published_ts => None,
         other => other,
     };
@@ -170,13 +171,8 @@ pub fn render_markdown_page(
     _comment_template_provider: Option<&dyn CommentTemplateProvider>,
 ) -> Result<String> {
     let rel = root_prefix_for_base_url(&project.config.site.base_url);
-    let body_html = render_markdown_with_media(
-        project,
-        None,
-        body_markdown,
-        &rel,
-        include_provider,
-    );
+    let body_html =
+        render_markdown_with_media(project, None, body_markdown, &rel, include_provider);
     render_with_context(
         project,
         title.to_string(),
@@ -320,7 +316,9 @@ pub fn render_blog_index(
     let tag_links = collect_tag_list(project)
         .into_iter()
         .map(|tag| {
-            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
+            let href = UrlMapper::new(&project.config)
+                .map(&format!("tags/{}", tag))
+                .href;
             TagLink {
                 label: tag,
                 href: resolve_root_href(&href, &rel),
@@ -394,7 +392,9 @@ pub fn render_tag_index(
     let tag_links = collect_tag_list(project)
         .into_iter()
         .map(|tag| {
-            let href = UrlMapper::new(&project.config).map(&format!("tags/{}", tag)).href;
+            let href = UrlMapper::new(&project.config)
+                .map(&format!("tags/{}", tag))
+                .href;
             TagLink {
                 label: tag,
                 href: resolve_root_href(&href, &rel),
@@ -635,7 +635,8 @@ fn build_author_views(
         .map(|author_id| {
             let (name, links) = match people.and_then(|people| people.entries.get(author_id)) {
                 Some(person) => {
-                    let links = build_author_links(person.name.as_str(), &person.links, asset_manifest);
+                    let links =
+                        build_author_links(person.name.as_str(), &person.links, asset_manifest);
                     (person.name.clone(), links)
                 }
                 None => (author_id.clone(), Vec::new()),
@@ -924,10 +925,7 @@ fn root_prefix_for_base_url(base_url: &str) -> String {
     if trimmed.is_empty() {
         return "/".to_string();
     }
-    let without_scheme = trimmed
-        .split("://")
-        .nth(1)
-        .unwrap_or(trimmed);
+    let without_scheme = trimmed.split("://").nth(1).unwrap_or(trimmed);
     let path = match without_scheme.find('/') {
         Some(idx) => &without_scheme[idx..],
         None => "",
@@ -1058,7 +1056,9 @@ pub fn format_timestamp_display(
     let dt = DateTime::<Utc>::from_timestamp(value, 0)?;
     match resolve_timezone(timezone) {
         ResolvedTimezone::Utc => Some(dt.with_timezone(&Utc).format(format).to_string()),
-        ResolvedTimezone::Fixed(offset) => Some(dt.with_timezone(&offset).format(format).to_string()),
+        ResolvedTimezone::Fixed(offset) => {
+            Some(dt.with_timezone(&offset).format(format).to_string())
+        }
         ResolvedTimezone::Named(tz) => Some(dt.with_timezone(&tz).format(format).to_string()),
     }
 }
@@ -1144,10 +1144,9 @@ fn resolve_timezone(timezone: Option<&str>) -> ResolvedTimezone {
 mod tests {
     use super::{
         BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
-        SystemConfig,
-        TagListingPage, build_nav_view, format_timestamp_display,
-        format_timestamp_ymd, render_blog_index, render_page,
-        render_page_with_series_nav, render_series_index, render_tag_index,
+        SystemConfig, TagListingPage, build_nav_view, format_timestamp_display,
+        format_timestamp_ymd, render_blog_index, render_page, render_page_with_series_nav,
+        render_series_index, render_tag_index,
     };
     use crate::assets::AssetManifest;
     use crate::config::load_site_config;
@@ -1318,9 +1317,9 @@ mod tests {
             None,
         )
         .expect("render");
-        assert!(html.contains("<div class=\"meta\">"));
+        assert!(html.contains("<div class=\"meta page-meta\">"));
         assert!(!html.contains("Tags:"));
-        assert!(html.contains("class=\"tags\""));
+        assert!(html.contains("class=\"tags page-tags\""));
     }
 
     #[test]

@@ -181,8 +181,7 @@ fn render_generated(
             let mut sorted_entries = entries.clone();
             sorted_entries.sort_by(|a, b| a.path.cmp(&b.path));
             let ident = format!("TEMPLATE_{}", sanitize_ident(name));
-            template_assets_src
-                .push_str(&format!("static {}: &[AssetEntry] = &[\n", ident));
+            template_assets_src.push_str(&format!("static {}: &[AssetEntry] = &[\n", ident));
             for entry in &sorted_entries {
                 template_assets_src.push_str("    AssetEntry { path: \"");
                 template_assets_src.push_str(&entry.path);

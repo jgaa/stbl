@@ -31,3 +31,25 @@
 .menu-align-left .nav-desktop ul { justify-content: flex-start; }
 .menu-align-center .nav-desktop ul { justify-content: center; }
 .menu-align-right .nav-desktop ul { justify-content: flex-end; }
+
+/* Page meta: compact block layout on desktop */
+.page-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.page-meta > * + * {
+  margin-top: 0;
+}
+
+.page-meta .meta-dates,
+.page-meta .meta-authors,
+.page-meta .page-tags {
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--c-border);
+  border-radius: 0.5rem;
+  background: var(--c-quote-bg);
+}

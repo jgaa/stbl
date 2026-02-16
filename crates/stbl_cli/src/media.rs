@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use image::{ColorType, GenericImageView};
 use stbl_core::assets::AssetSourceId;
 use stbl_core::media::{ImagePlanInput, MediaDimensions, MediaRef, VideoPlanInput};
 use stbl_core::model::{Page, Project};
-use image::{ColorType, GenericImageView};
 
 #[derive(Debug, Default, Clone)]
 pub struct ImageSourceLookup {
@@ -185,7 +185,10 @@ fn all_pages(project: &Project) -> Vec<&Page> {
 }
 
 fn detect_alpha_and_dimensions(path: &Path) -> Result<(bool, Option<MediaDimensions>)> {
-    if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("svg")) {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+    {
         return Ok((false, None));
     }
     let reader = image::ImageReader::open(path)?.with_guessed_format()?;
@@ -199,13 +202,7 @@ fn detect_alpha_and_dimensions(path: &Path) -> Result<(bool, Option<MediaDimensi
             | ColorType::Rgba16
             | ColorType::Rgba32F
     );
-    Ok((
-        has_alpha,
-        Some(MediaDimensions {
-            width,
-            height,
-        }),
-    ))
+    Ok((has_alpha, Some(MediaDimensions { width, height })))
 }
 
 fn probe_video_dimensions(path: &Path) -> Result<MediaDimensions> {

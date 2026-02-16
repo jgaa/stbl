@@ -85,8 +85,8 @@ fn unknown_attrs_preserved() {
 
 #[test]
 fn parse_media_with_max_constraints() {
-    let media = parse_media_destination("images/foo.jpg;maxw=50%;maxh=12.5rem", "Alt")
-        .expect("media");
+    let media =
+        parse_media_destination("images/foo.jpg;maxw=50%;maxh=12.5rem", "Alt").expect("media");
     match media {
         MediaRef::Image(image) => {
             assert_eq!(image.maxw.as_deref(), Some("50%"));
@@ -94,8 +94,8 @@ fn parse_media_with_max_constraints() {
         }
         _ => panic!("expected image"),
     }
-    let media = parse_media_destination("video/v.mp4;maxw=640px;maxh=37.5vh", "Alt")
-        .expect("media");
+    let media =
+        parse_media_destination("video/v.mp4;maxw=640px;maxh=37.5vh", "Alt").expect("media");
     match media {
         MediaRef::Video(video) => {
             assert_eq!(video.maxw.as_deref(), Some("640px"));
@@ -107,8 +107,7 @@ fn parse_media_with_max_constraints() {
 
 #[test]
 fn invalid_max_constraint_reports_error() {
-    let (refs, errors) =
-        collect_media_refs_with_errors("![A](images/a.jpg;maxw=900pt)");
+    let (refs, errors) = collect_media_refs_with_errors("![A](images/a.jpg;maxw=900pt)");
     assert!(refs.is_empty());
     assert_eq!(errors.len(), 1);
     assert!(errors[0].contains("invalid maxw value"));

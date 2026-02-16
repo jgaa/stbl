@@ -44,8 +44,11 @@ fn preview_serves_files() {
     let out_dir = temp.path().join("out");
     fs::create_dir_all(out_dir.join("artifacts/css")).expect("create dirs");
     fs::write(out_dir.join("index.html"), "<h1>Preview</h1>").expect("write index");
-    fs::write(out_dir.join("artifacts/css/common.css"), "body { color: red; }")
-        .expect("write css");
+    fs::write(
+        out_dir.join("artifacts/css/common.css"),
+        "body { color: red; }",
+    )
+    .expect("write css");
 
     let handle = spawn_preview(PreviewOpts {
         site_dir: None,

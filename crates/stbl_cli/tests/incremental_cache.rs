@@ -34,10 +34,8 @@ fn cache_skips_unchanged_tasks_and_rebuilds_missing_output() {
         &video_plan,
         &project.config.media.video.heights,
     );
-    let asset_manifest = stbl_core::assets::build_asset_manifest(
-        &asset_index,
-        project.config.assets.cache_busting,
-    );
+    let asset_manifest =
+        stbl_core::assets::build_asset_manifest(&asset_index, project.config.assets.cache_busting);
     let plan = stbl_core::plan::build_plan(&project, &asset_index, &image_plan, &video_plan);
 
     let mut cache = SqliteCacheStore::open(&cache_path).expect("open cache");

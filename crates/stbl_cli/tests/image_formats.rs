@@ -22,13 +22,9 @@ fn build_project(root: &PathBuf, format_mode: ImageFormatMode) -> Project {
     let config = load_site_config(&root.join("stbl.yaml")).expect("load config");
     let mut config = config;
     config.media.images.format_mode = format_mode;
-    let docs = stbl_cli::walk::walk_content(
-        root,
-        &root.join("articles"),
-        UnknownKeyPolicy::Error,
-        false,
-    )
-    .expect("walk content");
+    let docs =
+        stbl_cli::walk::walk_content(root, &root.join("articles"), UnknownKeyPolicy::Error, false)
+            .expect("walk content");
     let content = assemble_site(docs).expect("assemble site");
     Project {
         root: root.clone(),
@@ -111,7 +107,10 @@ fn fast_mode_skips_avif_sources() {
     let out_dir = temp.path().join("out");
     execute_build(&mut project, &out_dir);
 
-    assert!(!has_avif(&out_dir), "did not expect avif outputs in fast mode");
+    assert!(
+        !has_avif(&out_dir),
+        "did not expect avif outputs in fast mode"
+    );
     let html = read_page(&out_dir, "banner-page.html");
     assert!(!html.contains("type=\"image/avif\""));
     assert!(html.contains("type=\"image/webp\""));

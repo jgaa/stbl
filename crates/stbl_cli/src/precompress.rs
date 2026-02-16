@@ -74,7 +74,11 @@ pub fn expected_brotli_outputs(plan: &stbl_core::model::BuildPlan) -> HashSet<St
 
 pub fn write_gzip_files(out_dir: &Path, level: u32, verbose: bool) -> Result<usize> {
     let mut count = 0usize;
-    for entry in WalkDir::new(out_dir).min_depth(1).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(out_dir)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
@@ -102,7 +106,11 @@ pub fn write_gzip_files(out_dir: &Path, level: u32, verbose: bool) -> Result<usi
 
 pub fn write_brotli_files(out_dir: &Path, quality: u32, verbose: bool) -> Result<usize> {
     let mut count = 0usize;
-    for entry in WalkDir::new(out_dir).min_depth(1).into_iter().filter_map(Result::ok) {
+    for entry in WalkDir::new(out_dir)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
         if !entry.file_type().is_file() {
             continue;
         }
