@@ -71,3 +71,14 @@ Behavior and rules:
 - Part numbers come from the header `part` field; if missing, they are assigned in assemble and written back when allowed.
 - Series index pages are rendered to `series-dir/index.html` even when `site.url_style` is `html`.
 - Series parts keep their normal output paths based on source structure.
+
+
+## Types of pages
+- Cover pages: The root index.md, pages with `template` or `type` set to `info` and tag pages (generated).
+- Articles: Any page listed by the article-list/blog-list including parts of series.
+
+Cover pages does not display a published date, author or tags (from the source header) in header.
+
+## Published status and timestamps
+- A page is published if its `published` header is not `no` or `false`.
+- Updated time should be published after published time if the difference is larger than config setting: system.date.roundup_seconds, so that the rounded timestamp would be different than published date. Updated time is rounded like published time.

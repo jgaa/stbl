@@ -6,6 +6,16 @@ pub fn is_published_page(page: &Page) -> bool {
     page.header.is_published
 }
 
+pub fn is_cover_page(page: &Page) -> bool {
+    if logical_key_from_source_path(&page.source_path) == "index" {
+        return true;
+    }
+    if matches!(page.header.content_type.as_deref(), Some("info")) {
+        return true;
+    }
+    matches!(page.header.template, Some(TemplateId::Info))
+}
+
 pub fn is_blog_index_excluded(page: &Page, source_page_id: Option<crate::model::DocId>) -> bool {
     if let Some(source_id) = source_page_id {
         if page.id == source_id {
@@ -18,10 +28,7 @@ pub fn is_blog_index_excluded(page: &Page, source_page_id: Option<crate::model::
     if page.header.exclude_from_blog {
         return true;
     }
-    if matches!(page.header.content_type.as_deref(), Some("info")) {
-        return true;
-    }
-    if logical_key_from_source_path(&page.source_path) == "index" {
+    if is_cover_page(page) {
         return true;
     }
     matches!(
@@ -110,5 +117,25 @@ mod tests {
         let mut index_page = page.clone();
         index_page.source_path = "articles/index.md".to_string();
         assert!(is_blog_index_excluded(&index_page, None));
+    }
+
+    #[test]
+    fn cover_page_detects_root_index_and_info_pages() {
+        let mut header = crate::header::Header::default();
+        header.is_published = true;
+        let page = make_page("page", header.clone());
+        assert!(!is_cover_page(&page));
+
+        let mut root_index = page.clone();
+        root_index.source_path = "articles/index.md".to_string();
+        assert!(is_cover_page(&root_index));
+
+        let mut info_template = page.clone();
+        info_template.header.template = Some(TemplateId::Info);
+        assert!(is_cover_page(&info_template));
+
+        let mut info_type = page;
+        info_type.header.content_type = Some("info".to_string());
+        assert!(is_cover_page(&info_type));
     }
 }

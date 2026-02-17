@@ -15,7 +15,7 @@ use crate::model::{
 };
 use crate::render::{RenderOptions, render_markdown_to_html_with_media};
 use crate::url::UrlMapper;
-use crate::visibility::is_blog_index_excluded;
+use crate::visibility::{is_blog_index_excluded, is_cover_page};
 use serde::Serialize;
 
 const DEFAULT_THEME_VARIANT: &str = "stbl";
@@ -179,52 +179,57 @@ pub fn render_page_with_series_nav(
         render_comments_html(project, page, current_href, comment_template_provider);
     let page_title = page_title_or_filename(project, page);
     let show_page_title = !is_blog_index_excluded(page, None);
-    let show_authors = !is_blog_index_excluded(page, None);
+    let cover_page = is_cover_page(page);
+    let show_authors = !cover_page;
     let authors = build_author_views(
         project,
         page.header.authors.as_ref(),
         asset_manifest,
         show_authors,
     );
-    let canonical_tags = canonical_tag_map(project);
-    let mut tag_links = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for tag in &page.header.tags {
-        let key = tag_key(tag);
-        if !seen.insert(key.clone()) {
-            continue;
+    let (published, updated, published_raw, updated_raw, tags) = if cover_page {
+        (None, None, None, None, Vec::new())
+    } else {
+        let canonical_tags = canonical_tag_map(project);
+        let mut tag_links = Vec::new();
+        let mut seen = std::collections::BTreeSet::new();
+        for tag in &page.header.tags {
+            let key = tag_key(tag);
+            if !seen.insert(key.clone()) {
+                continue;
+            }
+            let label = canonical_tags
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| tag.clone());
+            let href = UrlMapper::new(&project.config)
+                .map(&format!("tags/{}", label))
+                .href;
+            tag_links.push(TagLink {
+                label,
+                href: resolve_root_href(&href, &rel),
+            });
         }
-        let label = canonical_tags
-            .get(&key)
-            .cloned()
-            .unwrap_or_else(|| tag.clone());
-        let href = UrlMapper::new(&project.config)
-            .map(&format!("tags/{}", label))
-            .href;
-        tag_links.push(TagLink {
-            label,
-            href: resolve_root_href(&href, &rel),
-        });
-    }
-    let tags = tag_links;
-    let published_ts = normalize_timestamp(page.header.published, project.config.system.as_ref());
-    let updated_ts = match normalize_timestamp(page.header.updated, project.config.system.as_ref())
-    {
-        Some(updated) if Some(updated) == published_ts => None,
-        other => other,
+        let published_ts =
+            normalize_timestamp(page.header.published, project.config.system.as_ref());
+        let updated_ts = effective_updated_timestamp(
+            published_ts,
+            normalize_timestamp(page.header.updated, project.config.system.as_ref()),
+        );
+        let published = format_timestamp_display(
+            published_ts,
+            project.config.system.as_ref(),
+            project.config.site.timezone.as_deref(),
+        );
+        let updated = format_timestamp_display(
+            updated_ts,
+            project.config.system.as_ref(),
+            project.config.site.timezone.as_deref(),
+        );
+        let published_raw = format_timestamp_rfc3339(published_ts);
+        let updated_raw = format_timestamp_rfc3339(updated_ts);
+        (published, updated, published_raw, updated_raw, tag_links)
     };
-    let published = format_timestamp_display(
-        published_ts,
-        project.config.system.as_ref(),
-        project.config.site.timezone.as_deref(),
-    );
-    let updated = format_timestamp_display(
-        updated_ts,
-        project.config.system.as_ref(),
-        project.config.site.timezone.as_deref(),
-    );
-    let published_raw = format_timestamp_rfc3339(published_ts);
-    let updated_raw = format_timestamp_rfc3339(updated_ts);
 
     render_with_context(
         project,
@@ -1201,6 +1206,13 @@ pub fn normalize_timestamp(value: Option<i64>, system: Option<&SystemConfig>) ->
     Some(round_timestamp(value, roundup))
 }
 
+pub fn effective_updated_timestamp(published: Option<i64>, updated: Option<i64>) -> Option<i64> {
+    match (published, updated) {
+        (Some(published), Some(updated)) if updated <= published => None,
+        (_, other) => other,
+    }
+}
+
 fn date_roundup_seconds(system: Option<&SystemConfig>) -> u32 {
     system
         .and_then(|system| system.date.as_ref())
@@ -1264,9 +1276,9 @@ fn resolve_timezone(timezone: Option<&str>) -> ResolvedTimezone {
 mod tests {
     use super::{
         BlogIndexItem, NavItemView, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
-        SystemConfig, TagListingPage, build_nav_view, format_timestamp_display,
-        format_timestamp_ymd, render_blog_index, render_page, render_page_with_series_nav,
-        render_series_index, render_tag_index,
+        SystemConfig, TagListingPage, build_nav_view, effective_updated_timestamp,
+        format_timestamp_display, format_timestamp_ymd, render_blog_index, render_page,
+        render_page_with_series_nav, render_series_index, render_tag_index,
     };
     use crate::assets::AssetManifest;
     use crate::config::load_site_config;
@@ -1306,6 +1318,14 @@ mod tests {
 
         let value = format_timestamp_display(Some(ts), None, Some("Europe/Oslo")).expect("date");
         assert_eq!(value, "July 4, 2025 at 19:02 CEST");
+    }
+
+    #[test]
+    fn effective_updated_timestamp_requires_updated_after_published() {
+        assert_eq!(effective_updated_timestamp(Some(200), Some(200)), None);
+        assert_eq!(effective_updated_timestamp(Some(200), Some(199)), None);
+        assert_eq!(effective_updated_timestamp(Some(200), Some(201)), Some(201));
+        assert_eq!(effective_updated_timestamp(None, Some(201)), Some(201));
     }
 
     #[test]
@@ -1574,6 +1594,48 @@ mod tests {
         )
         .expect("render page");
         assert!(html.contains(">gRPC<"));
+    }
+
+    #[test]
+    fn cover_pages_hide_header_meta() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\npeople:\n  default: me\n  entries:\n    me:\n      name: \"Me\"\n",
+            SiteContent::default(),
+        );
+        let mut page = simple_page("Home", "articles/index.md");
+        page.header.published = Some(1_704_067_200);
+        page.header.tags = vec!["rust".to_string()];
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "index.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render page");
+        assert!(!html.contains("Published"));
+        assert!(!html.contains("meta-authors"));
+        assert!(!html.contains("class=\"tags page-tags\""));
+
+        let mut info_page = simple_page("Info", "articles/about.md");
+        info_page.header.template = Some(crate::header::TemplateId::Info);
+        info_page.header.published = Some(1_704_067_200);
+        info_page.header.tags = vec!["about".to_string()];
+        let html = render_page(
+            &project,
+            &info_page,
+            &default_manifest(),
+            "about.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render page");
+        assert!(!html.contains("Published"));
+        assert!(!html.contains("meta-authors"));
+        assert!(!html.contains("class=\"tags page-tags\""));
     }
 
     #[test]

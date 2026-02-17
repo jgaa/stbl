@@ -100,13 +100,16 @@ Datetime rules:
 * Date/time string
 * Represents the **last update time**
 * Overrides filesystem modification time
+* Value: Timestamp (like published) or "no" / "false"
 
 Rules:
 
+* If disabled (no/false) don't display updatet time for this article
 * If present: use this value
 * If missing: use file modification time
 * **Never auto-generated**
 * **Never written back**
+* **Don't use for sorting articles**
 
 ---
 

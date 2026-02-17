@@ -20,10 +20,11 @@ use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskK
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
 use stbl_core::templates::{
     BlogIndexItem, BlogIndexPart, SeriesIndexPart, SeriesNavEntry, SeriesNavLink, SeriesNavView,
-    TagLink, TagListingPage, format_timestamp_display, format_timestamp_long_date,
-    format_timestamp_rfc3339, normalize_timestamp, page_title_or_filename, render_banner_html,
-    render_blog_index, render_markdown_page, render_page, render_page_with_series_nav,
-    render_redirect_page, render_series_index, render_tag_index,
+    TagLink, TagListingPage, effective_updated_timestamp, format_timestamp_display,
+    format_timestamp_long_date, format_timestamp_rfc3339, normalize_timestamp,
+    page_title_or_filename, render_banner_html, render_blog_index, render_markdown_page,
+    render_page, render_page_with_series_nav, render_redirect_page, render_series_index,
+    render_tag_index,
 };
 use stbl_core::theme::{ResolvedThemeVars, resolve_theme_vars};
 use stbl_core::url::{UrlMapper, logical_key_from_source_path, map_series_index};
@@ -1562,16 +1563,15 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
             updated_display: {
                 let published_ts =
                     normalize_timestamp(post.published, project.config.system.as_ref());
-                let updated_ts = normalize_timestamp(post.updated, project.config.system.as_ref());
-                if updated_ts.is_some() && updated_ts == published_ts {
-                    None
-                } else {
-                    format_timestamp_display(
-                        updated_ts,
-                        project.config.system.as_ref(),
-                        project.config.site.timezone.as_deref(),
-                    )
-                }
+                let updated_ts = effective_updated_timestamp(
+                    published_ts,
+                    normalize_timestamp(post.updated, project.config.system.as_ref()),
+                );
+                format_timestamp_display(
+                    updated_ts,
+                    project.config.system.as_ref(),
+                    project.config.site.timezone.as_deref(),
+                )
             },
             published_raw: {
                 let ts = normalize_timestamp(post.published, project.config.system.as_ref());
@@ -1580,12 +1580,11 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
             updated_raw: {
                 let published_ts =
                     normalize_timestamp(post.published, project.config.system.as_ref());
-                let updated_ts = normalize_timestamp(post.updated, project.config.system.as_ref());
-                if updated_ts.is_some() && updated_ts == published_ts {
-                    None
-                } else {
-                    format_timestamp_rfc3339(updated_ts)
-                }
+                let updated_ts = effective_updated_timestamp(
+                    published_ts,
+                    normalize_timestamp(post.updated, project.config.system.as_ref()),
+                );
+                format_timestamp_rfc3339(updated_ts)
             },
             kind_label: None,
             abstract_text: post.abstract_text.clone(),
@@ -1613,17 +1612,15 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
             updated_display: {
                 let published_ts =
                     normalize_timestamp(series.published, project.config.system.as_ref());
-                let updated_ts =
-                    normalize_timestamp(series.updated, project.config.system.as_ref());
-                if updated_ts.is_some() && updated_ts == published_ts {
-                    None
-                } else {
-                    format_timestamp_display(
-                        updated_ts,
-                        project.config.system.as_ref(),
-                        project.config.site.timezone.as_deref(),
-                    )
-                }
+                let updated_ts = effective_updated_timestamp(
+                    published_ts,
+                    normalize_timestamp(series.updated, project.config.system.as_ref()),
+                );
+                format_timestamp_display(
+                    updated_ts,
+                    project.config.system.as_ref(),
+                    project.config.site.timezone.as_deref(),
+                )
             },
             published_raw: {
                 let ts = normalize_timestamp(series.published, project.config.system.as_ref());
@@ -1632,13 +1629,11 @@ fn map_feed_item(item: &FeedItem, mapper: &UrlMapper, project: &Project) -> Blog
             updated_raw: {
                 let published_ts =
                     normalize_timestamp(series.published, project.config.system.as_ref());
-                let updated_ts =
-                    normalize_timestamp(series.updated, project.config.system.as_ref());
-                if updated_ts.is_some() && updated_ts == published_ts {
-                    None
-                } else {
-                    format_timestamp_rfc3339(updated_ts)
-                }
+                let updated_ts = effective_updated_timestamp(
+                    published_ts,
+                    normalize_timestamp(series.updated, project.config.system.as_ref()),
+                );
+                format_timestamp_rfc3339(updated_ts)
             },
             kind_label: Some("Series".to_string()),
             abstract_text: series.abstract_text.clone(),

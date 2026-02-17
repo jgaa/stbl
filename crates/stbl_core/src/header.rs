@@ -173,7 +173,13 @@ pub fn parse_header(
             }
             "title" => header.title = non_empty(value),
             "tags" => header.tags = split_list(value),
-            "updated" => header.updated = parse_datetime(value, key)?,
+            "updated" => {
+                if value == "false" || value == "no" {
+                    header.updated = None;
+                } else {
+                    header.updated = parse_datetime(value, key)?;
+                }
+            }
             "abstract" => header.abstract_text = non_empty(value),
             "template" => header.template_raw = non_empty(value),
             "type" => header.content_type = non_empty(value),
@@ -670,6 +676,17 @@ banner: https://example.com/#frag
         let parsed = parse_header("updated: 2024-01-02T03:04:05\n", UnknownKeyPolicy::Error)
             .expect("parse should succeed");
         assert!(parsed.header.updated.is_some());
+    }
+
+    #[test]
+    fn updated_false_and_no_disable_timestamp() {
+        let parsed_false = parse_header("updated: false\n", UnknownKeyPolicy::Error)
+            .expect("parse should succeed");
+        assert!(parsed_false.header.updated.is_none());
+
+        let parsed_no =
+            parse_header("updated: no\n", UnknownKeyPolicy::Error).expect("parse should succeed");
+        assert!(parsed_no.header.updated.is_none());
     }
 
     #[test]
