@@ -1,3 +1,5 @@
+[![CI](https://github.com/jgaa/stbl/actions/workflows/ci.yml/badge.svg)](https://github.com/jgaa/stbl/actions/workflows/ci.yml)
+
 # Introduction to stbl
 
 **stbl** is an acronym for *"Static Blog"*.
