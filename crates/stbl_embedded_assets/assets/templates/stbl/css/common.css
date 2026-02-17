@@ -170,6 +170,23 @@ h1, h2, h3, h4, h5, h6 { color: var(--c-heading); }
   margin: 0;
 }
 
+.meta-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.meta-dates .meta-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--c-border);
+  border-radius: 0.5rem;
+  background: var(--c-quote-bg);
+  white-space: nowrap;
+}
+
 .meta-sep {
   padding: 0 0.15rem;
 }

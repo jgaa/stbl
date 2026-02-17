@@ -198,7 +198,7 @@ impl FeedItem {
         let published = page
             .header
             .published
-            .or(page.header.updated)
+            .or(page.header.resolved_updated())
             .and_then(|value| DateTime::<Utc>::from_timestamp(value, 0))?;
         let title = page
             .header

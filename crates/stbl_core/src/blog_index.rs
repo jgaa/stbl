@@ -414,7 +414,7 @@ fn feed_post(project: &Project, page: &Page) -> FeedPost {
             .clone()
             .unwrap_or_else(|| "Untitled".to_string()),
         published: timestamp_option(sort_date),
-        updated: page.header.updated,
+        updated: page.header.resolved_updated(),
         sort_date,
         content_hash: page.content_hash,
         abstract_text,
@@ -507,7 +507,7 @@ fn feed_series(project: &Project, series: &Series) -> Option<FeedSeries> {
             .clone()
             .unwrap_or_else(|| "Untitled".to_string()),
         published,
-        updated: series.index.header.updated,
+        updated: series.index.header.resolved_updated(),
         sort_date,
         abstract_text,
         tags,

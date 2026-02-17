@@ -1,7 +1,7 @@
 <li class="list-item">
   <a class="item-title" href="{{ item.href }}">{{ item.title }}</a>
 
-  {% if item.published_display or item.updated_display or item.kind_label %}
+  {% if item.published_display or item.kind_label %}
   <div class="meta">
     {% if item.published_display %}
     <span class="meta">Published:
@@ -9,15 +9,6 @@
       <time class="js-local-time" datetime="{{ item.published_raw }}">{{ item.published_display }}</time>
       {% else %}
       {{ item.published_display }}
-      {% endif %}
-    </span>
-    {% endif %}
-    {% if item.updated_display %}
-    <span class="meta">Updated
-      {% if item.updated_raw %}
-      <time class="js-local-time" datetime="{{ item.updated_raw }}">{{ item.updated_display }}</time>
-      {% else %}
-      {{ item.updated_display }}
       {% endif %}
     </span>
     {% endif %}

@@ -1,0 +1,159 @@
+# stbl config (most settings are commented out with defaults).
+# Uncomment the settings you want to customize.
+
+# Site metadata (required).
+site:
+  id: "interstellar-hyperdrive"
+  title: "New Crazy Powerful Hyperdrives"
+  base_url: "http://localhost:8080/"
+  language: "en"
+  url_style: html
+  tagline: "Get the latest technology and explore the outer rims of the galaxy"
+  logo: "images/logo.svg"
+  # copyright: "Copyright {YEAR} by Demo Site"
+  # timezone: "America/New_York"
+
+# Theme configuration.
+theme:
+  # variant: "default"
+  # max_body_width: "72rem"
+  # breakpoints:
+  #   desktop_min: "768px"
+  #   wide_min: "1400px"
+  # colors:
+  #   bg: "#ffffff"
+  #   fg: "#111111"
+  #   heading: "#111111"
+  #   title_fg: "#111111"
+  #   accent: "#ff3366"
+  #   link: "#0033cc"
+  #   muted: "#666666"
+  #   surface: "#f5f5f5"
+  #   border: "#dddddd"
+  #   link_hover: "#002299"
+  #   code_bg: "#f1f1f1"
+  #   code_fg: "#111111"
+  #   quote_bg: "#f7f7f7"
+  #   quote_border: "#dddddd"
+  #   wide_bg: "#fafafa"
+  # nav:
+  #   bg: "#ffffff"
+  #   fg: "#111111"
+  #   border: "#dddddd"
+
+  # header:
+  #   layout: stacked
+  #   menu_align: left
+  #   # title_size: "1.3rem"
+  #   # tagline_size: "1rem"
+  # wide_background:
+  #   color: "#ffffff"
+  #   image: "images/hero.jpg"
+  #   style: cover
+  #   position: "center"
+  #   opacity: 0.6
+  # color_scheme:
+  #   name: "preset-name"
+  #   mode: auto
+  #   source: preset
+  #   base:
+  #     bg: "#ffffff"
+  #     fg: "#111111"
+  #     accent: "#ff3366"
+  #     link: "#0033cc"
+  #     heading: "#111111"
+
+# Code block highlighting.
+syntax:
+  # highlight: true
+  # theme: "GitHub"
+  # line_numbers: true
+
+# Asset handling.
+assets:
+  # cache_busting: false
+
+# Image processing.
+media:
+  images:
+    # widths: [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
+    # quality: 90
+
+# Footer display.
+footer:
+  # show_stbl: true
+
+# Banner images (full-bleed).
+banner:
+  # widths: [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440, 1680, 1920, 2560]
+  # quality: 90
+  # align: 0
+
+# Main navigation menu.
+menu:
+  - title: "Home"
+    href: "./"
+  - title: Blog
+  - title: "About"
+    href: "./about.html"
+  - title: "Contact"
+    href: "./contact.html"
+
+# People directory for author attribution.
+people:
+  # default: "person1"
+  # entries:
+  #   person1:
+  #     name: "John Doe"
+  #     email: "jdoe@example.com"
+  #     links:
+  #       - id: "website"
+  #         name: "John Doe"
+  #         url: "https://example.com/"
+  #         # icon: "icons/website.svg"
+
+# System formatting helpers.
+system:
+  date:
+    # format: "%Y-%m-%d"
+    # roundup_seconds: 0
+
+# Publish command (optional).
+publish:
+  # command: "rsync -az artifacts/ user@host:/var/www/site"
+
+# Blog configuration.
+blog:
+  # abstract:
+  #   enabled: true
+  #   max_chars: 200
+  pagination:
+    enabled: true
+    page_size: 4
+
+  # series:
+  #   latest_parts: 3
+
+# RSS feed configuration.
+rss:
+  enabled: true
+  max_items: 10
+  # ttl_channel: 0
+  # ttl_days: 30
+
+# Sitemap metadata.
+seo:
+  sitemap:
+    # priority:
+    #   frontpage: 1.0
+    #   article: 0.8
+    #   series: 0.6
+    #   tag: 0.4
+    #   tags: 0.4
+
+# Comments providers.
+comments:
+  # default: "disqus"
+  # disqus:
+  #   template: "<section>{{disqus-src}}</section>"
+  #   src: "https://example.com/embed.js"

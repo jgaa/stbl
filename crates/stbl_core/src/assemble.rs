@@ -1,7 +1,7 @@
 //! Site tree assembly and validation
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::time::SystemTime;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::header::{Header, TemplateId};
 use crate::model::{
@@ -49,6 +49,7 @@ pub fn assemble_site_with_template_policy(
         let doc_id_hash = blake3::hash(doc.parsed.src.source_path.as_bytes());
         let content_hash = blake3::hash(doc.parsed.src.raw.as_bytes());
         let mut header = doc.parsed.header.clone();
+        header.updated_fallback = mtime_to_timestamp(doc.parsed.mtime);
         normalize_template(
             &mut header,
             template_policy,
@@ -250,6 +251,14 @@ pub fn assemble_site_with_template_policy(
     } else {
         Ok(site)
     }
+}
+
+fn mtime_to_timestamp(value: SystemTime) -> Option<i64> {
+    value
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs() as i64)
+        .filter(|value| *value > 0)
 }
 
 fn normalize_template(

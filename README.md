@@ -68,53 +68,20 @@ The only runtime dependency is `ffmpeg`. This is required only if you use videos
 
 ---
 
-# Quickstart
+## Documentation
 
-```sh
-mkdir myblog
-cd myblog
-stbl_cli init
-```
+- [Getting Started](docs/getting-started.md)
+- [CLI Reference](docs/cli.md)
+- [Project Structure](docs/project-structure.md)
+- [Content Format](docs/content-format.md)
+- [Page Types](docs/page-types.md)
+- [Timestamps](docs/timestamps.md)
+- [Series](docs/series.md)
+- [Templates and Themes](docs/templates-and-themes.md)
+- [Media](docs/media.md)
+- [Caching](docs/caching.md)
+- [FAQ](docs/faq.md)
 
-Edit `stbl.yaml` and set at least a site name and tagline. Then go to `./articles` and create some content. An `index.md` file is required for the front page.
+## Some real websites made with stbl
 
-Each article begins with a header enclosed in three dashes, followed by Markdown content.
-
-Example:
-
-```markdown
----
-title: Getting Things Done
-abstract: Discovering GTD: The Art of Getting Things Done
-tags: GTD, David Allen
-published: 2025-05-31 15:09
----
-
-## What is GTD?
-
-...
-```
-
-To preview your site locally:
-
-```
-stbl_cli build --preview-open
-```
-
-This generates the site in:
-
-```
-~/.cache/stbl/<site-name>/out
-```
-
-An embedded web server is started on localhost, and your browser will open the front page automatically.
-
-In `stbl.yaml`, you can specify a command to publish the site. With that enabled, for example using `rsync`, you can generate and publish your site like this:
-
-```sh
-
-stbl_cli build --publish-to example.com:/var/www/yoursite
-
-```
-
-
+- [The Last Viking LTD](https://lastviking.eu/)

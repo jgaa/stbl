@@ -214,7 +214,10 @@ pub fn render_page_with_series_nav(
             normalize_timestamp(page.header.published, project.config.system.as_ref());
         let updated_ts = effective_updated_timestamp(
             published_ts,
-            normalize_timestamp(page.header.updated, project.config.system.as_ref()),
+            normalize_timestamp(
+                page.header.resolved_updated(),
+                project.config.system.as_ref(),
+            ),
         );
         let published = format_timestamp_display(
             published_ts,
@@ -1460,6 +1463,41 @@ mod tests {
         assert!(html.contains("<div class=\"meta page-meta\">"));
         assert!(!html.contains("Tags:"));
         assert!(html.contains("class=\"tags page-tags\""));
+    }
+
+    #[test]
+    fn page_meta_uses_updated_fallback_when_available() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let mut page = simple_page("Meta Fallback", "articles/meta-fallback.md");
+        page.header.published = Some(1_704_067_200);
+        page.header.updated_fallback = Some(1_704_153_600);
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "meta-fallback.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render page");
+        assert!(html.contains("Updated"));
+
+        page.header.updated_disabled = true;
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "meta-fallback.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render page");
+        assert!(!html.contains("Updated"));
     }
 
     #[test]

@@ -16,11 +16,14 @@
     {% if published or updated %}
     <p class="meta-dates">
       {% if published %}
-      Published <time class="js-local-time" datetime="{{ published_raw }}">{{ published }}</time>
+      <span class="meta-date meta-date-published">
+        Published <time class="js-local-time" datetime="{{ published_raw }}">{{ published }}</time>
+      </span>
       {% endif %}
       {% if updated %}
-      {% if published %} · {% endif %}
-      Updated <time class="js-local-time" datetime="{{ updated_raw }}">{{ updated }}</time>
+      <span class="meta-date meta-date-updated">
+        Updated <time class="js-local-time" datetime="{{ updated_raw }}">{{ updated }}</time>
+      </span>
       {% endif %}
     </p>
     {% endif %}

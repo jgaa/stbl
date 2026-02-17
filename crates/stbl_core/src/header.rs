@@ -10,6 +10,8 @@ pub struct Header {
     pub title: Option<String>,
     pub tags: Vec<String>,
     pub updated: Option<i64>,
+    pub updated_disabled: bool,
+    pub updated_fallback: Option<i64>,
     pub abstract_text: Option<String>,
     pub template: Option<TemplateId>,
     pub template_raw: Option<String>,
@@ -37,6 +39,8 @@ impl Default for Header {
             title: None,
             tags: Vec::new(),
             updated: None,
+            updated_disabled: false,
+            updated_fallback: None,
             abstract_text: None,
             template: None,
             template_raw: None,
@@ -55,6 +59,16 @@ impl Default for Header {
             expires: None,
             authors: None,
             exclude_from_blog: false,
+        }
+    }
+}
+
+impl Header {
+    pub fn resolved_updated(&self) -> Option<i64> {
+        if self.updated_disabled {
+            None
+        } else {
+            self.updated.or(self.updated_fallback)
         }
     }
 }
@@ -176,8 +190,10 @@ pub fn parse_header(
             "updated" => {
                 if value == "false" || value == "no" {
                     header.updated = None;
+                    header.updated_disabled = true;
                 } else {
                     header.updated = parse_datetime(value, key)?;
+                    header.updated_disabled = false;
                 }
             }
             "abstract" => header.abstract_text = non_empty(value),
@@ -676,6 +692,7 @@ banner: https://example.com/#frag
         let parsed = parse_header("updated: 2024-01-02T03:04:05\n", UnknownKeyPolicy::Error)
             .expect("parse should succeed");
         assert!(parsed.header.updated.is_some());
+        assert!(!parsed.header.updated_disabled);
     }
 
     #[test]
@@ -683,10 +700,25 @@ banner: https://example.com/#frag
         let parsed_false = parse_header("updated: false\n", UnknownKeyPolicy::Error)
             .expect("parse should succeed");
         assert!(parsed_false.header.updated.is_none());
+        assert!(parsed_false.header.updated_disabled);
 
         let parsed_no =
             parse_header("updated: no\n", UnknownKeyPolicy::Error).expect("parse should succeed");
         assert!(parsed_no.header.updated.is_none());
+        assert!(parsed_no.header.updated_disabled);
+    }
+
+    #[test]
+    fn resolved_updated_uses_fallback_when_not_disabled() {
+        let mut header = Header::default();
+        header.updated_fallback = Some(123);
+        assert_eq!(header.resolved_updated(), Some(123));
+
+        header.updated = Some(456);
+        assert_eq!(header.resolved_updated(), Some(456));
+
+        header.updated_disabled = true;
+        assert_eq!(header.resolved_updated(), None);
     }
 
     #[test]
