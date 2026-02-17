@@ -8,10 +8,23 @@ This guide gets you from an empty directory to a locally previewed `stbl` site.
 - Rust toolchain (`cargo`, `rustc`)
 - `stbl_cli` available either:
   - from this repo via `cargo run -p stbl_cli -- ...`, or
-  - as an installed binary
+  - as an installed binary from GitHub Releases
 - Optional: `ffmpeg` (only required if you use video media)
 
-## 1. Build `stbl_cli`
+## 1. Install `stbl_cli`
+
+Option A, download the Linux binary from GitHub Releases:
+
+```sh
+curl -fL -o stbl_cli \
+  "https://github.com/jgaa/stbl/releases/download/v2.0.0/stbl_cli-linux-x86_64"
+chmod +x stbl_cli
+sudo mv stbl_cli /usr/local/bin/
+```
+
+Option B, build from source.
+
+## 2. Build `stbl_cli`
 
 From the repository root:
 
@@ -25,7 +38,7 @@ If you prefer running without installing, use:
 cargo run -p stbl_cli -- --help
 ```
 
-## 2. Create a New Site
+## 3. Create a New Site
 
 Create and enter a new project directory:
 
@@ -51,7 +64,7 @@ After init, you should have at least:
 - `stbl.yaml`
 - `articles/`
 
-## 3. Configure the Site
+## 4. Configure the Site
 
 Open `stbl.yaml` and set minimum identity fields such as:
 
@@ -61,7 +74,7 @@ Open `stbl.yaml` and set minimum identity fields such as:
 
 Keep this file under version control.
 
-## 4. Add Your Front Page
+## 5. Add Your Front Page
 
 Create `articles/index.md` with a header and content:
 
@@ -75,7 +88,7 @@ Welcome to my site.
 
 The root `index.md` is a cover page.
 
-## 5. Add One Article
+## 6. Add One Article
 
 Create `articles/my-first-post.md`:
 
@@ -90,7 +103,7 @@ published: 2026-02-17 10:00
 Hello from stbl.
 ```
 
-## 6. Build and Preview
+## 7. Build and Preview
 
 Run:
 
@@ -110,7 +123,7 @@ From source repo:
 cargo run -p stbl_cli -- build --preview-open
 ```
 
-## 7. Where Output Goes
+## 8. Where Output Goes
 
 By default, output is generated under cache space:
 
@@ -124,14 +137,14 @@ Generated HTML for the front page is typically:
 ~/.cache/stbl/<site-name>/out/index.html
 ```
 
-## 8. Typical Authoring Loop
+## 9. Typical Authoring Loop
 
 1. Edit Markdown in `articles/`.
 2. Run `stbl_cli build` (or preview mode).
 3. Refresh browser.
 4. Commit both content and configuration changes.
 
-## 9. First-Run Troubleshooting
+## 10. First-Run Troubleshooting
 
 `stbl_cli: command not found`
 - Run through `cargo run -p stbl_cli -- ...` or install the binary.

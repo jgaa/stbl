@@ -62,6 +62,17 @@ Free as in speech. Free as in freedom.
 cargo build --release
 ```
 
+## Linux binary from GitHub Releases
+
+You can download a prebuilt Linux CLI binary from GitHub Releases:
+
+```sh
+curl -fL -o stbl_cli \
+  "https://github.com/jgaa/stbl/releases/download/v2.0.0/stbl_cli-linux-x86_64"
+chmod +x stbl_cli
+sudo mv stbl_cli /usr/local/bin/
+```
+
 ## Dependencies
 
 stbl uses a number of Rust dependencies. While I generally prefer minimal dependencies, it makes little sense to reinvent well-tested components.

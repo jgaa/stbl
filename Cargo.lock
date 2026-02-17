@@ -1747,7 +1747,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stbl_cache"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "blake3",
  "rusqlite",
@@ -1756,7 +1756,7 @@ dependencies = [
 
 [[package]]
 name = "stbl_cli"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1783,7 +1783,7 @@ dependencies = [
 
 [[package]]
 name = "stbl_core"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "anyhow",
  "blake3",
@@ -1804,7 +1804,7 @@ dependencies = [
 
 [[package]]
 name = "stbl_embedded_assets"
-version = "0.1.0"
+version = "2.0.0"
 dependencies = [
  "blake3",
  "flate2",
