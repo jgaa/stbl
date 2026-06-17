@@ -68,7 +68,12 @@ impl Header {
         if self.updated_disabled {
             None
         } else {
-            self.updated.or(self.updated_fallback)
+            match (self.updated, self.updated_fallback) {
+                (Some(updated), Some(fallback)) => Some(updated.max(fallback)),
+                (Some(updated), None) => Some(updated),
+                (None, Some(fallback)) => Some(fallback),
+                (None, None) => None,
+            }
         }
     }
 }
@@ -668,6 +673,23 @@ banner: https://example.com/#frag
         assert!(header.is_published);
         assert!(header.published.is_none());
         assert!(header.published_needs_writeback);
+    }
+
+    #[test]
+    fn resolved_updated_prefers_newer_fallback() {
+        let header = Header {
+            updated: Some(100),
+            updated_fallback: Some(200),
+            ..Header::default()
+        };
+        assert_eq!(header.resolved_updated(), Some(200));
+
+        let header = Header {
+            updated: Some(300),
+            updated_fallback: Some(200),
+            ..Header::default()
+        };
+        assert_eq!(header.resolved_updated(), Some(300));
     }
 
     #[test]

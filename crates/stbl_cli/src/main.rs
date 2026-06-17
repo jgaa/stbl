@@ -18,15 +18,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
-use chrono::Local;
+use chrono::{Local, TimeZone};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_yaml::Value;
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::header::UnknownKeyPolicy;
 use stbl_core::model::ThemeColorSchemeMode;
-use stbl_core::model::{DiagnosticLevel, SiteContent};
+use stbl_core::model::{DiagnosticLevel, SiteConfig, SiteContent, SystemConfig, WriteBackEdit};
 use std::process::Command as ProcessCommand;
+use stbl_core::templates::normalize_timestamp;
 use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
@@ -492,7 +493,7 @@ fn run_build(
             std::process::exit(1);
         }
     };
-    assign_missing_published_now(&mut content);
+    assign_writeback_timestamps(&root, &mut content, &config)?;
     let mut project = stbl_core::model::Project {
         root: root.clone(),
         config,
@@ -904,63 +905,146 @@ fn handle_writeback(
     Ok(format!("modified {} documents", doc_count))
 }
 
-fn assign_missing_published_now(site: &mut SiteContent) {
-    let now = Local::now();
-    let now_ts = now.timestamp();
-    let now_text = now.format("%Y-%m-%d %H:%M").to_string();
-    let mut updated_paths = std::collections::HashSet::new();
+fn assign_writeback_timestamps(
+    root: &Path,
+    site: &mut SiteContent,
+    config: &SiteConfig,
+) -> Result<()> {
+    let now_ts = current_writeback_timestamp(config.system.as_ref());
 
     for page in &mut site.pages {
-        if fill_missing_published(&mut page.header, now_ts) {
-            updated_paths.insert(page.source_path.clone());
-        }
+        assign_page_writeback_timestamps(root, &mut site.write_back.edits, &page.source_path, &mut page.header, now_ts, config.system.as_ref())?;
     }
     for series in &mut site.series {
-        if fill_missing_published(&mut series.index.header, now_ts) {
-            updated_paths.insert(series.index.source_path.clone());
-        }
+        assign_page_writeback_timestamps(
+            root,
+            &mut site.write_back.edits,
+            &series.index.source_path,
+            &mut series.index.header,
+            now_ts,
+            config.system.as_ref(),
+        )?;
         for part in &mut series.parts {
-            if fill_missing_published(&mut part.page.header, now_ts) {
-                updated_paths.insert(part.page.source_path.clone());
+            assign_page_writeback_timestamps(
+                root,
+                &mut site.write_back.edits,
+                &part.page.source_path,
+                &mut part.page.header,
+                now_ts,
+                config.system.as_ref(),
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn assign_page_writeback_timestamps(
+    root: &Path,
+    edits: &mut Vec<WriteBackEdit>,
+    source_path: &str,
+    header: &mut stbl_core::header::Header,
+    now_ts: i64,
+    system: Option<&SystemConfig>,
+) -> Result<()> {
+    if !header.is_published {
+        return Ok(());
+    }
+
+    let mut updates = Vec::new();
+    let mut published_assigned = None;
+    if header.published_needs_writeback && header.published.is_none() {
+        header.published = Some(now_ts);
+        published_assigned = Some(now_ts);
+        updates.push(("published", format_writeback_timestamp(now_ts, system)));
+    }
+
+    if !header.updated_disabled {
+        let current_updated = normalize_timestamp(header.updated, system);
+        let fallback_updated = normalize_timestamp(header.updated_fallback, system);
+        let next_updated = if header.updated.is_none() {
+            Some(published_assigned.unwrap_or(now_ts))
+        } else if fallback_updated > current_updated {
+            fallback_updated
+        } else {
+            None
+        };
+
+        if let Some(updated_ts) = next_updated {
+            header.updated = Some(updated_ts);
+            updates.push(("updated", format_writeback_timestamp(updated_ts, system)));
+        }
+    }
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    apply_header_updates(root, edits, source_path, &updates)
+}
+
+fn current_writeback_timestamp(system: Option<&SystemConfig>) -> i64 {
+    let now = Local::now().timestamp();
+    normalize_timestamp(Some(now), system).unwrap_or(now)
+}
+
+fn format_writeback_timestamp(timestamp: i64, system: Option<&SystemConfig>) -> String {
+    let dt = Local
+        .timestamp_opt(timestamp, 0)
+        .single()
+        .unwrap_or_else(Local::now);
+    let format = system
+        .and_then(|system| system.date.as_ref())
+        .map(|date| date.format.trim())
+        .filter(|format| !format.is_empty())
+        .unwrap_or("%Y-%m-%d %H:%M");
+    dt.format(format).to_string()
+}
+
+fn apply_header_updates(
+    root: &Path,
+    edits: &mut Vec<WriteBackEdit>,
+    source_path: &str,
+    updates: &[(&str, String)],
+) -> Result<()> {
+    if let Some(edit) = edits.iter_mut().find(|edit| edit.path == source_path) {
+        if let Some(header_text) = edit.new_header_text.as_mut() {
+            for (key, value) in updates {
+                rewrite_header_line(header_text, key, value);
             }
         }
+        return Ok(());
     }
-    if updated_paths.is_empty() {
-        return;
+
+    let raw = fs::read_to_string(root.join(source_path))
+        .with_context(|| format!("failed to read {}", root.join(source_path).display()))?;
+    let (mut new_header_text, new_body) = split_header_and_body(&raw)
+        .with_context(|| format!("failed to prepare header writeback for {}", source_path))?;
+    for (key, value) in updates {
+        rewrite_header_line(&mut new_header_text, key, value);
     }
-    for edit in &mut site.write_back.edits {
-        if !updated_paths.contains(&edit.path) {
-            continue;
-        }
-        if let Some(header) = edit.new_header_text.as_mut() {
-            rewrite_published_header_line(header, &now_text);
-        }
-    }
+    edits.push(WriteBackEdit {
+        path: source_path.to_string(),
+        new_header_text: Some(new_header_text),
+        new_body: Some(new_body),
+    });
+    Ok(())
 }
 
-fn fill_missing_published(header: &mut stbl_core::header::Header, now_ts: i64) -> bool {
-    if !header.is_published || !header.published_needs_writeback || header.published.is_some() {
-        return false;
-    }
-    header.published = Some(now_ts);
-    true
-}
-
-fn rewrite_published_header_line(header_text: &mut String, value: &str) {
+fn rewrite_header_line(header_text: &mut String, key: &str, value: &str) {
     let mut lines = header_text.lines().map(str::to_string).collect::<Vec<_>>();
     let mut replaced = false;
     for line in &mut lines {
-        let Some((key, _)) = line.split_once(':') else {
+        let Some((found_key, _)) = line.split_once(':') else {
             continue;
         };
-        if key.trim() == "published" {
-            *line = format!("published: {value}");
+        if found_key.trim() == key {
+            *line = format!("{key}: {value}");
             replaced = true;
             break;
         }
     }
     if !replaced {
-        lines.push(format!("published: {value}"));
+        lines.push(format!("{key}: {value}"));
     }
     let mut updated = lines.join("\n");
     if !updated.ends_with('\n') {
@@ -970,6 +1054,60 @@ fn rewrite_published_header_line(header_text: &mut String, value: &str) {
         updated.push('\n');
     }
     *header_text = updated;
+}
+
+fn split_header_and_body(raw: &str) -> Option<(String, String)> {
+    let header_end = header_end_index(raw)?;
+    let (header_text, body) = raw.split_at(header_end);
+    Some((header_text.to_string(), body.to_string()))
+}
+
+fn header_end_index(raw: &str) -> Option<usize> {
+    let mut offset = 0;
+    let mut saw_header_line = false;
+    let mut header_end = 0;
+    for line in raw.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            header_end = offset + line.len();
+            break;
+        }
+        if is_full_line_comment(line) {
+            offset += line.len();
+            header_end = offset;
+            continue;
+        }
+        if !looks_like_header_line(line) {
+            return None;
+        }
+        saw_header_line = true;
+        offset += line.len();
+        header_end = offset;
+    }
+    if !saw_header_line {
+        return None;
+    }
+    if header_end == 0 {
+        header_end = raw.len();
+    }
+    Some(header_end)
+}
+
+fn is_full_line_comment(line: &str) -> bool {
+    line.trim_start().starts_with('#')
+}
+
+fn looks_like_header_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    let (key, _) = match trimmed.split_once(':') {
+        Some(value) => value,
+        None => return false,
+    };
+    let key = key.trim_end();
+    !key.is_empty()
+        && key
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
 }
 
 fn validate_flags(cli: &Cli) -> Result<()> {
@@ -1448,6 +1586,103 @@ mod tests {
         assert!(out_dir.join("files/a.txt").exists());
         assert!(out_dir.join("files/subdir/b.txt").exists());
         assert!(out_dir.join("files/empty").is_dir());
+    }
+
+    #[test]
+    fn timestamp_writeback_uses_configured_rounding_for_missing_dates() {
+        let temp = TempDir::new().expect("tempdir");
+        fs::create_dir_all(temp.path().join("articles")).expect("create articles");
+        fs::write(
+            temp.path().join("stbl.yaml"),
+            "site:\n  id: \"fixture\"\n  title: \"Fixture\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nsystem:\n  date:\n    format: \"%Y-%m-%d %H:%M\"\n    roundup_seconds: 3600\n",
+        )
+        .expect("write config");
+        fs::write(temp.path().join("articles/page.md"), "title: Page\n\nBody\n").expect("write page");
+
+        let mut header = stbl_core::header::Header::default();
+        header.title = Some("Page".to_string());
+        header.published_needs_writeback = true;
+        header.updated_fallback = Some(1_700_000_000);
+        let mut site = SiteContent {
+            pages: vec![stbl_core::model::Page {
+                id: stbl_core::model::DocId(blake3::hash(b"page")),
+                source_path: "articles/page.md".to_string(),
+                header,
+                body_markdown: "Body".to_string(),
+                banner_name: None,
+                media_refs: Vec::new(),
+                url_path: "page".to_string(),
+                content_hash: blake3::hash(b"content"),
+            }],
+            ..SiteContent::default()
+        };
+        let config =
+            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+
+        let now_ts = 1_720_006_949;
+        let rounded = normalize_timestamp(Some(now_ts), config.system.as_ref()).unwrap();
+        assign_page_writeback_timestamps(
+            temp.path(),
+            &mut site.write_back.edits,
+            "articles/page.md",
+            &mut site.pages[0].header,
+            rounded,
+            config.system.as_ref(),
+        )
+        .expect("assign timestamps");
+
+        assert_eq!(site.pages[0].header.published, Some(rounded));
+        assert_eq!(site.pages[0].header.updated, Some(rounded));
+        let header = site.write_back.edits[0]
+            .new_header_text
+            .as_deref()
+            .expect("header text");
+        let expected = format_writeback_timestamp(rounded, config.system.as_ref());
+        assert!(header.contains(&format!("published: {expected}")));
+        assert!(header.contains(&format!("updated: {expected}")));
+    }
+
+    #[test]
+    fn timestamp_writeback_updates_stale_updated_from_newer_fallback() {
+        let temp = TempDir::new().expect("tempdir");
+        fs::create_dir_all(temp.path().join("articles")).expect("create articles");
+        fs::write(
+            temp.path().join("articles/page.md"),
+            "title: Page\npublished: 2024-01-01 10:00\nupdated: 2024-01-01 10:00\n\nBody\n",
+        )
+        .expect("write page");
+        fs::write(
+            temp.path().join("stbl.yaml"),
+            "site:\n  id: \"fixture\"\n  title: \"Fixture\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nsystem:\n  date:\n    format: \"%Y-%m-%d %H:%M\"\n    roundup_seconds: 3600\n",
+        )
+        .expect("write config");
+
+        let mut header = stbl_core::header::Header::default();
+        header.title = Some("Page".to_string());
+        header.published = Some(1_704_103_200);
+        header.updated = Some(1_704_103_200);
+        header.updated_fallback = Some(1_704_110_500);
+        let mut edits = Vec::new();
+        let config =
+            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+
+        assign_page_writeback_timestamps(
+            temp.path(),
+            &mut edits,
+            "articles/page.md",
+            &mut header,
+            1_704_103_200,
+            config.system.as_ref(),
+        )
+        .expect("assign timestamps");
+
+        assert_eq!(
+            header.updated,
+            normalize_timestamp(header.updated_fallback, config.system.as_ref())
+        );
+        let header_text = edits[0].new_header_text.as_deref().expect("header text");
+        let expected = format_writeback_timestamp(header.updated.unwrap(), config.system.as_ref());
+        assert!(header_text.contains(&format!("updated: {expected}")));
     }
 
     fn write_fixture(root: &Path) {
