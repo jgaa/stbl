@@ -493,7 +493,11 @@ fn run_build(
             std::process::exit(1);
         }
     };
+    let effective_preview = preview || preview_open;
     assign_writeback_timestamps(&root, &mut content, &config)?;
+    if effective_preview {
+        content.write_back.edits.clear();
+    }
     let mut project = stbl_core::model::Project {
         root: root.clone(),
         config,
@@ -596,7 +600,6 @@ fn run_build(
         run_publish_command(&command, &root)?;
     }
 
-    let effective_preview = preview || preview_open;
     let writeback_mode = if effective_preview {
         WriteBackMode::DryRun
     } else {
@@ -951,27 +954,33 @@ fn assign_page_writeback_timestamps(
     }
 
     let mut updates = Vec::new();
-    let mut published_assigned = None;
+    let published_baseline = normalized_published_baseline(header, now_ts, system);
     if header.published_needs_writeback && header.published.is_none() {
-        header.published = Some(now_ts);
-        published_assigned = Some(now_ts);
-        updates.push(("published", format_writeback_timestamp(now_ts, system)));
+        header.published = Some(published_baseline);
+        updates.push((
+            "published",
+            format_writeback_timestamp(published_baseline),
+        ));
     }
 
     if !header.updated_disabled {
+        let published = header.published.or(Some(published_baseline));
         let current_updated = normalize_timestamp(header.updated, system);
-        let fallback_updated = normalize_timestamp(header.updated_fallback, system);
-        let next_updated = if header.updated.is_none() {
-            Some(published_assigned.unwrap_or(now_ts))
-        } else if fallback_updated > current_updated {
-            fallback_updated
-        } else {
-            None
+        let fallback_updated = normalized_existing_or_now(header.updated_fallback, now_ts, system);
+        let candidate_updated = match current_updated {
+            Some(current) if fallback_updated > Some(current) => fallback_updated,
+            Some(current) => Some(current),
+            None => fallback_updated,
         };
 
-        if let Some(updated_ts) = next_updated {
-            header.updated = Some(updated_ts);
-            updates.push(("updated", format_writeback_timestamp(updated_ts, system)));
+        match stbl_core::templates::effective_updated_timestamp(published, candidate_updated) {
+            Some(updated_ts) => {
+                if header.updated != Some(updated_ts) {
+                    header.updated = Some(updated_ts);
+                    updates.push(("updated", format_writeback_timestamp(updated_ts)));
+                }
+            }
+            None => {}
         }
     }
 
@@ -987,17 +996,32 @@ fn current_writeback_timestamp(system: Option<&SystemConfig>) -> i64 {
     normalize_timestamp(Some(now), system).unwrap_or(now)
 }
 
-fn format_writeback_timestamp(timestamp: i64, system: Option<&SystemConfig>) -> String {
+fn normalized_published_baseline(
+    header: &stbl_core::header::Header,
+    now_ts: i64,
+    system: Option<&SystemConfig>,
+) -> i64 {
+    normalized_existing_or_now(header.updated_fallback, now_ts, system).unwrap_or(now_ts)
+}
+
+fn normalized_existing_or_now(
+    timestamp: Option<i64>,
+    now_ts: i64,
+    system: Option<&SystemConfig>,
+) -> Option<i64> {
+    let value = timestamp?;
+    if value <= 0 || value > now_ts {
+        return Some(now_ts);
+    }
+    normalize_timestamp(Some(value), system).or(Some(now_ts))
+}
+
+fn format_writeback_timestamp(timestamp: i64) -> String {
     let dt = Local
         .timestamp_opt(timestamp, 0)
         .single()
         .unwrap_or_else(Local::now);
-    let format = system
-        .and_then(|system| system.date.as_ref())
-        .map(|date| date.format.trim())
-        .filter(|format| !format.is_empty())
-        .unwrap_or("%Y-%m-%d %H:%M");
-    dt.format(format).to_string()
+    dt.format("%Y-%m-%d %H:%M").to_string()
 }
 
 fn apply_header_updates(
@@ -1008,8 +1032,9 @@ fn apply_header_updates(
 ) -> Result<()> {
     if let Some(edit) = edits.iter_mut().find(|edit| edit.path == source_path) {
         if let Some(header_text) = edit.new_header_text.as_mut() {
+            let style = detect_header_block_style(header_text);
             for (key, value) in updates {
-                rewrite_header_line(header_text, key, value);
+                rewrite_header_line(header_text, style, key, value);
             }
         }
         return Ok(());
@@ -1017,10 +1042,10 @@ fn apply_header_updates(
 
     let raw = fs::read_to_string(root.join(source_path))
         .with_context(|| format!("failed to read {}", root.join(source_path).display()))?;
-    let (mut new_header_text, new_body) = split_header_and_body(&raw)
+    let (mut new_header_text, new_body, style) = split_header_and_body(&raw)
         .with_context(|| format!("failed to prepare header writeback for {}", source_path))?;
     for (key, value) in updates {
-        rewrite_header_line(&mut new_header_text, key, value);
+        rewrite_header_line(&mut new_header_text, style, key, value);
     }
     edits.push(WriteBackEdit {
         path: source_path.to_string(),
@@ -1030,7 +1055,12 @@ fn apply_header_updates(
     Ok(())
 }
 
-fn rewrite_header_line(header_text: &mut String, key: &str, value: &str) {
+fn rewrite_header_line(
+    header_text: &mut String,
+    style: HeaderBlockStyle,
+    key: &str,
+    value: &str,
+) {
     let mut lines = header_text.lines().map(str::to_string).collect::<Vec<_>>();
     let mut replaced = false;
     for line in &mut lines {
@@ -1044,22 +1074,66 @@ fn rewrite_header_line(header_text: &mut String, key: &str, value: &str) {
         }
     }
     if !replaced {
-        lines.push(format!("{key}: {value}"));
+        match style {
+            HeaderBlockStyle::Plain => lines.push(format!("{key}: {value}")),
+            HeaderBlockStyle::FrontMatter => {
+                let insert_at = lines
+                    .iter()
+                    .rposition(|line| line.trim() == "---")
+                    .unwrap_or(lines.len());
+                lines.insert(insert_at, format!("{key}: {value}"));
+            }
+        }
     }
     let mut updated = lines.join("\n");
     if !updated.ends_with('\n') {
         updated.push('\n');
     }
-    if !updated.ends_with("\n\n") {
+    if matches!(style, HeaderBlockStyle::Plain) && !updated.ends_with("\n\n") {
         updated.push('\n');
     }
     *header_text = updated;
 }
 
-fn split_header_and_body(raw: &str) -> Option<(String, String)> {
+#[derive(Debug, Clone, Copy)]
+enum HeaderBlockStyle {
+    Plain,
+    FrontMatter,
+}
+
+fn detect_header_block_style(header_text: &str) -> HeaderBlockStyle {
+    if header_text.lines().next().is_some_and(|line| line.trim() == "---") {
+        HeaderBlockStyle::FrontMatter
+    } else {
+        HeaderBlockStyle::Plain
+    }
+}
+
+fn split_header_and_body(raw: &str) -> Option<(String, String, HeaderBlockStyle)> {
+    if let Some((header_text, body)) = split_frontmatter_header_and_body(raw) {
+        return Some((header_text, body.to_string(), HeaderBlockStyle::FrontMatter));
+    }
     let header_end = header_end_index(raw)?;
     let (header_text, body) = raw.split_at(header_end);
-    Some((header_text.to_string(), body.to_string()))
+    Some((header_text.to_string(), body.to_string(), HeaderBlockStyle::Plain))
+}
+
+fn split_frontmatter_header_and_body(raw: &str) -> Option<(String, &str)> {
+    let mut offset = 0;
+    let mut iter = raw.split_inclusive('\n');
+    let first = iter.next()?;
+    if first.trim() != "---" {
+        return None;
+    }
+    offset += first.len();
+    for line in iter {
+        offset += line.len();
+        if line.trim() == "---" {
+            let (header_text, body) = raw.split_at(offset);
+            return Some((header_text.to_string(), body));
+        }
+    }
+    None
 }
 
 fn header_end_index(raw: &str) -> Option<usize> {
@@ -1620,26 +1694,28 @@ mod tests {
             crate::config_loader::load_config_for_build(temp.path()).expect("load config");
 
         let now_ts = 1_720_006_949;
-        let rounded = normalize_timestamp(Some(now_ts), config.system.as_ref()).unwrap();
+        let expected_published =
+            normalize_timestamp(site.pages[0].header.updated_fallback, config.system.as_ref())
+                .unwrap();
         assign_page_writeback_timestamps(
             temp.path(),
             &mut site.write_back.edits,
             "articles/page.md",
             &mut site.pages[0].header,
-            rounded,
+            normalize_timestamp(Some(now_ts), config.system.as_ref()).unwrap(),
             config.system.as_ref(),
         )
         .expect("assign timestamps");
 
-        assert_eq!(site.pages[0].header.published, Some(rounded));
-        assert_eq!(site.pages[0].header.updated, Some(rounded));
+        assert_eq!(site.pages[0].header.published, Some(expected_published));
+        assert_eq!(site.pages[0].header.updated, None);
         let header = site.write_back.edits[0]
             .new_header_text
             .as_deref()
             .expect("header text");
-        let expected = format_writeback_timestamp(rounded, config.system.as_ref());
+        let expected = format_writeback_timestamp(expected_published);
         assert!(header.contains(&format!("published: {expected}")));
-        assert!(header.contains(&format!("updated: {expected}")));
+        assert!(!header.contains("updated: "));
     }
 
     #[test]
@@ -1676,13 +1752,119 @@ mod tests {
         )
         .expect("assign timestamps");
 
-        assert_eq!(
-            header.updated,
-            normalize_timestamp(header.updated_fallback, config.system.as_ref())
-        );
+        assert_eq!(header.updated, Some(1_704_103_200));
+        assert!(edits.is_empty());
+    }
+
+    #[test]
+    fn timestamp_writeback_uses_now_when_mtime_is_invalid_or_future() {
+        let mut header = stbl_core::header::Header::default();
+        header.published_needs_writeback = true;
+        header.updated_fallback = Some(9_999_999_999);
+        let now_ts = normalize_timestamp(Some(1_720_006_949), None).unwrap();
+
+        let published = normalized_published_baseline(&header, now_ts, None);
+        assert_eq!(published, now_ts);
+
+        header.updated_fallback = Some(0);
+        let published = normalized_published_baseline(&header, now_ts, None);
+        assert_eq!(published, now_ts);
+    }
+
+    #[test]
+    fn timestamp_writeback_supports_frontmatter_headers() {
+        let temp = TempDir::new().expect("tempdir");
+        fs::create_dir_all(temp.path().join("articles")).expect("create articles");
+        fs::write(
+            temp.path().join("articles/page.md"),
+            "---\ntitle: Page\ntype: info\n---\n\nBody\n",
+        )
+        .expect("write page");
+        fs::write(
+            temp.path().join("stbl.yaml"),
+            "site:\n  id: \"fixture\"\n  title: \"Fixture\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+        )
+        .expect("write config");
+
+        let config =
+            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let mut header = stbl_core::header::Header::default();
+        header.title = Some("Page".to_string());
+        header.published_needs_writeback = true;
+        let mut edits = Vec::new();
+
+        assign_page_writeback_timestamps(
+            temp.path(),
+            &mut edits,
+            "articles/page.md",
+            &mut header,
+            1_704_103_200,
+            config.system.as_ref(),
+        )
+        .expect("assign timestamps");
+
         let header_text = edits[0].new_header_text.as_deref().expect("header text");
-        let expected = format_writeback_timestamp(header.updated.unwrap(), config.system.as_ref());
-        assert!(header_text.contains(&format!("updated: {expected}")));
+        assert!(header_text.starts_with("---\n"));
+        assert!(header_text.contains("published: "));
+        assert!(!header_text.contains("updated: "));
+        assert!(header_text.contains("\n---\n"));
+    }
+
+    #[test]
+    fn preview_build_assigns_timestamps_without_preparing_writeback() {
+        let temp = TempDir::new().expect("tempdir");
+        write_fixture(temp.path());
+
+        let mut cli = base_cli();
+        cli.source_dir = Some(temp.path().to_path_buf());
+        cli.command = Command::Build {
+            articles_dir: PathBuf::from("articles"),
+            out: Some(PathBuf::from("out")),
+            publish_to: None,
+            no_cache: false,
+            cache_path: None,
+            fast_images: false,
+            precompress: false,
+            fast_compress: false,
+            regenerate_content: false,
+            jobs: None,
+            preview: true,
+            beep: false,
+            no_beep: false,
+            preview_host: "127.0.0.1".to_string(),
+            preview_port: 8080,
+            preview_open: false,
+            preview_index: "index.html".to_string(),
+        };
+
+        let docs = walk::walk_content(
+            temp.path(),
+            &PathBuf::from("articles"),
+            cli.unknown_header_keys.into(),
+            cli.verbose,
+        )
+        .expect("walk content");
+        let mut content = assemble_site(docs).expect("assemble site");
+        let config =
+            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let effective_preview = match &cli.command {
+            Command::Build {
+                preview,
+                preview_open,
+                ..
+            } => *preview || *preview_open,
+            _ => false,
+        };
+        assign_writeback_timestamps(temp.path(), &mut content, &config)
+            .expect("assign timestamps");
+        if effective_preview {
+            content.write_back.edits.clear();
+        }
+
+        assert!(effective_preview);
+        assert!(content.pages[0].header.published.is_some());
+        assert!(content.pages[0].header.updated.is_none());
+        assert!(content.write_back.edits.is_empty());
     }
 
     fn write_fixture(root: &Path) {

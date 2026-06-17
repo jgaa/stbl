@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use chrono::{DateTime, FixedOffset, Utc};
+use chrono::{DateTime, FixedOffset, TimeZone, Utc};
 use chrono_tz::Tz;
 use minijinja::{AutoEscape, Environment, context};
 use stbl_embedded_assets as embedded;
@@ -1211,7 +1211,13 @@ pub fn normalize_timestamp(value: Option<i64>, system: Option<&SystemConfig>) ->
 
 pub fn effective_updated_timestamp(published: Option<i64>, updated: Option<i64>) -> Option<i64> {
     match (published, updated) {
-        (Some(published), Some(updated)) if updated <= published => None,
+        (Some(published), Some(updated)) => {
+            if updated <= published || !is_later_calendar_day(published, updated) {
+                None
+            } else {
+                Some(updated)
+            }
+        }
         (_, other) => other,
     }
 }
@@ -1229,6 +1235,16 @@ fn round_timestamp(value: i64, roundup_seconds: u32) -> i64 {
     }
     let round = i64::from(roundup_seconds);
     value.div_euclid(round) * round
+}
+
+fn is_later_calendar_day(earlier: i64, later: i64) -> bool {
+    let Some(earlier_dt) = chrono::Local.timestamp_opt(earlier, 0).single() else {
+        return later > earlier;
+    };
+    let Some(later_dt) = chrono::Local.timestamp_opt(later, 0).single() else {
+        return later > earlier;
+    };
+    later_dt.date_naive() > earlier_dt.date_naive()
 }
 
 enum ResolvedTimezone {
@@ -1327,7 +1343,11 @@ mod tests {
     fn effective_updated_timestamp_requires_updated_after_published() {
         assert_eq!(effective_updated_timestamp(Some(200), Some(200)), None);
         assert_eq!(effective_updated_timestamp(Some(200), Some(199)), None);
-        assert_eq!(effective_updated_timestamp(Some(200), Some(201)), Some(201));
+        assert_eq!(effective_updated_timestamp(Some(200), Some(201)), None);
+        assert_eq!(
+            effective_updated_timestamp(Some(1_704_067_200), Some(1_704_153_600)),
+            Some(1_704_153_600)
+        );
         assert_eq!(effective_updated_timestamp(None, Some(201)), Some(201));
     }
 
