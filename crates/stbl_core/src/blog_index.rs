@@ -50,6 +50,20 @@ pub struct FeedSeriesPart {
     pub abstract_text: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RecentBlogItem {
+    pub logical_key: String,
+    pub title: String,
+    pub abstract_text: Option<String>,
+    pub series: Option<RecentBlogSeriesRef>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecentBlogSeriesRef {
+    pub title: String,
+    pub logical_key: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct BlogPaginationSettings {
     pub enabled: bool,
@@ -249,6 +263,95 @@ pub fn collect_blog_posts(project: &Project, source_page_id: Option<DocId>) -> V
         .collect()
 }
 
+pub fn collect_recent_blog_items(
+    project: &Project,
+    source_page_id: Option<DocId>,
+) -> Vec<RecentBlogItem> {
+    let mut candidates = Vec::new();
+
+    for page in iter_visible_posts(project, source_page_id) {
+        let logical_key = logical_key_from_source_path(&page.source_path);
+        candidates.push(RecentBlogCandidate {
+            logical_key: logical_key.clone(),
+            sort_date: page_sort_date(page),
+            item: RecentBlogItem {
+                logical_key,
+                title: page
+                    .header
+                    .title
+                    .clone()
+                    .unwrap_or_else(|| "Untitled".to_string()),
+                abstract_text: select_abstract_text(
+                    project,
+                    page.header.abstract_text.as_deref(),
+                    &page.body_markdown,
+                ),
+                series: None,
+            },
+            series_dir: None,
+        });
+    }
+
+    let mut series_refs: Vec<&Series> = project.content.series.iter().collect();
+    series_refs.sort_by(|a, b| a.dir_path.cmp(&b.dir_path));
+    for series in series_refs {
+        let series_logical_key = logical_key_from_source_path(&series.dir_path);
+        let series_title = series
+            .index
+            .header
+            .title
+            .clone()
+            .unwrap_or_else(|| "Untitled".to_string());
+        for part in &series.parts {
+            if !include_page(&part.page, source_page_id) {
+                continue;
+            }
+            let logical_key = logical_key_from_source_path(&part.page.source_path);
+            candidates.push(RecentBlogCandidate {
+                logical_key: logical_key.clone(),
+                sort_date: page_sort_date(&part.page),
+                item: RecentBlogItem {
+                    logical_key,
+                    title: part
+                        .page
+                        .header
+                        .title
+                        .clone()
+                        .unwrap_or_else(|| format!("Part {}", part.part_no)),
+                    abstract_text: select_abstract_text(
+                        project,
+                        part.page.header.abstract_text.as_deref(),
+                        &part.page.body_markdown,
+                    ),
+                    series: Some(RecentBlogSeriesRef {
+                        title: series_title.clone(),
+                        logical_key: series_logical_key.clone(),
+                    }),
+                },
+                series_dir: Some(series.dir_path.clone()),
+            });
+        }
+    }
+
+    candidates.sort_by(|a, b| {
+        b.sort_date
+            .cmp(&a.sort_date)
+            .then_with(|| a.logical_key.cmp(&b.logical_key))
+    });
+
+    let mut seen_series_dirs = BTreeSet::new();
+    let mut items = Vec::new();
+    for candidate in candidates {
+        if let Some(series_dir) = candidate.series_dir {
+            if !seen_series_dirs.insert(series_dir) {
+                continue;
+            }
+        }
+        items.push(candidate.item);
+    }
+    items
+}
+
 fn collect_blog_feed_internal(project: &Project, source_page_id: Option<DocId>) -> Vec<FeedItem> {
     let mut items = Vec::new();
 
@@ -275,6 +378,14 @@ fn collect_blog_feed_internal(project: &Project, source_page_id: Option<DocId>) 
         *item.tags_mut() = tags;
     }
     items
+}
+
+#[derive(Debug)]
+struct RecentBlogCandidate {
+    logical_key: String,
+    sort_date: i64,
+    item: RecentBlogItem,
+    series_dir: Option<String>,
 }
 
 pub fn blog_index_page_logical_key(base_logical_key: &str, page_no: u32) -> String {

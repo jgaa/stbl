@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::blog_index::{canonical_tag_map, collect_blog_posts, iter_visible_posts, tag_key};
+use crate::blog_index::{canonical_tag_map, collect_recent_blog_items, iter_visible_posts, tag_key};
 use crate::model::{Page, Project};
 use crate::templates::format_timestamp_ymd;
 use crate::url::{UrlMapper, logical_key_from_source_path};
@@ -725,7 +725,7 @@ fn expand_blogitems(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
 
     let items = items.clamp(1, 50) as usize;
     let source_page_id = ctx.page.map(|page| page.id);
-    let posts = collect_blog_posts(ctx.project, source_page_id);
+    let posts = collect_recent_blog_items(ctx.project, source_page_id);
     let mapper = UrlMapper::new(&ctx.project.config);
 
     let mut out = String::new();
@@ -737,6 +737,14 @@ fn expand_blogitems(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
         out.push_str("\">");
         out.push_str(&escape_html_text(&post.title));
         out.push_str("</a>");
+        if let Some(series) = post.series.as_ref() {
+            let series_href = crate::url::map_series_index(&series.logical_key).href;
+            out.push_str("<div class=\"blogitem-subtitle\">from serie: <a href=\"");
+            out.push_str(&escape_attr(&series_href));
+            out.push_str("\">");
+            out.push_str(&escape_html_text(&series.title));
+            out.push_str("</a></div>");
+        }
         if let Some(abstract_text) = post.abstract_text.as_deref() {
             let abstract_text = abstract_text.trim();
             if !abstract_text.is_empty() {
@@ -1695,6 +1703,53 @@ mod tests {
 
         let output = expand_macros("@[blogitems](items=5)", &ctx).expect("expand");
         assert!(output.contains("post-5"));
+    }
+
+    #[test]
+    fn blogitems_include_only_latest_part_from_series() {
+        let mut header = Header::default();
+        header.is_published = true;
+        header.published = Some(20);
+        let standalone = make_page("standalone", "articles/standalone.md", header.clone());
+
+        let mut series =
+            make_series("series", "Series Title", &[(1, "Part One"), (2, "Part Two")]);
+        series.parts[0].page.header.published = Some(30);
+        series.parts[1].page.header.published = Some(40);
+
+        let project = project_with_content(vec![standalone], vec![series]);
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+
+        let output = expand_macros("@[blogitems](items=3)", &ctx).expect("expand");
+        assert!(output.contains(">Part Two</a>"));
+        assert!(output.contains("from serie: <a href=\"series/\">Series Title</a>"));
+        assert!(!output.contains(">Part One</a>"));
+        assert!(output.contains(">standalone</a>"));
+    }
+
+    #[test]
+    fn blogitems_series_title_links_to_cover_and_part_title_links_to_part() {
+        let mut series = make_series("series", "Series Title", &[(1, "Part One")]);
+        series.parts[0].page.header.published = Some(50);
+
+        let project = project_with_series(series);
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+
+        let output = expand_macros("@[blogitems](items=1)", &ctx).expect("expand");
+        assert!(output.contains("<a href=\"series/part1.html\">Part One</a>"));
+        assert!(output.contains("from serie: <a href=\"series/\">Series Title</a>"));
     }
 
     #[test]

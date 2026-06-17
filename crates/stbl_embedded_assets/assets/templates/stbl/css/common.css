@@ -656,6 +656,12 @@ blockquote {
   text-decoration: underline;
 }
 
+.blogitem-subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--text-muted, #666);
+  font-size: 0.95rem;
+}
+
 .blogitem-excerpt {
   margin: 0.25rem 0 0;
   color: var(--text-muted, #666);
