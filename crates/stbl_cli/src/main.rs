@@ -14,8 +14,14 @@ mod verify;
 mod walk;
 
 use std::collections::BTreeMap;
+#[cfg(unix)]
+use std::ffi::CString;
 use std::fs;
+use std::io;
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use chrono::{Local, TimeZone};
@@ -893,7 +899,7 @@ fn handle_writeback(
             edit.new_header_text.as_ref().unwrap(),
             edit.new_body.as_ref().unwrap()
         );
-        std::fs::write(&path, contents)
+        write_markdown_preserving_mtime(&path, &contents)
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
     if cli.commit_writeback {
@@ -906,6 +912,102 @@ fn handle_writeback(
         return Ok(format!("modified and committed {} documents", doc_count));
     }
     Ok(format!("modified {} documents", doc_count))
+}
+
+fn write_markdown_preserving_mtime(path: &Path, contents: &str) -> Result<()> {
+    let original_mtime = fs::metadata(path).and_then(|metadata| metadata.modified()).ok();
+    fs::write(path, contents)?;
+    if let Some(mtime) = original_mtime {
+        restore_file_mtime(path, mtime)?;
+    }
+    Ok(())
+}
+
+fn restore_file_mtime(path: &Path, mtime: SystemTime) -> Result<()> {
+    #[cfg(unix)]
+    {
+        restore_file_mtime_unix(path, mtime)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, mtime);
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn restore_file_mtime_unix(path: &Path, mtime: SystemTime) -> Result<()> {
+    #[repr(C)]
+    struct Timespec {
+        tv_sec: i64,
+        tv_nsec: i64,
+    }
+
+    unsafe extern "C" {
+        fn utimensat(
+            dirfd: i32,
+            pathname: *const std::os::raw::c_char,
+            times: *const Timespec,
+            flags: i32,
+        ) -> i32;
+    }
+
+    const AT_FDCWD: i32 = -100;
+    const UTIME_OMIT: i64 = (1_i64 << 30) - 2;
+
+    let c_path = CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| anyhow::anyhow!("path contains interior NUL byte"))?;
+    let modified = system_time_to_timespec(mtime);
+    let times = [
+        Timespec {
+            tv_sec: 0,
+            tv_nsec: UTIME_OMIT,
+        },
+        Timespec {
+            tv_sec: modified.tv_sec,
+            tv_nsec: modified.tv_nsec,
+        },
+    ];
+    let rc = unsafe { utimensat(AT_FDCWD, c_path.as_ptr(), times.as_ptr(), 0) };
+    if rc == 0 {
+        return Ok(());
+    }
+    Err(io::Error::last_os_error()).context("failed to restore file mtime")
+}
+
+#[cfg(unix)]
+struct TimespecRepr {
+    tv_sec: i64,
+    tv_nsec: i64,
+}
+
+#[cfg(unix)]
+fn system_time_to_timespec(time: SystemTime) -> TimespecRepr {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => TimespecRepr {
+            tv_sec: duration.as_secs() as i64,
+            tv_nsec: i64::from(duration.subsec_nanos()),
+        },
+        Err(err) => {
+            let duration = err.duration();
+            let (secs, nanos) = system_time_before_epoch(duration);
+            TimespecRepr {
+                tv_sec: secs,
+                tv_nsec: nanos,
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+fn system_time_before_epoch(duration: Duration) -> (i64, i64) {
+    let secs = duration.as_secs() as i64;
+    let nanos = i64::from(duration.subsec_nanos());
+    if nanos == 0 {
+        (-secs, 0)
+    } else {
+        (-secs - 1, 1_000_000_000 - nanos)
+    }
 }
 
 fn assign_writeback_timestamps(
@@ -1865,6 +1967,28 @@ mod tests {
         assert!(content.pages[0].header.published.is_some());
         assert!(content.pages[0].header.updated.is_none());
         assert!(content.write_back.edits.is_empty());
+    }
+
+    #[test]
+    fn writeback_preserves_file_mtime() {
+        let temp = TempDir::new().expect("tempdir");
+        let path = temp.path().join("page.md");
+        fs::write(&path, "title: Page\n\nBody\n").expect("write page");
+        let before = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .expect("mtime before");
+
+        std::thread::sleep(Duration::from_secs(1));
+        write_markdown_preserving_mtime(
+            &path,
+            "title: Page\npublished: 2024-01-01 10:00\n\nBody\n",
+        )
+        .expect("write with preserved mtime");
+
+        let after = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .expect("mtime after");
+        assert_eq!(after, before);
     }
 
     fn write_fixture(root: &Path) {
