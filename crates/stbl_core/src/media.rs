@@ -684,7 +684,7 @@ fn fingerprint_video_task(
     source_hash: Hash,
 ) -> InputFingerprint {
     let mut hasher = Hasher::new();
-    hasher.update(b"stbl2.task.v1");
+    hasher.update(b"stbl2.video-task.v2");
     add_str(&mut hasher, &task_id.0);
     add_str(&mut hasher, kind_label);
     hasher.update(source_hash.as_bytes());

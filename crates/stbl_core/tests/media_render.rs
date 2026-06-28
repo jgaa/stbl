@@ -34,6 +34,7 @@ fn managed_video_renders_html5_video_markup() {
     assert!(html.contains("data-prefer=\"p360\""));
     assert!(html.contains("data-prefer=\"p720\""));
     assert!(html.contains("class=\"media-frame video\""));
+    assert!(html.contains("<video class=\"video__el\""));
     assert!(html.contains("--media-maxh: 80vh"));
     assert!(html.contains("aria-label=\"Landscape sample\""));
     assert!(html.contains("poster=\"video/_poster_/5786143-hd_1920_1080_30fps.jpg\""));

@@ -929,7 +929,7 @@ fn transcode_video_mp4(
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    let scale_arg = format!("scale=-2:min({height}\\,ih)");
+    let scale_arg = normalized_video_scale_filter(height);
     let status = Command::new("ffmpeg")
         .arg("-hide_banner")
         .arg("-loglevel")
@@ -977,6 +977,7 @@ fn extract_video_poster(
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
+    let scale_arg = normalized_video_scale_filter(u32::MAX);
     let status = Command::new("ffmpeg")
         .arg("-hide_banner")
         .arg("-loglevel")
@@ -988,6 +989,8 @@ fn extract_video_poster(
         .arg(poster_time_sec.to_string())
         .arg("-i")
         .arg(src_path)
+        .arg("-vf")
+        .arg(scale_arg)
         .arg("-frames:v")
         .arg("1")
         .arg("-update")
@@ -1001,6 +1004,16 @@ fn extract_video_poster(
         bail!("ffmpeg failed to extract poster for {}", src_path.display());
     }
     Ok(())
+}
+
+fn normalized_video_scale_filter(height: u32) -> String {
+    if height == u32::MAX {
+        "scale=trunc(iw*sar/2)*2:ih,setsar=1".to_string()
+    } else {
+        format!(
+            "scale=trunc(iw*sar*min(1\\,{height}/ih)/2)*2:min({height}\\,ih),setsar=1"
+        )
+    }
 }
 
 fn render_output(
@@ -2002,6 +2015,22 @@ mod tests {
 
         assert!(index_html.contains("header-stacked"));
         assert!(index_html.contains("menu-align-right"));
+    }
+
+    #[test]
+    fn normalized_video_scale_filter_preserves_display_aspect_ratio() {
+        assert_eq!(
+            normalized_video_scale_filter(720),
+            "scale=trunc(iw*sar*min(1\\,720/ih)/2)*2:min(720\\,ih),setsar=1"
+        );
+    }
+
+    #[test]
+    fn normalized_video_scale_filter_for_poster_uses_source_height() {
+        assert_eq!(
+            normalized_video_scale_filter(u32::MAX),
+            "scale=trunc(iw*sar/2)*2:ih,setsar=1"
+        );
     }
 
     fn count_h1(contents: &str) -> usize {

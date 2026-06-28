@@ -639,10 +639,7 @@ fn render_video_element_html(
     } = video_paths(video_path, &heights);
 
     let mut html = String::new();
-    html.push_str("<video");
-    if video.has_args {
-        html.push_str(" class=\"video__el\"");
-    }
+    html.push_str("<video class=\"video__el\"");
     html.push_str(" controls preload=\"metadata\" poster=\"");
     html.push_str(options.rel_prefix);
     html.push_str(&poster_rel);

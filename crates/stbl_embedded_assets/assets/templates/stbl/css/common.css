@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  --video-maxh: calc(100vh - 3rem);
 }
 
 * { box-sizing: border-box; }
@@ -40,7 +41,7 @@ img, video { max-width: 100%; height: auto; }
 .media-frame img,
 .media-frame video {
   max-width: min(100%, var(--media-maxw, 100%));
-  max-height: var(--media-maxh, none);
+  max-height: min(var(--media-maxh, var(--video-maxh)), var(--video-maxh));
   width: auto;
   height: auto;
 }
@@ -58,7 +59,7 @@ img, video { max-width: 100%; height: auto; }
 .figure video {
   display: block;
   max-width: min(100%, var(--media-maxw, 100%));
-  max-height: var(--media-maxh, none);
+  max-height: min(var(--media-maxh, var(--video-maxh)), var(--video-maxh));
   width: auto;
   height: auto;
 }
@@ -263,8 +264,29 @@ nav a[aria-current="page"] {
   color: var(--c-link-hover);
 }
 
-.video { margin: 1.5rem 0; }
-.video__el { width: 100%; display: block; }
+.video {
+  margin: 1.5rem 0;
+  display: flex;
+  justify-content: center;
+}
+
+.video__el {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: var(--video-maxh);
+  height: auto;
+  object-fit: contain;
+}
+
+.video > video {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: var(--video-maxh);
+  height: auto;
+  object-fit: contain;
+}
 
 .banner-image { width: 100%; height: auto; display: block; }
 
