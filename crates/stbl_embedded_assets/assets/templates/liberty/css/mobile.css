@@ -1,0 +1,13 @@
+.nav-desktop { display: none; }
+.nav-mobile { display: block; }
+header { background: var(--c-bg); border-bottom: 1px solid var(--c-border); }
+header .page { flex-direction: row; }
+.nav-mobile details.menu > summary { padding: 0.45rem 0.7rem; border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-surface); color: var(--c-fg); }
+.nav-mobile details.menu[open] .menu-overlay { margin-top: 0.5rem; border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-bg); box-shadow: none; }
+.nav-mobile .menu-overlay a { color: var(--c-fg); }
+.nav-mobile .menu-overlay a:hover { background: var(--c-surface); color: var(--c-link); }
+@media (max-width: 40rem) {
+  .pager { flex-direction: column; align-items: flex-start; }
+  footer .page { display: block; }
+  footer .footer-links { margin-top: 0.5rem; }
+}

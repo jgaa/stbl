@@ -30,10 +30,13 @@ use serde_yaml::Value;
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::header::UnknownKeyPolicy;
-use stbl_core::model::ThemeColorSchemeMode;
+use stbl_core::model::{
+    ThemeColorScheme, ThemeColorSchemeMode, ThemeColorSchemeSource,
+};
 use stbl_core::model::{DiagnosticLevel, SiteConfig, SiteContent, SystemConfig, WriteBackEdit};
 use std::process::Command as ProcessCommand;
 use stbl_core::templates::normalize_timestamp;
+use stbl_embedded_assets as embedded;
 use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
@@ -119,6 +122,10 @@ enum Command {
         articles_dir: PathBuf,
         #[arg(long, value_name = "PATH")]
         out: Option<PathBuf>,
+        #[arg(long, value_name = "NAME")]
+        theme: Option<String>,
+        #[arg(long, value_name = "NAME")]
+        color_theme: Option<String>,
         #[arg(long, value_name = "DEST")]
         publish_to: Option<String>,
         #[arg(long)]
@@ -204,6 +211,8 @@ enum Command {
         #[arg(long)]
         open: bool,
     },
+    #[command(name = "list-themes", about = "List the embedded site themes.")]
+    ListThemes,
 }
 
 fn main() -> Result<()> {
@@ -220,6 +229,8 @@ fn main() -> Result<()> {
         Command::Build {
             articles_dir,
             out,
+            theme,
+            color_theme,
             publish_to,
             no_cache,
             cache_path,
@@ -239,6 +250,8 @@ fn main() -> Result<()> {
             &cli,
             articles_dir,
             out.as_ref(),
+            theme.as_deref(),
+            color_theme.as_deref(),
             publish_to.as_ref(),
             *no_cache,
             cache_path.as_ref(),
@@ -302,7 +315,15 @@ fn main() -> Result<()> {
             *backup,
         ),
         Command::ShowColorThemes { out, open } => run_show_color_themes(&cli, out.as_ref(), *open),
+        Command::ListThemes => run_list_themes(),
     }
+}
+
+fn run_list_themes() -> Result<()> {
+    for theme in embedded::template_names() {
+        println!("{theme}");
+    }
+    Ok(())
 }
 
 fn run_scan(cli: &Cli, articles_dir: &PathBuf) -> Result<()> {
@@ -445,10 +466,56 @@ fn run_clean(cli: &Cli) -> Result<()> {
     Ok(())
 }
 
+fn apply_build_overrides(
+    root: &Path,
+    config: &mut SiteConfig,
+    theme_override: Option<&str>,
+    color_theme_override: Option<&str>,
+) -> Result<()> {
+    if let Some(theme) = theme_override {
+        let theme = theme.trim();
+        if theme.is_empty() {
+            bail!("--theme must not be empty");
+        }
+        config.theme.variant = theme.to_string();
+        eprintln!(
+            "warning: using build-only theme override '{theme}'; stbl.yaml was not modified"
+        );
+    }
+
+    if let Some(color_theme) = color_theme_override {
+        let presets = color_presets::load_color_presets_for_root(root)?;
+        let preset = presets.get(color_theme).ok_or_else(|| {
+            anyhow::anyhow!(
+                "unknown color preset '{color_theme}' (use apply-colors --list-presets)"
+            )
+        })?;
+        color_presets::validate_preset(color_theme, preset)?;
+        config.theme.colors = preset.colors.clone();
+        config.theme.nav = preset.nav.clone();
+        if let Some(wide_background) = preset.wide_background.clone() {
+            config.theme.wide_background = wide_background;
+        }
+        config.theme.color_scheme = Some(ThemeColorScheme {
+            name: Some(color_theme.to_string()),
+            mode: Some(ThemeColorSchemeMode::Auto),
+            source: Some(ThemeColorSchemeSource::Preset),
+            base: None,
+        });
+        eprintln!(
+            "warning: using build-only color theme '{color_theme}'; stbl.yaml was not modified"
+        );
+    }
+
+    Ok(())
+}
+
 fn run_build(
     cli: &Cli,
     articles_dir: &PathBuf,
     out: Option<&PathBuf>,
+    theme_override: Option<&str>,
+    color_theme_override: Option<&str>,
     publish_to: Option<&String>,
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
@@ -468,6 +535,12 @@ fn run_build(
     let root = root_dir(cli)?;
     let mut config = crate::config_loader::load_config_for_build(&root)
         .with_context(|| "failed to load stbl.yaml")?;
+    apply_build_overrides(
+        &root,
+        &mut config,
+        theme_override,
+        color_theme_override,
+    )?;
     let publish_command = require_publish_command(
         publish_to.map(|value| value.as_str()),
         config.publish.as_ref(),
@@ -1624,11 +1697,45 @@ mod tests {
     }
 
     #[test]
+    fn list_themes_command_uses_embedded_theme_registry() {
+        let cli = Cli::try_parse_from(["stbl_cli", "list-themes"]).expect("parse command");
+        assert!(matches!(cli.command, Command::ListThemes));
+        assert_eq!(
+            embedded::template_names(),
+            &["liberty", "minimal", "stbl"]
+        );
+    }
+
+    #[test]
+    fn build_overrides_are_applied_without_changing_config_file() {
+        let temp = TempDir::new().expect("tempdir");
+        let config_path = temp.path().join("stbl.yaml");
+        let original = "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/\n  language: en\n";
+        fs::write(&config_path, original).expect("write config");
+        let mut config = crate::config_loader::load_config(temp.path()).expect("load config");
+
+        apply_build_overrides(
+            temp.path(),
+            &mut config,
+            Some("minimal"),
+            Some("slate"),
+        )
+        .expect("apply overrides");
+
+        assert_eq!(config.theme.variant, "minimal");
+        assert_eq!(config.theme.colors.bg.as_deref(), Some("#f8fafc"));
+        assert_eq!(config.theme.color_scheme.as_ref().and_then(|s| s.name.as_deref()), Some("slate"));
+        assert_eq!(fs::read_to_string(config_path).expect("read config"), original);
+    }
+
+    #[test]
     fn no_writeback_allowed_without_preview() {
         let mut cli = base_cli();
         cli.command = Command::Build {
             articles_dir: PathBuf::from("articles"),
             out: Some(PathBuf::from("out")),
+            theme: None,
+            color_theme: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,
@@ -1655,6 +1762,8 @@ mod tests {
         cli.command = Command::Build {
             articles_dir: PathBuf::from("articles"),
             out: Some(PathBuf::from("out")),
+            theme: None,
+            color_theme: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,
@@ -1922,6 +2031,8 @@ mod tests {
         cli.command = Command::Build {
             articles_dir: PathBuf::from("articles"),
             out: Some(PathBuf::from("out")),
+            theme: None,
+            color_theme: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,

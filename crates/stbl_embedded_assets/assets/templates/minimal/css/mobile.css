@@ -1,0 +1,8 @@
+.nav-desktop { display: none; }
+.nav-mobile { display: block; }
+header .page { min-height: 4rem; }
+main { padding-block: var(--space-lg) var(--space-2xl); }
+.pager { align-items: flex-start; }
+footer .page { display: block; }
+footer .footer-links { margin-top: var(--space-xs); }
+@media (max-width: 40rem) { .pager { flex-direction: column; } .pager span { display: none; } }

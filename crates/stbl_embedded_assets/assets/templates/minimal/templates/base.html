@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="{{ site_language }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if redirect_href %}
+  <meta http-equiv="refresh" content="0; url={{ redirect_href }}">
+  {% endif %}
+  <title>{{ page_title }} · {{ site_title }}</title>
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/vars.css"] }}">
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/common.css"] }}">
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/syntax.css"] }}">
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/desktop.css"] }}" media="(min-width: 768px)">
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/mobile.css"] }}" media="(max-width: 767px)">
+  <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/wide-desktop.css"] }}" media="(min-width: 1400px)">
+</head>
+<body class="wide-bg">
+  <a class="skip-link" href="#content">Skip to content</a>
+  {% include "partials/header.html" %}
+  <main id="content">
+    <div class="page">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+  {% include "partials/footer.html" %}
+  <script>
+    (function () {
+      var nodes = document.querySelectorAll("time.js-local-time");
+      for (var i = 0; i < nodes.length; i++) {
+        var value = nodes[i].getAttribute("datetime");
+        if (!value) continue;
+        var date = new Date(value);
+        if (!Number.isNaN(date.getTime())) nodes[i].textContent = date.toLocaleString();
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      document.documentElement.classList.add("js");
+      document.addEventListener("click", function (e) {
+        var button = e.target.closest("[data-copy-button]");
+        if (!button) return;
+        var container = button.closest("[data-codeblock]");
+        var code = container && container.querySelector("pre > code");
+        if (!code) return;
+        var original = button.textContent;
+        var done = function (label) {
+          button.textContent = label;
+          setTimeout(function () { button.textContent = original; }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(code.textContent || "").then(function () { done("Copied"); }, function () { done("Failed"); });
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

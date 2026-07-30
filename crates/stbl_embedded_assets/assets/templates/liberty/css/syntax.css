@@ -1,0 +1,19 @@
+.code-block { overflow-x: auto; }
+.code-block code { background: transparent; padding: 0; }
+.code-block code.has-line-numbers { counter-reset: line; display: block; padding-left: 3rem; }
+.code-block code.has-line-numbers .code-line { display: block; position: relative; }
+.code-block code.has-line-numbers .code-line::before { counter-increment: line; content: counter(line); position: absolute; left: -3rem; width: 2.4rem; text-align: right; color: var(--c-muted); opacity: 0.7; }
+.code-block code.syntect { color: #f2f2f2; }
+.code-block code.syntect .comment { color: #8b949e; }
+.code-block code.syntect .constant { color: #79c0ff; }
+.code-block code.syntect .string { color: #a5d6ff; }
+.code-block code.syntect .keyword { color: #ff7b72; }
+.code-block code.syntect .storage { color: #ff7b72; }
+.code-block code.syntect .entity { color: #d2a8ff; }
+.code-block code.syntect .support { color: #79c0ff; }
+.code-block code.syntect .variable { color: #ffa657; }
+.code-block code.syntect .punctuation { color: #c9d1d9; }
+.code-block code.syntect .markup { color: #7ee787; }
+.code-block code.syntect .invalid { color: #f0f6fc; background: #8e1519; }
+.code-block code.syntect .meta { color: #8b949e; }
+.code-block code.syntect .function { color: #d2a8ff; }

@@ -39,15 +39,23 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let site_desc = escape_xml(project.config.site.tagline.as_deref().unwrap_or(""));
     let site_link = escape_xml(&project.config.site.base_url);
     let site_language = escape_xml(&project.config.site.language);
+    let feed_link = escape_xml(&base_url_join(&project.config.site.base_url, "rss.xml"));
 
     let mut out = String::new();
     out.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    out.push_str("<rss version=\"2.0\">\n");
+    out.push_str("<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">\n");
     out.push_str("<channel>\n");
     out.push_str(&format!("<title>{site_title}</title>\n"));
     out.push_str(&format!("<link>{site_link}</link>\n"));
     out.push_str(&format!("<description>{site_desc}</description>\n"));
     out.push_str(&format!("<language>{site_language}</language>\n"));
+    out.push_str(&format!(
+        "<atom:link href=\"{feed_link}\" rel=\"self\" type=\"application/rss+xml\" />\n"
+    ));
+    out.push_str(&format!(
+        "<lastBuildDate>{}</lastBuildDate>\n",
+        round_to_three_hours(Utc::now()).to_rfc2822()
+    ));
     if let Some(ttl) = channel_ttl {
         out.push_str(&format!("<ttl>{ttl}</ttl>\n"));
     }
@@ -56,7 +64,10 @@ pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
         out.push_str("<item>\n");
         out.push_str(&format!("<title>{}</title>\n", escape_xml(&item.title)));
         out.push_str(&format!("<link>{}</link>\n", escape_xml(&item.link)));
-        out.push_str(&format!("<guid>{}</guid>\n", escape_xml(&item.link)));
+        out.push_str(&format!(
+            "<guid isPermaLink=\"true\">{}</guid>\n",
+            escape_xml(&item.link)
+        ));
         out.push_str(&format!("<pubDate>{}</pubDate>\n", item.pub_date));
         out.push_str(&format!(
             "<description>{}</description>\n",
@@ -163,6 +174,9 @@ fn base_url_join(base_url: &str, href: &str) -> String {
 fn escape_xml(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
+        if !is_xml10_char(ch) {
+            continue;
+        }
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
@@ -173,6 +187,22 @@ fn escape_xml(value: &str) -> String {
         }
     }
     out
+}
+
+fn is_xml10_char(ch: char) -> bool {
+    matches!(ch, '\u{9}' | '\u{A}' | '\u{D}' | '\u{20}'..='\u{D7FF}' | '\u{E000}'..='\u{FFFD}' | '\u{10000}'..='\u{10FFFF}')
+}
+
+fn round_to_three_hours(value: DateTime<Utc>) -> DateTime<Utc> {
+    const THREE_HOURS: i64 = 3 * 60 * 60;
+    let timestamp = value.timestamp();
+    let lower = timestamp.div_euclid(THREE_HOURS) * THREE_HOURS;
+    let rounded = if timestamp - lower >= THREE_HOURS / 2 {
+        lower + THREE_HOURS
+    } else {
+        lower
+    };
+    DateTime::<Utc>::from_timestamp(rounded, 0).expect("rounded Unix timestamp is valid")
 }
 
 struct FeedItem {
@@ -580,8 +610,12 @@ mod tests {
         let project = build_project(UrlStyle::Html, true);
         let mapper = UrlMapper::new(&project.config);
         let rss = render_rss(&project, &mapper);
-        assert!(rss.contains("<rss version=\"2.0\">"));
+        assert!(rss.contains("<rss version=\"2.0\" xmlns:atom=\"http://www.w3.org/2005/Atom\">"));
         assert!(rss.contains("<channel>"));
+        assert!(rss.contains(
+            "<atom:link href=\"https://example.com/rss.xml\" rel=\"self\" type=\"application/rss+xml\" />"
+        ));
+        assert!(rss.contains("<lastBuildDate>"));
         assert!(rss.contains("<item>"));
         let latest_href = mapper
             .map(&logical_key_from_source_path("articles/series/part2.md"))
@@ -612,6 +646,26 @@ mod tests {
         let mapper = UrlMapper::new(&project.config);
         let rss = render_rss(&project, &mapper);
         assert!(rss.is_empty());
+    }
+
+    #[test]
+    fn escape_xml_omits_xml10_invalid_characters() {
+        assert_eq!(escape_xml("a\u{0}b\u{8}c\u{B}d\u{1F}e"), "abcde");
+        assert_eq!(escape_xml("a\u{9}b\u{A}c\u{D}d"), "a\u{9}b\u{A}c\u{D}d");
+    }
+
+    #[test]
+    fn round_to_three_hours_uses_nearest_boundary() {
+        let base = DateTime::<Utc>::from_timestamp(1_751_360_400, 0).expect("valid timestamp");
+        assert_eq!(round_to_three_hours(base), base);
+        assert_eq!(
+            round_to_three_hours(base + Duration::hours(1)),
+            base + Duration::hours(0)
+        );
+        assert_eq!(
+            round_to_three_hours(base + Duration::hours(2)),
+            base + Duration::hours(3)
+        );
     }
 
     #[test]

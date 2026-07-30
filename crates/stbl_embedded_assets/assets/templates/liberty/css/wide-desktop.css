@@ -1,0 +1,5 @@
+body { background: var(--c-bg); }
+.wide-bg { min-height: 100vh; background: var(--c-bg); }
+.wide-bg::before { display: none; }
+.wide-bg > header .page, .wide-bg > main .page, .wide-bg > footer .page { background: transparent; }
+.wide-bg > footer { border-top: 1px solid var(--c-border); }

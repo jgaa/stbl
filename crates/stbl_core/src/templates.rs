@@ -1486,6 +1486,56 @@ mod tests {
     }
 
     #[test]
+    fn minimal_theme_renders_its_accessible_page_shell() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\ntheme:\n  variant: minimal\n",
+            SiteContent::default(),
+        );
+        let page = simple_page("Minimal article", "articles/minimal.md");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "minimal.html",
+            "2026-07-30",
+            None,
+            None,
+        )
+        .expect("render minimal theme");
+
+        assert!(html.contains("class=\"skip-link\""));
+        assert!(html.contains("<main id=\"content\">"));
+        assert!(html.contains("<article class=\"article\">"));
+        assert!(html.contains("class=\"brand-title\">Demo</span>"));
+    }
+
+    #[test]
+    fn liberty_theme_keeps_full_stbl_page_metadata() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\npeople:\n  default: me\n  entries:\n    me:\n      name: \"Ada\"\ntheme:\n  variant: liberty\n",
+            SiteContent::default(),
+        );
+        let mut page = simple_page("Liberty article", "articles/liberty.md");
+        page.header.published = Some(1_704_067_200);
+        page.header.tags = vec!["privacy".to_string()];
+        page.header.authors = Some(vec!["me".to_string()]);
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "liberty.html",
+            "2026-01-29",
+            None,
+            None,
+        )
+        .expect("render liberty theme");
+
+        assert!(html.contains("Ada"));
+        assert!(html.contains("privacy"));
+        assert!(html.contains("Published"));
+    }
+
+    #[test]
     fn page_meta_uses_updated_fallback_when_available() {
         let project = project_with_config(
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",

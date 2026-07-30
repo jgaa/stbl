@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="front-page">
+  {% if show_page_title %}<h1>{{ page_title }}</h1>{% endif %}
+  {% if banner_html %}<div class="banner">{{ banner_html | safe }}</div>{% endif %}
+  {% if intro_html %}<div class="intro">{{ intro_html | safe }}</div>{% endif %}
+  <section class="article-feed" aria-labelledby="article-feed-title">
+    <h2 id="article-feed-title">Articles</h2>
+    {% if total_pages > 1 %}<div class="pager-meta">Page {{ page_no }} of {{ total_pages }}</div>{% endif %}
+    <ul class="post-list">{% for item in items %}{% include "partials/list_item.html" %}{% endfor %}</ul>
+    {% if prev_href or next_href or first_href or last_href %}
+    <nav class="pager" aria-label="Article pagination">
+      {% if prev_href %}<a href="{{ prev_href }}">← Newer posts</a>{% else %}<span></span>{% endif %}
+      {% if next_href %}<a href="{{ next_href }}">Older posts →</a>{% endif %}
+    </nav>
+    {% endif %}
+  </section>
+</section>
+{% endblock %}

@@ -1,0 +1,17 @@
+base:
+  bg: "#ffffff"
+  fg: "#202020"
+  heading: "#202020"
+  accent: "#315f8c"
+  link: "#315f8c"
+
+nav:
+  bg: "#ffffff"
+  fg: "#202020"
+  border: "#ddddda"
+
+wide_background:
+  color: "#ffffff"
+  opacity: 0.0
+  style: cover
+  position: "center top"

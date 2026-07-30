@@ -39,3 +39,54 @@ fn default_template_colors_yaml_is_embedded() {
         "missing wide_background section"
     );
 }
+
+#[test]
+fn minimal_template_is_embedded_with_theme_overrides() {
+    let template = embedded::template("minimal").expect("minimal template");
+    let paths = template
+        .assets
+        .iter()
+        .map(|entry| entry.path)
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "minimal.colors.yaml",
+        "templates/base.html",
+        "templates/partials/header.html",
+        "templates/partials/blog_index.html",
+        "css/common.css",
+        "css/mobile.css",
+    ] {
+        assert!(paths.contains(required), "missing minimal asset: {required}");
+    }
+
+    let colors = embedded::template_colors_yaml("minimal").expect("minimal colors yaml");
+    assert!(std::str::from_utf8(colors)
+        .expect("minimal colors utf8")
+        .contains("#315f8c"));
+}
+
+#[test]
+fn liberty_theme_is_embedded_with_dark_defaults() {
+    let template = embedded::template("liberty").expect("liberty template");
+    let paths = template
+        .assets
+        .iter()
+        .map(|entry| entry.path)
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "liberty.colors.yaml",
+        "css/common.css",
+        "css/desktop.css",
+        "css/mobile.css",
+        "css/syntax.css",
+    ] {
+        assert!(paths.contains(required), "missing liberty asset: {required}");
+    }
+
+    let colors = embedded::template_colors_yaml("liberty").expect("liberty colors yaml");
+    let text = std::str::from_utf8(colors).expect("liberty colors utf8");
+    assert!(text.contains("#111317"));
+    assert!(text.contains("#68d6ff"));
+}

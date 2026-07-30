@@ -23,7 +23,28 @@ Characteristics:
 * Subtle accent color
 * Dark/light variants
 
-### B. Modern Branded (Medium Branding)
+### B. Mission-driven / Technology Movement (Medium Branding)
+
+Target: projects that need to communicate an idea, mission, or movement as much as a product
+
+Examples:
+
+* DarkSpeak
+* Tor nodes
+* Privacy projects
+* Open-source security software
+* Decentralized infrastructure
+* Digital rights organizations
+
+Characteristics:
+
+* Idea-led narrative and clear principles
+* Strong trust and transparency signals
+* Technical credibility without corporate polish
+* Community, contributor, or participation pathways
+* Distinctive but restrained visual identity
+
+### C. Modern Branded (Medium Branding)
 
 Target: consultants, SaaS landing pages, personal brands
 
@@ -49,7 +70,7 @@ These are excellent for:
 * Wellness app
 * Indie SaaS
 
-### C. SMB Templates (High Branding)
+### D. SMB Templates (High Branding)
 
 Target: small businesses that need something that “just works”
 
@@ -96,11 +117,12 @@ These are the themes that are ready or planned.
 | Name     | Ready | Family | Strength | Description |
 | ---------|-------|--------|----------|-------------|
 | stbl     | [x]   | A      | 3        | Default stbl theme |
-| minimal  | [ ]   | A      | 2        | For blogs |
+| minimal  | [x]   | A      | 2        | For blogs |
 | paper    | [ ]   | A      | 2        | For blogs |
 | mono     | [ ]   | A      | 1        | For blogs |
-| modern   | [ ]   | B      | 4        | Modern blog and/or presentation |
-| cleanbrand | [ ] | B      | 4        | Presentation / landing page |
+| liberty  | [x]   | B      | 4        | Mission-driven privacy and open-source technology projects |
+| modern   | [ ]   | C      | 4        | Modern blog and/or presentation |
+| cleanbrand | [ ] | C      | 4        | Presentation / landing page |
 
 
 ## 3 Custom themes and overrides

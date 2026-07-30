@@ -37,6 +37,7 @@
 
 ## Agent-Specific Instructions
 - Follow `.codex.md` rules: no new crates without request, no filesystem access in `stbl_core`, no TODOs, no feature creep.
+- Keep `scripts/build-theme-examples.sh` up to date when adding embedded themes or color schemes.
 
 ## Execution & IO boundaries (important)
 

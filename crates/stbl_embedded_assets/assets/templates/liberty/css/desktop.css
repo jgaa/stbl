@@ -1,0 +1,10 @@
+.nav-desktop { display: block; background: transparent; border-radius: 0; }
+.nav-mobile { display: none; }
+.nav-desktop ul { padding: 0; }
+.nav-desktop a { color: var(--c-fg); padding: 0; }
+.nav-desktop li + li a { border-left: 0; }
+.menu-align-left .nav-desktop ul { justify-content: flex-start; }
+.menu-align-center .nav-desktop ul { justify-content: center; }
+.menu-align-right .nav-desktop ul { justify-content: flex-end; }
+.page-meta { align-items: center; }
+.page-meta .meta-authors, .page-meta .page-tags { padding: 0; border: 0; border-radius: 0; background: transparent; }
