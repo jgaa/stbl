@@ -168,11 +168,11 @@ rss:
 seo:
   sitemap:
     priority:
-      frontpage: int
-      article: int
-      series: int
-      tag: int
-      tags: int
+      frontpage: number
+      article: number
+      series: number
+      tag: number
+      tags: number
 
 comments:
   default: string      # optional provider name
@@ -390,11 +390,11 @@ rss:
 seo:
   sitemap:
     priority:
-      frontpage: 100
-      article: 90
-      series: 95
-      tag: 40
-      tags: 80
+      frontpage: 1.0
+      article: 0.8
+      series: 0.6
+      tag: 0.4
+      tags: 0.4
 
 comments:
   # default: "disqus"

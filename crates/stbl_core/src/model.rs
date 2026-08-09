@@ -546,11 +546,11 @@ pub struct SeoSitemapConfig {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeoPriorityConfig {
-    pub frontpage: i32,
-    pub article: i32,
-    pub series: i32,
-    pub tag: i32,
-    pub tags: i32,
+    pub frontpage: f32,
+    pub article: f32,
+    pub series: f32,
+    pub tag: f32,
+    pub tags: f32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

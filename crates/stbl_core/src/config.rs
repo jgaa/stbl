@@ -822,6 +822,21 @@ mod tests {
     }
 
     #[test]
+    fn sitemap_decimal_priorities_parse() {
+        let path = write_temp(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nseo:\n  sitemap:\n    priority:\n      frontpage: 1.0\n      article: 0.8\n      series: 0.6\n      tag: 0.4\n      tags: 0.4\n",
+        );
+        let config = load_site_config(&path).expect("config should load");
+        let priority = config
+            .seo
+            .and_then(|seo| seo.sitemap)
+            .and_then(|sitemap| sitemap.priority)
+            .expect("sitemap priority");
+        assert_eq!(priority.frontpage, 1.0);
+        assert_eq!(priority.article, 0.8);
+    }
+
+    #[test]
     fn theme_defaults_apply_when_missing() {
         let path = write_temp(
             "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
