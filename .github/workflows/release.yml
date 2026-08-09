@@ -1,20 +1,20 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v[0-9]*"
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
-  build-test-release:
-    runs-on: ubuntu-latest
+  release:
+    name: Create release
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -22,20 +22,96 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
-        run: cargo build --workspace --release --locked
-
-      - name: Test
-        run: cargo test --workspace --locked
-
-      - name: Prepare release asset
+      - name: Prepare release metadata
+        id: prep
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+
+          git fetch --force --tags origin
+
+          app_version="$(awk '
+            /^\[workspace\.package\]$/ { in_workspace_package = 1; next }
+            /^\[/ { in_workspace_package = 0 }
+            in_workspace_package && $1 == "version" && $2 == "=" {
+              gsub(/"/, "", $3)
+              print $3
+              exit
+            }
+          ' Cargo.toml)"
+          if [ -z "${app_version}" ]; then
+            echo "Failed to read version from [workspace.package] in Cargo.toml" >&2
+            exit 1
+          fi
+
+          tag="v${app_version}"
+          if git rev-parse "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists" >&2
+            exit 1
+          fi
+
+          main_sha="$(git rev-parse HEAD)"
+          archive_name="stbl_cli-${app_version}-linux-x86_64.zip"
+
+          previous_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null)" || previous_tag=""
+
+          {
+            echo "app_version=${app_version}"
+            echo "tag=${tag}"
+            echo "main_sha=${main_sha}"
+            echo "archive_name=${archive_name}"
+            echo "previous_tag=${previous_tag}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build stbl_cli
+        run: cargo build -p stbl_cli --release --locked
+
+      - name: Package release asset
+        env:
+          ARCHIVE_NAME: ${{ steps.prep.outputs.archive_name }}
+        run: |
+          set -euo pipefail
+
           mkdir -p release-assets
           cp target/release/stbl_cli release-assets/stbl_cli-linux-x86_64
           chmod +x release-assets/stbl_cli-linux-x86_64
+          (
+            cd release-assets
+            zip -q "../${ARCHIVE_NAME}" stbl_cli-linux-x86_64
+          )
+
+      - name: Build release notes
+        id: notes
+        env:
+          PREVIOUS_TAG: ${{ steps.prep.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+
+          notes_file="$(mktemp)"
+          {
+            echo "## Changes"
+            echo
+            if [ -n "${PREVIOUS_TAG}" ]; then
+              git log --reverse --format='- %s' "${PREVIOUS_TAG}..HEAD"
+            else
+              git log --reverse --max-count=20 --format='- %s'
+            fi
+          } > "${notes_file}"
+
+          echo "notes_file=${notes_file}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          body_path: release-notes.md
-          files: release-assets/stbl_cli-linux-x86_64
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.prep.outputs.tag }}
+          MAIN_SHA: ${{ steps.prep.outputs.main_sha }}
+          ARCHIVE_NAME: ${{ steps.prep.outputs.archive_name }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+
+          gh release create "${TAG}" "${ARCHIVE_NAME}" \
+            --target "${MAIN_SHA}" \
+            --title "${TAG}" \
+            --notes-file "${NOTES_FILE}"

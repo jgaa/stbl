@@ -90,3 +90,53 @@ fn liberty_theme_is_embedded_with_dark_defaults() {
     assert!(text.contains("#111317"));
     assert!(text.contains("#68d6ff"));
 }
+
+#[test]
+fn paper_theme_is_embedded_with_warm_defaults() {
+    let template = embedded::template("paper").expect("paper template");
+    let paths = template
+        .assets
+        .iter()
+        .map(|entry| entry.path)
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "paper.colors.yaml",
+        "css/common.css",
+        "css/desktop.css",
+        "css/mobile.css",
+        "css/syntax.css",
+    ] {
+        assert!(paths.contains(required), "missing paper asset: {required}");
+    }
+
+    let colors = embedded::template_colors_yaml("paper").expect("paper colors yaml");
+    let text = std::str::from_utf8(colors).expect("paper colors utf8");
+    assert!(text.contains("#faf8f4"));
+    assert!(text.contains("#8a5b2a"));
+}
+
+#[test]
+fn mono_theme_is_embedded_with_monochrome_defaults() {
+    let template = embedded::template("mono").expect("mono template");
+    let paths = template
+        .assets
+        .iter()
+        .map(|entry| entry.path)
+        .collect::<BTreeSet<_>>();
+
+    for required in [
+        "mono.colors.yaml",
+        "css/common.css",
+        "css/desktop.css",
+        "css/mobile.css",
+        "css/syntax.css",
+    ] {
+        assert!(paths.contains(required), "missing mono asset: {required}");
+    }
+
+    let colors = embedded::template_colors_yaml("mono").expect("mono colors yaml");
+    let text = std::str::from_utf8(colors).expect("mono colors utf8");
+    assert!(text.contains("#ffffff"));
+    assert!(text.contains("#111111"));
+}

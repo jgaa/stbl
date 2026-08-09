@@ -126,6 +126,8 @@ enum Command {
         theme: Option<String>,
         #[arg(long, value_name = "NAME")]
         color_theme: Option<String>,
+        #[arg(long, value_name = "URL")]
+        base_url: Option<String>,
         #[arg(long, value_name = "DEST")]
         publish_to: Option<String>,
         #[arg(long)]
@@ -172,6 +174,8 @@ enum Command {
         language: String,
         #[arg(long, value_enum, default_value = "blog")]
         kind: InitKindArg,
+        #[arg(long, value_name = "NAME")]
+        theme: Option<String>,
         #[arg(long, value_name = "NAME")]
         color_theme: Option<String>,
         #[arg(long)]
@@ -231,6 +235,7 @@ fn main() -> Result<()> {
             out,
             theme,
             color_theme,
+            base_url,
             publish_to,
             no_cache,
             cache_path,
@@ -252,6 +257,7 @@ fn main() -> Result<()> {
             out.as_ref(),
             theme.as_deref(),
             color_theme.as_deref(),
+            base_url.as_deref(),
             publish_to.as_ref(),
             *no_cache,
             cache_path.as_ref(),
@@ -274,6 +280,7 @@ fn main() -> Result<()> {
             url,
             language,
             kind,
+            theme,
             color_theme,
             copy_all,
             target_dir,
@@ -282,6 +289,7 @@ fn main() -> Result<()> {
             url,
             language,
             *kind,
+            theme.as_ref(),
             color_theme.as_ref(),
             *copy_all,
             target_dir.as_ref(),
@@ -401,6 +409,8 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
             .with_context(|| format!("failed to discover assets under {}", root.display()))?;
     assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.logo")?;
+    assets::include_site_icon(&root, &project.config, &mut asset_index, &mut asset_lookup)
+        .with_context(|| "failed to resolve site.icon")?;
     let (image_plan, _image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();
@@ -471,6 +481,7 @@ fn apply_build_overrides(
     config: &mut SiteConfig,
     theme_override: Option<&str>,
     color_theme_override: Option<&str>,
+    base_url_override: Option<&str>,
 ) -> Result<()> {
     if let Some(theme) = theme_override {
         let theme = theme.trim();
@@ -507,6 +518,17 @@ fn apply_build_overrides(
         );
     }
 
+    if let Some(base_url) = base_url_override {
+        let base_url = base_url.trim();
+        if base_url.is_empty() {
+            bail!("--base-url must not be empty");
+        }
+        config.site.base_url = base_url.to_string();
+        eprintln!(
+            "warning: using build-only base URL override '{base_url}'; stbl.yaml was not modified"
+        );
+    }
+
     Ok(())
 }
 
@@ -516,6 +538,7 @@ fn run_build(
     out: Option<&PathBuf>,
     theme_override: Option<&str>,
     color_theme_override: Option<&str>,
+    base_url_override: Option<&str>,
     publish_to: Option<&String>,
     no_cache: bool,
     cache_path_override: Option<&PathBuf>,
@@ -540,6 +563,7 @@ fn run_build(
         &mut config,
         theme_override,
         color_theme_override,
+        base_url_override,
     )?;
     let publish_command = require_publish_command(
         publish_to.map(|value| value.as_str()),
@@ -590,6 +614,8 @@ fn run_build(
             .with_context(|| format!("failed to discover assets under {}", root.display()))?;
     assets::include_site_logo(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.logo")?;
+    assets::include_site_icon(&root, &project.config, &mut asset_index, &mut asset_lookup)
+        .with_context(|| "failed to resolve site.icon")?;
     let (image_plan, image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();
@@ -769,6 +795,7 @@ fn run_init(
     url: &str,
     language: &str,
     kind: InitKindArg,
+    theme: Option<&String>,
     color_theme: Option<&String>,
     copy_all: bool,
     target_dir: Option<&PathBuf>,
@@ -792,6 +819,7 @@ fn run_init(
         base_url: url.to_string(),
         language: language.to_string(),
         kind,
+        theme: theme.cloned(),
         color_theme: color_theme.cloned(),
         copy_all,
         target_dir,
@@ -1702,7 +1730,7 @@ mod tests {
         assert!(matches!(cli.command, Command::ListThemes));
         assert_eq!(
             embedded::template_names(),
-            &["liberty", "minimal", "stbl"]
+            &["liberty", "minimal", "mono", "paper", "stbl"]
         );
     }
 
@@ -1719,12 +1747,14 @@ mod tests {
             &mut config,
             Some("minimal"),
             Some("slate"),
+            Some("https://nextapp.org/sites/a/b/c/demo/"),
         )
         .expect("apply overrides");
 
         assert_eq!(config.theme.variant, "minimal");
         assert_eq!(config.theme.colors.bg.as_deref(), Some("#f8fafc"));
         assert_eq!(config.theme.color_scheme.as_ref().and_then(|s| s.name.as_deref()), Some("slate"));
+        assert_eq!(config.site.base_url, "https://nextapp.org/sites/a/b/c/demo/");
         assert_eq!(fs::read_to_string(config_path).expect("read config"), original);
     }
 
@@ -1736,6 +1766,7 @@ mod tests {
             out: Some(PathBuf::from("out")),
             theme: None,
             color_theme: None,
+            base_url: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,
@@ -1764,6 +1795,7 @@ mod tests {
             out: Some(PathBuf::from("out")),
             theme: None,
             color_theme: None,
+            base_url: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,
@@ -2033,6 +2065,7 @@ mod tests {
             out: Some(PathBuf::from("out")),
             theme: None,
             color_theme: None,
+            base_url: None,
             publish_to: None,
             no_cache: false,
             cache_path: None,

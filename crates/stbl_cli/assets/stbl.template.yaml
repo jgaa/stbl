@@ -10,12 +10,13 @@ site:
   url_style: html
   # tagline: "Short description shown under the title"
   # logo: "images/logo.svg"
+  # icon: "images/icon.svg" # converted to a 32x32 PNG site icon during build
   # copyright: "Copyright {YEAR} by {{TITLE}}"
   # timezone: "America/New_York"
 
 # Theme configuration.
 theme:
-  # variant: "stbl"
+  variant: "{{THEME_VARIANT}}"
   # max_body_width: "72rem"
   # breakpoints:
   #   desktop_min: "768px"

@@ -1,0 +1,10 @@
+.nav-desktop { display: none; }
+.nav-mobile { display: block; }
+header .page { align-items: center; }
+main { padding-block: 2.75rem 4rem; }
+footer .page { display: block; }
+footer .footer-links { margin-top: 0.5rem; }
+@media (max-width: 40rem) {
+  .pager { flex-direction: column; align-items: flex-start; }
+  .pager span { display: none; }
+}

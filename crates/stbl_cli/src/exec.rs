@@ -497,6 +497,7 @@ fn scan_css_assets_for_icons(
         let bytes = match source {
             crate::assets::AssetSource::File(path) => fs::read(path)?,
             crate::assets::AssetSource::Embedded(bytes) => bytes.clone(),
+            crate::assets::AssetSource::SiteIcon(path) => fs::read(path)?,
         };
         let Ok(text) = std::str::from_utf8(&bytes) else {
             continue;

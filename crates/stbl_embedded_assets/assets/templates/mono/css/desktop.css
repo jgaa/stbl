@@ -1,0 +1,4 @@
+.nav-desktop { display: block; }
+.nav-mobile { display: none; }
+.page-meta { align-items: baseline; }
+@media (min-width: 1400px) { main > .page { max-width: calc(var(--mono-content-width) + 2 * var(--mono-page-padding)); } }

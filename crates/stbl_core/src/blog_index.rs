@@ -717,6 +717,7 @@ mod tests {
                 title: "Demo".to_string(),
                 tagline: None,
                 logo: None,
+                icon: None,
                 copyright: None,
                 base_url: "https://example.com/".to_string(),
                 language: "en".to_string(),

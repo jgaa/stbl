@@ -43,6 +43,7 @@ struct SiteMetaRaw {
     title: Option<String>,
     tagline: Option<String>,
     logo: Option<String>,
+    icon: Option<String>,
     #[serde(rename = "abstract")]
     abstract_text: Option<String>,
     copyright: Option<String>,
@@ -243,6 +244,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         tagline: optional_non_empty(parsed.site.tagline, "site.tagline")?
             .or_else(|| parsed.site.abstract_text),
         logo: optional_non_empty(parsed.site.logo, "site.logo")?,
+        icon: optional_non_empty(parsed.site.icon, "site.icon")?,
         copyright: parsed.site.copyright,
         base_url: required_string(parsed.site.base_url, "site.base_url")?,
         language: required_string(parsed.site.language, "site.language")?,

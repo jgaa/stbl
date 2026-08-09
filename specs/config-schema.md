@@ -45,6 +45,7 @@ site:
   title: string
   tagline: string
   logo: string
+  icon: string        # optional SVG converted to a 32x32 PNG site icon during build
   copyright: string  # optional; default "Copyright {YEAR} by {site.title}"
   base_url: string
   language: string

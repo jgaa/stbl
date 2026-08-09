@@ -46,6 +46,7 @@ fn init_aborts_if_config_exists() {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind: InitKind::Blog,
+        theme: None,
         color_theme: None,
         copy_all: false,
         target_dir: root.to_path_buf(),
@@ -64,6 +65,7 @@ fn init_aborts_if_required_dir_exists() {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind: InitKind::Blog,
+        theme: None,
         color_theme: None,
         copy_all: false,
         target_dir: root.to_path_buf(),
@@ -114,6 +116,7 @@ fn init_color_theme_matches_apply_colors() {
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind: InitKind::Blog,
+        theme: None,
         color_theme: Some("slate".to_string()),
         copy_all: false,
         target_dir: root.clone(),
@@ -164,12 +167,39 @@ fn init_color_theme_matches_apply_colors() {
     assert_eq!(scheme_source, "preset");
 }
 
+#[test]
+fn init_theme_sets_theme_variant() {
+    let temp = TempDir::new().expect("tempdir");
+    let root = temp.path().to_path_buf();
+    init_site(InitOptions {
+        title: "Paper Site".to_string(),
+        base_url: "http://localhost:8080/".to_string(),
+        language: "en".to_string(),
+        kind: InitKind::Blog,
+        theme: Some("paper".to_string()),
+        color_theme: None,
+        copy_all: false,
+        target_dir: root.clone(),
+    })
+    .expect("init site");
+
+    let raw = fs::read_to_string(root.join("stbl.yaml")).expect("read config");
+    let doc: Value = serde_yaml::from_str(&raw).expect("parse config");
+    let variant = doc
+        .get("theme")
+        .and_then(|value| value.get("variant"))
+        .and_then(Value::as_str)
+        .expect("theme.variant");
+    assert_eq!(variant, "paper");
+}
+
 fn run_init(root: &Path, kind: InitKind, copy_all: bool) {
     init_site(InitOptions {
         title: "My Site".to_string(),
         base_url: "http://localhost:8080/".to_string(),
         language: "en".to_string(),
         kind,
+        theme: None,
         color_theme: None,
         copy_all,
         target_dir: root.to_path_buf(),

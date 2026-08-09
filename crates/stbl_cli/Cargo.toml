@@ -1,6 +1,6 @@
 [package]
 name = "stbl_cli"
-version = "2.0.0"
+version.workspace = true
 edition = "2024"
 rust-version = "1.85"
 
@@ -15,6 +15,7 @@ blake3 = "1"
 brotli = "3"
 flate2 = "1"
 image = { version = "0.25", default-features = false, features = ["avif", "jpeg", "png", "webp"] }
+resvg = "0.47"
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 pulldown-cmark = "0.12"

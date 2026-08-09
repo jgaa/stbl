@@ -2,8 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use blake3::hash;
+use image::GenericImageView;
 use stbl_cli::assets::{discover_assets, discover_assets_for_theme, execute_copy_tasks};
 use stbl_core::assets::plan_assets;
+use stbl_core::config::load_site_config;
 use stbl_core::model::{SecurityConfig, SvgSecurityConfig, SvgSecurityMode};
 use tempfile::TempDir;
 
@@ -90,6 +92,42 @@ fn stbl_theme_assets_override_embedded_assets() {
 
     let css = fs::read_to_string(out_dir.join("artifacts/css/common.css")).expect("read css");
     assert_eq!(css, "from stbl theme override");
+}
+
+#[test]
+fn configured_svg_site_icon_is_rendered_as_a_32_pixel_png() {
+    let temp = TempDir::new().expect("tempdir");
+    let site_root = temp.path().join("site");
+    let out_dir = temp.path().join("out");
+    write_file(
+        &site_root.join("stbl.yaml"),
+        "site:\n  id: demo\n  title: Demo\n  icon: images/icon.svg\n  base_url: https://example.com/\n  language: en\n",
+    )
+    .expect("write config");
+    write_file(
+        &site_root.join("images/icon.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 20\"><rect width=\"10\" height=\"20\" fill=\"#123456\"/></svg>",
+    )
+    .expect("write icon");
+
+    let config = load_site_config(&site_root.join("stbl.yaml")).expect("load config");
+    let (mut asset_index, mut lookup) = discover_assets_for_theme(&site_root, "stbl")
+        .expect("discover assets");
+    stbl_cli::assets::include_site_icon(&site_root, &config, &mut asset_index, &mut lookup)
+        .expect("include site icon");
+    let (tasks, _manifest) = plan_assets(&asset_index, false, blake3::hash(b"config").into());
+    let security = SecurityConfig {
+        svg: SvgSecurityConfig {
+            mode: SvgSecurityMode::Off,
+        },
+    };
+    execute_copy_tasks(&tasks, &out_dir, &lookup, &security).expect("render site icon");
+
+    let image = image::ImageReader::open(out_dir.join("artifacts/site-icon.png"))
+        .expect("open icon")
+        .decode()
+        .expect("decode icon");
+    assert_eq!(image.dimensions(), (32, 32));
 }
 
 fn write_file(path: &Path, contents: &str) -> std::io::Result<()> {

@@ -24,6 +24,7 @@ impl AssetSourceLookup {
 pub enum AssetSource {
     File(PathBuf),
     Embedded(Vec<u8>),
+    SiteIcon(PathBuf),
 }
 
 #[allow(dead_code)]
@@ -218,6 +219,57 @@ pub fn include_site_logo(
     add_file_asset(&logo.rel, &logo.path, asset_index, lookup)
 }
 
+pub fn include_site_icon(
+    root: &Path,
+    config: &SiteConfig,
+    asset_index: &mut AssetIndex,
+    lookup: &mut AssetSourceLookup,
+) -> Result<()> {
+    let Some(raw) = config.site.icon.as_deref() else {
+        return Ok(());
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        bail!("site.icon must not be empty");
+    }
+    if Path::new(trimmed).is_absolute() || trimmed.starts_with('/') {
+        bail!("site.icon must be a relative path: {trimmed}");
+    }
+    let cleaned = trimmed.strip_prefix("./").unwrap_or(trimmed);
+    if !cleaned.to_ascii_lowercase().ends_with(".svg") {
+        bail!("site.icon must be an SVG file: {cleaned}");
+    }
+    let mut candidates = Vec::new();
+    if let Some(stripped) = cleaned.strip_prefix("assets/") {
+        candidates.push(root.join("assets").join(stripped));
+    } else {
+        candidates.push(root.join(cleaned));
+        candidates.push(root.join("assets").join(cleaned));
+    }
+    let path = candidates
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+        .ok_or_else(|| anyhow!("site.icon not found: {}", root.join(cleaned).display()))?;
+
+    let rel = AssetRelPath("site-icon.png".to_string());
+    if asset_index.assets.iter().any(|asset| asset.rel == rel) {
+        bail!("site.icon output conflicts with an existing site-icon.png asset");
+    }
+    let bytes = std::fs::read(&path)
+        .with_context(|| format!("failed to read site icon {}", path.display()))?;
+    let content_hash = blake3::hash(&bytes).to_hex().to_string();
+    let source = AssetSourceId(format!("site-icon:{content_hash}"));
+    lookup
+        .sources
+        .insert(source.clone(), AssetSource::SiteIcon(path));
+    asset_index.assets.push(ResolvedAsset {
+        rel,
+        source,
+        content_hash,
+    });
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub fn execute_copy_tasks(
     tasks: &[BuildTask],
@@ -260,6 +312,9 @@ pub fn copy_asset_to_out(
             )
         })?,
         AssetSource::Embedded(bytes) => bytes.clone(),
+        AssetSource::SiteIcon(src_path) => {
+            return render_site_icon(&out_path, src_path, security);
+        }
     };
     let is_svg = out_rel.to_ascii_lowercase().ends_with(".svg");
     if is_svg {
@@ -269,6 +324,55 @@ pub fn copy_asset_to_out(
             .with_context(|| format!("failed to write {}", out_path.display()))?;
     }
     Ok(())
+}
+
+fn render_site_icon(out_path: &Path, src_path: &Path, security: &SecurityConfig) -> Result<()> {
+    let source_svg = std::fs::read(src_path)
+        .with_context(|| format!("failed to read site icon {}", src_path.display()))?;
+    let svg = match security.svg.mode {
+        SvgSecurityMode::Off => source_svg,
+        mode => {
+            let text = std::str::from_utf8(&source_svg)
+                .with_context(|| format!("site icon is not valid UTF-8: {}", src_path.display()))?;
+            let scan = scan_svg(text)?;
+            if scan.issues.is_empty() {
+                source_svg
+            } else {
+                match mode {
+                    SvgSecurityMode::Fail => {
+                        bail!("svg security: site icon: {}", format_svg_issues(&scan));
+                    }
+                    SvgSecurityMode::Warn => {
+                        eprintln!(
+                            "warning: svg security: site icon: {}",
+                            format_svg_issues(&scan)
+                        );
+                        source_svg
+                    }
+                    SvgSecurityMode::Sanitize => sanitize_svg_text(text)?.into_bytes(),
+                    SvgSecurityMode::Off => unreachable!(),
+                }
+            }
+        }
+    };
+    let options = resvg::usvg::Options::default();
+    let tree = resvg::usvg::Tree::from_data(&svg, &options)
+        .map_err(|err| anyhow!("failed to parse site icon {}: {err}", src_path.display()))?;
+    let size = tree.size();
+    let scale = 32.0 / size.width().max(size.height());
+    let x = (32.0 - size.width() * scale) / 2.0;
+    let y = (32.0 - size.height() * scale) / 2.0;
+    let transform = resvg::tiny_skia::Transform::from_scale(scale, scale).post_translate(x, y);
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(32, 32)
+        .ok_or_else(|| anyhow!("failed to allocate 32x32 site icon"))?;
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed to create {}", parent.display()))?;
+    }
+    pixmap
+        .save_png(out_path)
+        .with_context(|| format!("failed to write site icon {}", out_path.display()))
 }
 
 fn write_svg_asset(

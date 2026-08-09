@@ -222,6 +222,7 @@ pub struct SiteMeta {
     pub title: String,
     pub tagline: Option<String>,
     pub logo: Option<String>,
+    pub icon: Option<String>,
     pub copyright: Option<String>,
     pub base_url: String,
     pub language: String,

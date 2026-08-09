@@ -1,0 +1,3 @@
+body { background: var(--c-wide-bg); }
+.wide-bg { min-height: 100vh; }
+.wide-bg > header .page, .wide-bg > main .page, .wide-bg > footer .page { background: var(--c-bg); }

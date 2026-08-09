@@ -19,6 +19,7 @@ pub struct InitOptions {
     pub base_url: String,
     pub language: String,
     pub kind: InitKind,
+    pub theme: Option<String>,
     pub color_theme: Option<String>,
     pub copy_all: bool,
     pub target_dir: PathBuf,
@@ -45,6 +46,7 @@ pub fn init_site(options: InitOptions) -> Result<()> {
         &base_url,
         &options.language,
         options.kind,
+        options.theme.as_deref(),
         options.color_theme.as_deref(),
     )?;
     let config_path = target_dir.join("stbl.yaml");
@@ -116,17 +118,20 @@ fn render_config(
     base_url: &str,
     language: &str,
     kind: InitKind,
+    theme: Option<&str>,
     color_theme: Option<&str>,
 ) -> Result<String> {
     let title = yaml_string(title);
     let language = yaml_string(language);
     let base_url = yaml_string(base_url);
     let site_id = yaml_string(site_id);
+    let theme = yaml_string(theme.unwrap_or("stbl"));
     let mut out = CONFIG_TEMPLATE
         .replace("{{SITE_ID}}", &site_id)
         .replace("{{TITLE}}", &title)
         .replace("{{BASE_URL}}", &base_url)
-        .replace("{{LANG}}", &language);
+        .replace("{{LANG}}", &language)
+        .replace("{{THEME_VARIANT}}", &theme);
 
     let theme_block = match color_theme {
         Some(theme) => render_theme_preset_block(theme)?,

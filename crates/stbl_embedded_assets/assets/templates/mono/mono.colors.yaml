@@ -1,0 +1,17 @@
+base:
+  bg: "#ffffff"
+  fg: "#171717"
+  heading: "#111111"
+  accent: "#111111"
+  link: "#111111"
+
+nav:
+  bg: "#ffffff"
+  fg: "#171717"
+  border: "#d9d9d9"
+
+wide_background:
+  color: "#f4f4f4"
+  opacity: 0.0
+  style: cover
+  position: "center top"

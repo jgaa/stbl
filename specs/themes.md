@@ -118,8 +118,8 @@ These are the themes that are ready or planned.
 | ---------|-------|--------|----------|-------------|
 | stbl     | [x]   | A      | 3        | Default stbl theme |
 | minimal  | [x]   | A      | 2        | For blogs |
-| paper    | [ ]   | A      | 2        | For blogs |
-| mono     | [ ]   | A      | 1        | For blogs |
+| paper    | [x]   | A      | 2        | Editorial long-form blogs and essays |
+| mono     | [x]   | A      | 1        | Monochrome, distraction-free blogs |
 | liberty  | [x]   | B      | 4        | Mission-driven privacy and open-source technology projects |
 | modern   | [ ]   | C      | 4        | Modern blog and/or presentation |
 | cleanbrand | [ ] | C      | 4        | Presentation / landing page |

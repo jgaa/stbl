@@ -941,6 +941,7 @@ struct SiteBrandView {
     tagline: Option<String>,
     logo: Option<String>,
     logo_url: Option<String>,
+    icon_url: Option<String>,
 }
 
 fn build_nav_view(project: &Project, current_href: &str, rel: &str) -> Vec<NavItemView> {
@@ -1010,11 +1011,16 @@ fn build_site_brand_view(
             .unwrap_or(normalized);
         Some(format!("{rel}{resolved}"))
     });
+    let icon_url = asset_manifest
+        .entries
+        .get("site-icon.png")
+        .map(|resolved| format!("{rel}{resolved}"));
     SiteBrandView {
         title,
         tagline,
         logo,
         logo_url,
+        icon_url,
     }
 }
 
@@ -1298,6 +1304,7 @@ mod tests {
         SystemConfig, TagListingPage, build_nav_view, effective_updated_timestamp,
         format_timestamp_display, format_timestamp_ymd, render_blog_index, render_page,
         render_page_with_series_nav, render_series_index, render_tag_index,
+        root_prefix_for_base_url,
     };
     use crate::assets::AssetManifest;
     use crate::config::load_site_config;
@@ -1533,6 +1540,85 @@ mod tests {
         assert!(html.contains("Ada"));
         assert!(html.contains("privacy"));
         assert!(html.contains("Published"));
+    }
+
+    #[test]
+    fn paper_theme_renders_editorial_typography_over_full_templates() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\ntheme:\n  variant: paper\n",
+            SiteContent::default(),
+        );
+        let page = simple_page("Paper article", "articles/paper.md");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "paper.html",
+            "2026-07-30",
+            None,
+            None,
+        )
+        .expect("render paper theme");
+
+        assert!(html.contains("<main>"));
+        assert!(html.contains("Paper article"));
+        assert!(html.contains("class=\"content\""));
+    }
+
+    #[test]
+    fn mono_theme_renders_content_with_inherited_templates() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\ntheme:\n  variant: mono\n",
+            SiteContent::default(),
+        );
+        let page = simple_page("Mono article", "articles/mono.md");
+        let html = render_page(
+            &project,
+            &page,
+            &default_manifest(),
+            "mono.html",
+            "2026-07-30",
+            None,
+            None,
+        )
+        .expect("render mono theme");
+
+        assert!(html.contains("Mono article"));
+        assert!(html.contains("class=\"content\""));
+        assert!(html.contains("class=\"nav-desktop site-nav\""));
+    }
+
+    #[test]
+    fn configured_site_icon_is_linked_as_a_32_pixel_png() {
+        let project = project_with_config(
+            "site:\n  id: \"demo\"\n  title: \"Demo\"\n  icon: \"images/icon.svg\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\n",
+            SiteContent::default(),
+        );
+        let html = render_page(
+            &project,
+            &simple_page("Icon article", "articles/icon.md"),
+            &default_manifest_with_icon(),
+            "icon.html",
+            "2026-07-30",
+            None,
+            None,
+        )
+        .expect("render icon page");
+
+        assert!(html.contains("rel=\"icon\" type=\"image/png\" sizes=\"32x32\""));
+        assert!(html.contains("site-icon.png"));
+    }
+
+    #[test]
+    fn base_url_path_becomes_the_rendered_root_prefix() {
+        assert_eq!(
+            root_prefix_for_base_url("https://nextapp.org/sites/a/b/c/demo/"),
+            "/sites/a/b/c/demo/"
+        );
+        assert_eq!(
+            root_prefix_for_base_url("https://nextapp.org/sites/a/b/c/demo"),
+            "/sites/a/b/c/demo/"
+        );
     }
 
     #[test]
@@ -1982,5 +2068,14 @@ mod tests {
             "artifacts/css/wide-desktop.css".to_string(),
         );
         AssetManifest { entries }
+    }
+
+    fn default_manifest_with_icon() -> AssetManifest {
+        let mut manifest = default_manifest();
+        manifest.entries.insert(
+            "site-icon.png".to_string(),
+            "artifacts/site-icon.png".to_string(),
+        );
+        manifest
     }
 }

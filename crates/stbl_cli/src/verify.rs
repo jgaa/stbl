@@ -880,6 +880,7 @@ fn warn_unknown_site_entries(value: &Value, report: &mut Report, path: &str, pre
         "title",
         "tagline",
         "logo",
+        "icon",
         "abstract",
         "copyright",
         "base_url",
@@ -1435,6 +1436,7 @@ site:
   title: "Demo"
   tagline: "Quietly better"
   logo: "images/logo.svg"
+  icon: "images/icon.svg"
   base_url: "https://example.com/"
   language: "en"
 syntax:
