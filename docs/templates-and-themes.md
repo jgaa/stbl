@@ -16,6 +16,35 @@ Notes:
 - `default` is treated as alias for `stbl`.
 - Empty variant also resolves to `stbl`.
 
+## Product landing theme
+
+`theme.variant: product` selects a product landing theme with bold headings,
+an inline logo and menu, quiet navigation, responsive hero images, and primary
+and secondary link buttons. Its blue default palette is also available as the
+`product` color preset. Existing color presets and custom overrides work with
+this theme; button text is chosen for contrast against the resolved accent.
+
+An optional action sits beside the logo and menu:
+
+```yaml
+theme:
+  variant: product
+  header:
+    action:
+      title: Get Started
+      href: download
+```
+
+The action is a link. Relative page destinations use `UrlMapper` and the site
+base path, so `download` follows the configured URL style. External URLs,
+root paths and fragments retain their meaning. The product header keeps the
+logo, navigation and action inline on desktop; mobile uses a native `details`
+menu. Buttons and navigation require no JavaScript. Responsive custom video
+posters use a small shared script, with a generated poster when scripts are
+disabled.
+
+Use `@[button]` in hero and callout content; see [Landing Pages](landing-pages.md).
+
 ## Theme Config Surface
 
 Main theme fields in `stbl.yaml`:
@@ -30,6 +59,8 @@ Main theme fields in `stbl.yaml`:
 - `theme.header.menu_align`
 - `theme.header.title_size`
 - `theme.header.tagline_size`
+- `theme.header.action.title`
+- `theme.header.action.href`
 - `theme.wide_background.*`
 - `theme.color_scheme.*`
 

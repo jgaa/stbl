@@ -1,0 +1,14 @@
+.nav-desktop { display: none; }
+.nav-mobile { display: block; grid-column: 1 / -1; }
+.product-header .page { padding-block: .85rem; gap: .65rem; }
+.product-header .brand-logo { width: 2rem; height: 2rem; }
+.product-header .brand-title { font-size: 1.1rem; }
+.product-header .brand-tagline { font-size: .8rem; }
+.product-header .header-action { padding: .6rem .85rem; font-size: .85rem; }
+.nav-mobile details > summary { cursor: pointer; display: list-item; list-style-position: inside; padding: .5rem .75rem; font-weight: 600; color: var(--c-fg); border: 1px solid var(--c-border); border-radius: .5rem; }
+.nav-mobile .menu-overlay { padding-block: .5rem; }
+.nav-mobile .menu-overlay ul { list-style: none; padding: 0; margin: 0; }
+.nav-mobile .menu-overlay a { display: block; padding: .6rem .75rem; color: var(--c-fg); }
+.nav-mobile .menu-overlay a:hover, .nav-mobile .menu-overlay a[aria-current="page"] { background: var(--c-surface); color: var(--c-link); }
+.landing-card { padding: 1.25rem; }
+.button { max-width: 100%; }

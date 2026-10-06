@@ -148,3 +148,27 @@ fn mono_theme_is_embedded_with_monochrome_defaults() {
     assert!(text.contains("#ffffff"));
     assert!(text.contains("#111111"));
 }
+
+#[test]
+fn product_theme_embeds_header_buttons_and_native_navigation() {
+    let template = embedded::template("product").expect("product theme");
+    let paths = template
+        .assets
+        .iter()
+        .map(|asset| asset.path)
+        .collect::<BTreeSet<_>>();
+    for path in [
+        "product.colors.yaml",
+        "templates/base.html",
+        "templates/partials/header.html",
+        "css/common.css",
+        "css/desktop.css",
+        "css/mobile.css",
+        "css/wide-desktop.css",
+        "css/syntax.css",
+    ] {
+        assert!(paths.contains(path), "missing {path}");
+    }
+    let colors = embedded::template_colors_yaml("product").expect("product defaults");
+    assert!(std::str::from_utf8(colors).unwrap().contains("#0066ed"));
+}

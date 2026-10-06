@@ -274,3 +274,30 @@ candy:
   wide_background:
     color: "#fff0f6"
     opacity: 1.0
+
+product:
+  variant: product
+  colors:
+    bg: "#ffffff"
+    fg: "#334155"
+    heading: "#0f172a"
+    accent: "#0066ed"
+    link: "#0056c9"
+    muted: "#64748b"
+    surface: "#f3f7fc"
+    border: "#dce4ef"
+    link_hover: "#0045a3"
+    code_bg: "#edf2f8"
+    code_fg: "#0f172a"
+    quote_bg: "#f3f7fc"
+    quote_border: "#b6cef3"
+    wide_bg: "#f5f8fc"
+  nav:
+    bg: "#ffffff"
+    fg: "#334155"
+    border: "#dce4ef"
+  wide_background:
+    color: "#f5f8fc"
+    opacity: 0.0
+    style: Cover
+    position: "center top"

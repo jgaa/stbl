@@ -136,3 +136,13 @@ footer p, footer .footer-link { color: var(--c-muted); font-size: 0.9rem; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
+
+/* Hero text and media keep their reading order when stacked. */
+.landing-hero--split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: center; }
+.landing-hero__content, .landing-hero__image { min-width: 0; }
+.landing-hero__image > p, .landing-hero__image .media-frame { margin: 0; }
+.landing-hero__image picture { display: block; }
+.landing-hero__image img { display: block; width: 100%; height: auto; }
+
+/* Keep the video area stable as responsive poster variants change. */
+.video > .video__el { width: 100%; }

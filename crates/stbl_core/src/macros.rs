@@ -232,6 +232,7 @@ fn expand_macro(
         "include" => Some(expand_include(invocation.args(), ctx, options, state)),
         "note" | "tip" | "info" | "warning" | "danger" => expand_callout(invocation, &name, ctx),
         "quote" => expand_quote(invocation, ctx),
+        "button" => expand_button(invocation.args(), ctx),
         "figure" => Some(expand_figure(invocation.args(), ctx)),
         "kbd" => Some(expand_kbd_key(invocation, "kbd")),
         "key" => Some(expand_kbd_key(invocation, "key")),
@@ -241,6 +242,31 @@ fn expand_macro(
         "toc" => Some(expand_toc(invocation.args(), input_md)),
         _ => None,
     }
+}
+
+fn expand_button(args: Option<&str>, ctx: &MacroContext<'_>) -> Option<String> {
+    let mut text = None;
+    let mut href = None;
+    let mut kind = "primary".to_string();
+    let mut play = false;
+    for (key, value) in parse_args(args.unwrap_or_default()) {
+        match key.as_str() {
+            "text" => text = Some(value),
+            "href" => href = Some(value),
+            "kind" if matches!(value.as_str(), "primary" | "secondary") => kind = value,
+            "icon" if value == "play" => play = true,
+            _ => return None,
+        }
+    }
+    let text = text.filter(|text| !text.trim().is_empty())?;
+    let prefix = crate::templates::root_prefix_for_base_url(&ctx.project.config.site.base_url);
+    let href = UrlMapper::new(&ctx.project.config).action_href(&href?, &prefix)?;
+    Some(format!(
+        "<a class=\"button button--{kind}{}\" href=\"{}\">{}</a>",
+        if play { " button--play" } else { "" },
+        escape_attr(&href),
+        escape_html_text(&text)
+    ))
 }
 
 fn expand_include(
@@ -1444,6 +1470,7 @@ mod tests {
                 colors: ThemeColorOverrides::default(),
                 nav: ThemeNavOverrides::default(),
                 header: crate::model::ThemeHeaderConfig {
+                    action: None,
                     layout: Default::default(),
                     menu_align: Default::default(),
                     title_size: "1.3rem".to_string(),
@@ -2032,6 +2059,7 @@ mod tests {
         let project = project_with_pages(pages);
 
         let options = crate::render::RenderOptions {
+            hero_image: None,
             macro_project: Some(&project),
             macro_page: Some(&macro_page),
             macros_enabled: true,
@@ -2074,6 +2102,7 @@ mod tests {
         let project = project_with_pages(vec![page.clone()]);
 
         let options = crate::render::RenderOptions {
+            hero_image: None,
             macro_project: Some(&project),
             macro_page: Some(&page),
             macros_enabled: true,
@@ -2405,5 +2434,54 @@ Hello *world*.
             "@[include](path=\"once.md\", once=true)\n@[include](path=\"once.md\", once=true)";
         let output = expand_macros(input, &ctx).expect("expand");
         assert_eq!(output.matches("Once").count(), 1);
+    }
+    #[test]
+    fn button_macro_maps_destinations_and_escapes_labels() {
+        let mut project = project_with_pages(Vec::new());
+        project.config.site.base_url = "https://example.com/products/demo/".into();
+        project.config.site.url_style = UrlStyle::Pretty;
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+        let html = expand_macros(
+            "@[button](text=\"Start <now> & enjoy\", href=\"download?from=hero#start\")",
+            &ctx,
+        )
+        .unwrap();
+        assert!(html.contains("href=\"/products/demo/download/?from=hero#start\""));
+        assert!(html.contains("Start &lt;now&gt; &amp; enjoy"));
+        let video = expand_macros(
+            "@[button](text=\"Watch Video\", href=\"#demo\", kind=secondary, icon=play)",
+            &ctx,
+        )
+        .unwrap();
+        assert!(video.contains("button--secondary button--play"));
+        assert!(video.contains("href=\"#demo\""));
+    }
+
+    #[test]
+    fn button_macro_rejects_unsafe_urls_and_unsupported_arguments() {
+        let project = project_with_pages(Vec::new());
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: None,
+            render_markdown: None,
+            render_media: None,
+        };
+        for input in [
+            "@[button](text=Go, href=\"javascript:alert(1)\")",
+            "@[button](text=Go, href=\"data:text/html,Hi\")",
+            "@[button](text=Go, href=download, kind=unknown)",
+            "@[button](text=Go, href=download, icon=unknown)",
+            "@[button](text=Go)",
+            "@[button](text=\"\", href=download)",
+        ] {
+            assert_eq!(expand_macros(input, &ctx).unwrap(), input);
+        }
     }
 }

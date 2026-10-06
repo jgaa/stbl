@@ -22,6 +22,7 @@ pub struct ResolvedThemeVars {
     pub c_link: String,
     pub c_link_hover: String,
     pub c_accent: String,
+    pub c_accent_fg: String,
     pub c_nav_bg: String,
     pub c_nav_fg: String,
     pub c_nav_border: String,
@@ -193,6 +194,7 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         c_link: link.to_hex(),
         c_link_hover: link_hover.to_hex(),
         c_accent: accent.to_hex(),
+        c_accent_fg: accent_foreground(accent).to_hex(),
         c_nav_bg: nav_bg.to_hex(),
         c_nav_fg: nav_fg.to_hex(),
         c_nav_border: nav_border.to_hex(),
@@ -207,6 +209,27 @@ pub fn resolve_theme_vars(defaults_yaml: &[u8], config: &SiteConfig) -> Result<R
         wide_bg_position,
         wide_bg_opacity,
     })
+}
+
+fn relative_luminance(color: Rgb) -> f32 {
+    fn linear(channel: u8) -> f32 {
+        let value = f32::from(channel) / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+}
+
+fn accent_foreground(accent: Rgb) -> Rgb {
+    let luminance = relative_luminance(accent);
+    if (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05) {
+        Rgb::new(0, 0, 0)
+    } else {
+        Rgb::new(255, 255, 255)
+    }
 }
 
 fn resolve_wide_bg_color(

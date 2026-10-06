@@ -962,7 +962,25 @@ fn warn_unknown_theme_entries(value: &Value, report: &mut Report, path: &str) {
                 report,
                 path,
                 "theme.header",
-                &["layout", "menu_align", "title_size", "tagline_size"],
+                &[
+                    "layout",
+                    "menu_align",
+                    "title_size",
+                    "tagline_size",
+                    "action",
+                ],
+            );
+        }
+        if let Some(action) = map
+            .get(&Value::String("header".to_string()))
+            .and_then(|header| header.get("action"))
+        {
+            warn_unknown_entries(
+                action,
+                report,
+                path,
+                "theme.header.action",
+                &["title", "href"],
             );
         }
         if let Some(wide) = map.get(&Value::String("wide_background".to_string())) {

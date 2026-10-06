@@ -324,7 +324,17 @@ fn outputs_for_series(logical_key: &str) -> Vec<OutputArtifact> {
 }
 
 fn build_plan_hash_context(project: &Project) -> PlanHashContext {
-    let render_config_hash = hash_render_config(&project.config);
+    let mut render_hasher = Hasher::new();
+    render_hasher.update(&hash_render_config(&project.config));
+    // Poster availability and image dimensions may change without Markdown edits.
+    let media = serde_json::to_vec(&(
+        &project.image_alpha,
+        &project.image_variants,
+        &project.video_variants,
+    ))
+    .expect("media rendering metadata should serialize");
+    render_hasher.update(&media);
+    let render_config_hash = *render_hasher.finalize().as_bytes();
     let templates_hash = templates_hash();
     let mut doc_content_hashes = HashMap::new();
     for page in &project.content.pages {

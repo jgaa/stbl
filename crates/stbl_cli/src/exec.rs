@@ -597,8 +597,16 @@ fn run_parallel_video_jobs(
         TaskKind::ExtractVideoPoster {
             source,
             poster_time_sec,
+            height,
             out_rel,
-        } => extract_video_poster(&out_dir, out_rel, source, *poster_time_sec, &lookup),
+        } => extract_video_poster(
+            &out_dir,
+            out_rel,
+            source,
+            *poster_time_sec,
+            *height,
+            &lookup,
+        ),
         _ => Ok(()),
     })
 }
@@ -750,7 +758,7 @@ fn cache_put(cache: &mut Option<&mut dyn CacheStore>, task: &BuildTask) {
 
 fn render_vars_css(vars: &ResolvedThemeVars) -> String {
     format!(
-        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --header-title-size: {};\n  --header-tagline-size: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-title-fg: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
+        ":root {{\n  --layout-max-width: {};\n  --bp-desktop-min: {};\n  --bp-wide-min: {};\n  --header-title-size: {};\n  --header-tagline-size: {};\n  --c-bg: {};\n  --c-fg: {};\n  --c-heading: {};\n  --c-title-fg: {};\n  --c-muted: {};\n  --c-surface: {};\n  --c-border: {};\n  --c-link: {};\n  --c-link-hover: {};\n  --c-accent: {};\n  --c-accent-fg: {};\n  --c-nav-bg: {};\n  --c-nav-fg: {};\n  --c-nav-border: {};\n  --c-code-bg: {};\n  --c-code-fg: {};\n  --c-quote-bg: {};\n  --c-quote-border: {};\n  --c-wide-bg: {};\n  --wide-bg-image: {};\n  --wide-bg-repeat: {};\n  --wide-bg-size: {};\n  --wide-bg-position: {};\n  --wide-bg-opacity: {};\n}}\n",
         vars.max_body_width,
         vars.desktop_min,
         vars.wide_min,
@@ -766,6 +774,7 @@ fn render_vars_css(vars: &ResolvedThemeVars) -> String {
         vars.c_link,
         vars.c_link_hover,
         vars.c_accent,
+        vars.c_accent_fg,
         vars.c_nav_bg,
         vars.c_nav_fg,
         vars.c_nav_border,
@@ -968,6 +977,7 @@ fn extract_video_poster(
     out_rel: &str,
     source: &stbl_core::assets::AssetSourceId,
     poster_time_sec: u32,
+    height: u32,
     lookup: &VideoSourceLookup,
 ) -> Result<()> {
     let src_path = lookup
@@ -978,7 +988,7 @@ fn extract_video_poster(
         fs::create_dir_all(parent)
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
-    let scale_arg = normalized_video_scale_filter(u32::MAX);
+    let scale_arg = normalized_video_scale_filter(height);
     let status = Command::new("ffmpeg")
         .arg("-hide_banner")
         .arg("-loglevel")
@@ -1407,6 +1417,7 @@ fn render_blog_index_page(
     let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let intro_html = if page_no == 1 && !source_page.body_markdown.trim().is_empty() {
         let options = RenderOptions {
+            hero_image: None,
             macro_project: Some(project),
             macro_page: Some(source_page),
             macros_enabled: project.config.site.macros.enabled,

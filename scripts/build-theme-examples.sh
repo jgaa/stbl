@@ -10,7 +10,7 @@ gallery_base_url="${STBL_EXAMPLES_BASE_URL:-http://127.0.0.1:8000}"
 
 # Keep this list intentionally small: these presets cover light, dark, neutral,
 # and more colorful examples without producing an unwieldy gallery.
-color_themes=(default slate forest sand midnight blackandwhite)
+color_themes=(default product slate forest sand midnight blackandwhite)
 
 mapfile -t themes < <(
   cargo run --quiet --manifest-path "$repo_root/Cargo.toml" -- list-themes
@@ -49,6 +49,9 @@ for site_dir in "$repo_root"/examples/*; do
   site_name="$(basename "$site_dir")"
 
   for theme in "${themes[@]}"; do
+    if [[ "$theme" == "product" ]]; then
+      build_variant "$site_dir" "$site_name" "$theme" "" "${theme}-built-in"
+    fi
     if [[ "$theme" == "liberty" ]]; then
       build_variant "$site_dir" "$site_name" "$theme" "" "${theme}-built-in"
       continue

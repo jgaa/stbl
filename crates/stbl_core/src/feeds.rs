@@ -390,6 +390,7 @@ mod tests {
                 colors: ThemeColorOverrides::default(),
                 nav: ThemeNavOverrides::default(),
                 header: crate::model::ThemeHeaderConfig {
+                    action: None,
                     layout: Default::default(),
                     menu_align: Default::default(),
                     title_size: "1.3rem".to_string(),

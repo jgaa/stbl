@@ -1735,7 +1735,7 @@ mod tests {
         assert!(matches!(cli.command, Command::ListThemes));
         assert_eq!(
             embedded::template_names(),
-            &["liberty", "minimal", "mono", "paper", "stbl"]
+            &["liberty", "minimal", "mono", "paper", "product", "stbl"]
         );
     }
 

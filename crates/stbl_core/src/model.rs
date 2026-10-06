@@ -380,6 +380,8 @@ impl Default for ThemeHeaderLayout {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ThemeHeaderConfig {
+    #[serde(default)]
+    pub action: Option<MenuItem>,
     pub layout: ThemeHeaderLayout,
     pub menu_align: MenuAlign,
     pub title_size: String,
@@ -630,6 +632,7 @@ pub enum TaskKind {
     ExtractVideoPoster {
         source: AssetSourceId,
         poster_time_sec: u32,
+        height: u32,
         out_rel: String,
     },
     GenerateRss,

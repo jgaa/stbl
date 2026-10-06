@@ -1,16 +1,18 @@
 ---
 title: Helios Drift Systems
 template: landingpage.html
-banner: hyperdrive-hero
 ---
 
-::: hero align=center
+::: hero
 # Faster Transit for Small Hulls
 
 Helios Drift Systems builds propulsion for ships that do real work: survey
 boats, rescue cutters, medical shuttles, and owner-operated couriers. Our M1
 Hyperdrive gives light craft a practical inter-system range profile without
 turning the vessel into a maintenance nightmare.
+
+@[button](text="Get Started", href="contact")
+@[button](text="Explore M1", href="#built-for-real-world-use", kind=secondary)
 
 ![Helios Drift M1 core](images/m1-cutaway.png)
 :::
@@ -61,6 +63,7 @@ quarter.
 ::: callout
 ## Ready for the outer rims?
 
-[Read the company background](about.html) and [contact mission control](contact.html).
+@[button](text="Get Started", href="contact")
+@[button](text="About Helios", href="about", kind=secondary)
 :::
 :::

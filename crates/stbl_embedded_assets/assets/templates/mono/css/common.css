@@ -96,3 +96,13 @@ footer p, footer .footer-link { color: var(--c-muted); font-size: 0.85rem; }
 @media (prefers-color-scheme: dark) {
   :root { --c-bg: #111111; --c-fg: #eeeeee; --c-heading: #ffffff; --c-title-fg: #ffffff; --c-muted: #a8a8a8; --c-border: #3d3d3d; --c-link: #ffffff; --c-link-hover: #d0d0d0; --c-surface: #1d1d1d; --c-code-bg: #1d1d1d; --c-code-fg: #eeeeee; --c-accent: #ffffff; --c-nav-bg: #111111; --c-nav-fg: #eeeeee; --c-nav-border: #3d3d3d; }
 }
+
+/* Hero text and media keep their reading order when stacked. */
+.landing-hero--split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: center; }
+.landing-hero__content, .landing-hero__image { min-width: 0; }
+.landing-hero__image > p, .landing-hero__image .media-frame { margin: 0; }
+.landing-hero__image picture { display: block; }
+.landing-hero__image img { display: block; width: 100%; height: auto; }
+
+/* Keep the video area stable as responsive poster variants change. */
+.video > .video__el { width: 100%; }

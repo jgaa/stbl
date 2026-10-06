@@ -1,4 +1,5 @@
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use serde::Serialize;
 use std::collections::BTreeMap;
 
 use crate::assets::AssetSourceId;
@@ -45,6 +46,7 @@ pub struct ImageRef {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoRef {
+    pub poster: Option<MediaPath>,
     pub path: MediaPath,
     pub alt: String,
     pub prefer_p: u16,
@@ -68,14 +70,14 @@ pub struct ImagePlanInput {
     pub dimensions: BTreeMap<String, MediaDimensions>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ImageVariantFallback {
     pub path: String,
     pub format: ImageOutputFormat,
     pub mime: &'static str,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct ImageVariantSet {
     pub avif: Option<String>,
     pub webp: Option<String>,
@@ -209,7 +211,7 @@ fn parse_media_destination_internal(
         }
         return Some(MediaRef::Image(ImageRef {
             path: MediaPath {
-                raw: path.to_string(),
+                raw: normalize_media_path(path),
             },
             alt: alt.to_string(),
             attrs,
@@ -221,10 +223,24 @@ fn parse_media_destination_internal(
     if path.starts_with("video/") {
         let mut attrs = Vec::new();
         let mut prefer_p: u16 = 720;
+        let mut poster = None;
         let mut maxw = None;
         let mut maxh = None;
         for attr in parts {
             let attr = attr.trim();
+            if let Some(value) = attr.strip_prefix("poster=") {
+                let value = normalize_media_path(value.trim());
+                if !value.starts_with("images/") || value.ends_with('/') {
+                    if let Some(errors) = errors.as_deref_mut() {
+                        errors.push(format!(
+                            "invalid poster '{value}' in '{dest}'; expected a local images/ path"
+                        ));
+                    }
+                    return None;
+                }
+                poster = Some(MediaPath { raw: value });
+                continue;
+            }
             if let Some(value) = parse_video_prefer(attr) {
                 prefer_p = value;
                 attrs.push(VideoAttr::PreferP(value));
@@ -263,8 +279,9 @@ fn parse_media_destination_internal(
             }
         }
         return Some(MediaRef::Video(VideoRef {
+            poster,
             path: MediaPath {
-                raw: path.to_string(),
+                raw: normalize_media_path(path),
             },
             alt: alt.to_string(),
             prefer_p,
@@ -316,6 +333,14 @@ fn parse_media_length(value: &str) -> Option<String> {
     Some(value.to_string())
 }
 
+/// Keep equivalent local media spellings in the same scaling plan.
+pub fn normalize_media_path(path: &str) -> String {
+    path.split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 // (collect_media_refs defined earlier with error support)
 
 pub fn plan_image_tasks(
@@ -329,6 +354,7 @@ pub fn plan_image_tasks(
     paths.sort();
     let mut widths = widths.to_vec();
     widths.sort_unstable();
+    widths.dedup();
     for path in paths {
         let source = images.sources.get(&path).expect("source exists");
         let input_hash = images
@@ -552,6 +578,7 @@ pub fn plan_video_tasks(
     paths.sort();
     let mut heights = heights.to_vec();
     heights.sort_unstable();
+    heights.dedup();
     for path in paths {
         let source = videos.sources.get(&path).expect("source exists");
         let input_hash = videos
@@ -591,10 +618,11 @@ pub fn plan_video_tasks(
         let poster_kind = TaskKind::ExtractVideoPoster {
             source: source.clone(),
             poster_time_sec,
+            height: 720,
             out_rel: poster_rel.clone(),
         };
         let poster_label = format!("t={poster_time_sec}");
-        let poster_id = TaskId::new("vid_poster", &[path.as_str(), &poster_label]);
+        let poster_id = TaskId::new("vid_poster", &[path.as_str(), &poster_label, "h=720"]);
         let poster_fingerprint =
             fingerprint_video_task(&poster_id, "ExtractVideoPoster", input_hash);
         tasks.push(BuildTask {

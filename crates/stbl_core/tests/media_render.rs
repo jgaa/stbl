@@ -7,6 +7,7 @@ fn managed_video_renders_html5_video_markup() {
     let heights = vec![360, 480, 720];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        hero_image: None,
         macro_project: None,
         macro_page: None,
         macros_enabled: false,
@@ -29,7 +30,7 @@ fn managed_video_renders_html5_video_markup() {
 
     assert!(html.contains("<video"));
     assert!(html.contains("controls"));
-    assert!(html.contains("preload=\"metadata\""));
+    assert!(html.contains("preload=\"none\""));
     assert!(html.contains("data-stbl-video"));
     assert!(html.contains("data-prefer=\"p360\""));
     assert!(html.contains("data-prefer=\"p720\""));
@@ -55,6 +56,7 @@ fn image_with_max_constraints_wraps_media_frame() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        hero_image: None,
         macro_project: None,
         macro_page: None,
         macros_enabled: false,
@@ -85,6 +87,7 @@ fn banner_ignores_max_constraints() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        hero_image: None,
         macro_project: None,
         macro_page: None,
         macros_enabled: false,
@@ -114,6 +117,7 @@ fn non_managed_video_links_render_as_images() {
     let heights = vec![360, 480];
     let widths = vec![360, 720];
     let options = RenderOptions {
+        hero_image: None,
         macro_project: None,
         macro_page: None,
         macros_enabled: false,

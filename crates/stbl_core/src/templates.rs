@@ -874,6 +874,7 @@ fn render_markdown_with_media(
     landing: bool,
 ) -> String {
     let options = RenderOptions {
+        hero_image: None,
         macro_project: Some(project),
         macro_page: page,
         macros_enabled: project.config.site.macros.enabled,
@@ -893,8 +894,14 @@ fn render_markdown_with_media(
         syntax_line_numbers: project.config.syntax.line_numbers,
     };
     if landing {
-        crate::landing::render(markdown, rel, |fragment| {
-            render_markdown_to_html_with_media(fragment, &options)
+        crate::landing::render_with_context(markdown, rel, |fragment, hero_image| {
+            render_markdown_to_html_with_media(
+                fragment,
+                &RenderOptions {
+                    hero_image,
+                    ..options
+                },
+            )
         })
     } else {
         render_markdown_to_html_with_media(&crate::landing::strip_containers(markdown), &options)
@@ -911,6 +918,7 @@ pub fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<S
         banner_path = format!("images/{banner_path}");
     }
     let options = RenderOptions {
+        hero_image: None,
         macro_project: None,
         macro_page: None,
         macros_enabled: false,
@@ -951,6 +959,7 @@ struct SiteBrandView {
     logo: Option<String>,
     logo_url: Option<String>,
     icon_url: Option<String>,
+    header_action: Option<NavItemView>,
 }
 
 fn build_nav_view(project: &Project, current_href: &str, rel: &str) -> Vec<NavItemView> {
@@ -1024,7 +1033,21 @@ fn build_site_brand_view(
         .entries
         .get("site-icon.png")
         .map(|resolved| format!("{rel}{resolved}"));
+    let header_action = project
+        .config
+        .theme
+        .header
+        .action
+        .as_ref()
+        .and_then(|action| {
+            Some(NavItemView {
+                label: action.title.clone(),
+                href: UrlMapper::new(&project.config).action_href(&action.href, rel)?,
+                is_active: false,
+            })
+        });
     SiteBrandView {
+        header_action,
         title,
         tagline,
         logo,
@@ -1063,7 +1086,7 @@ fn header_layout_value(project: &Project) -> &'static str {
     }
 }
 
-fn root_prefix_for_base_url(base_url: &str) -> String {
+pub(crate) fn root_prefix_for_base_url(base_url: &str) -> String {
     let trimmed = base_url.trim();
     if trimmed.is_empty() {
         return "/".to_string();

@@ -26,6 +26,28 @@ impl UrlMapper {
         }
     }
 
+    /// Resolve a page action against the site's URL style and mount path.
+    /// External URLs, fragments and explicit root paths retain their meaning.
+    pub fn action_href(&self, target: &str, root_prefix: &str) -> Option<String> {
+        let target = target.trim();
+        if target.is_empty() || target.chars().any(|ch| ch.is_control()) {
+            return None;
+        }
+        if target.starts_with('#') || target.starts_with('/') || target.starts_with('?') {
+            return Some(target.to_string());
+        }
+        if target.contains(':') {
+            return ["https://", "http://", "mailto:", "tel:"]
+                .iter()
+                .any(|scheme| target.starts_with(scheme))
+                .then(|| target.to_string());
+        }
+        let split = target.find(['?', '#']).unwrap_or(target.len());
+        let (path, suffix) = target.split_at(split);
+        let mapped = self.map(path.trim_start_matches("./"));
+        Some(format!("{root_prefix}{}{suffix}", mapped.href))
+    }
+
     pub fn map(&self, logical_key: &str) -> UrlMapping {
         let logical = normalize_logical_key(logical_key);
         match self.style {

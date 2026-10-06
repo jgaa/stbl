@@ -1,18 +1,12 @@
-.nav-desktop { display: block; background: transparent; border-radius: 0; }
+.nav-desktop { display: block; }
 .nav-mobile { display: none; }
-
+.product-header .page { grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; column-gap: 1.75rem; }
+.product-header .brand { max-width: 16rem; }
+.menu-align-left .site-nav ul { justify-content: flex-start; }
+.menu-align-right .site-nav ul { justify-content: flex-end; }
 .landing-features__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .landing-feature { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
 .landing-feature--reverse .landing-feature__image { order: 2; }
-.nav-desktop ul { padding: 0; }
-.nav-desktop a { color: var(--c-fg); padding: 0; }
-.nav-desktop li + li a { border-left: 0; }
-.menu-align-left .nav-desktop ul { justify-content: flex-start; }
-.menu-align-center .nav-desktop ul { justify-content: center; }
-.menu-align-right .nav-desktop ul { justify-content: flex-end; }
-.page-meta { align-items: center; }
-.page-meta .meta-authors, .page-meta .page-tags { padding: 0; border: 0; border-radius: 0; background: transparent; }
-
 .landing-hero--split { grid-template-columns: minmax(0, var(--hero-text-weight, 1fr)) minmax(0, var(--hero-image-weight, 1fr)); }
 .landing-hero--split.landing-hero--reverse { grid-template-columns: minmax(0, var(--hero-image-weight, 1fr)) minmax(0, var(--hero-text-weight, 1fr)); }
 .landing-hero--reverse .landing-hero__image { grid-column: 1; grid-row: 1; }

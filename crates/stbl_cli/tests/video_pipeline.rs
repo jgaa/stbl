@@ -107,5 +107,11 @@ fn video_pipeline_generates_variants_and_posters() {
         assert!(bytes.len() > 2, "poster too small for {video}");
         assert_eq!(bytes[0], 0xFF, "poster not jpeg for {video}");
         assert_eq!(bytes[1], 0xD8, "poster not jpeg for {video}");
+        assert!(
+            image::image_dimensions(&poster)
+                .expect("poster dimensions")
+                .1
+                <= 720
+        );
     }
 }

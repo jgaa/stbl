@@ -90,9 +90,38 @@ Heights come from:
 
 Poster extraction time:
 
-- `media.video.poster_time_sec` in config
+- `media.video.poster_time` in config
 
 Video metadata probing and transcoding use `ffmpeg`.
+
+## Custom responsive video posters
+
+Use the ordinary video syntax with a local poster image:
+
+```markdown
+![Introduction](video/intro-to-nextapp.mp4;poster=images/product-hero.png)
+```
+
+The poster shares `media.images.widths`, formats and quality with ordinary
+images. Reusing an image in a hero, banner, background, or multiple posters
+creates one set of image variants. Equivalent `images/./file.png` paths and
+repeated configured widths do not create duplicate scaling tasks.
+
+A small shared script lets the browser choose from those variants for the
+video's actual width and device pixel density. It uses the same format order
+as ordinary pictures (AVIF when enabled, WebP, then JPEG/PNG). Selection starts
+when the video approaches the viewport and responds to size changes. The
+player and its controls remain native HTML video.
+
+An extracted JPEG is always available as the fallback: it is used when no
+custom poster is specified, the optional image is missing or unreadable,
+loading fails, or JavaScript is disabled. Extracted posters are limited to
+720px high without upscaling. Video data uses `preload="none"` to avoid loading
+it before playback.
+
+Built-in themes load `js/video-posters.js`. Custom base templates need to
+include that asset for responsive poster selection; native playback and the
+generated fallback work without it.
 
 ## Required Tooling
 

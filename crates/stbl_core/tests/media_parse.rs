@@ -131,3 +131,36 @@ fn collect_media_refs_from_markdown() {
         _ => panic!("expected video"),
     }
 }
+
+#[test]
+fn parse_video_custom_poster_and_normalize_shared_image_paths() {
+    let media = parse_media_destination(
+        "video/./intro.mp4;p480;poster=images/./shared.png;maxw=80%",
+        "Introduction",
+    )
+    .unwrap();
+    let MediaRef::Video(video) = media else {
+        panic!("expected video")
+    };
+    assert_eq!(video.path.raw, "video/intro.mp4");
+    assert_eq!(video.poster.unwrap().raw, "images/shared.png");
+    assert_eq!(video.prefer_p, 480);
+    assert_eq!(video.maxw.as_deref(), Some("80%"));
+    let MediaRef::Image(image) =
+        parse_media_destination("images//./shared.png;banner", "Hero").unwrap()
+    else {
+        panic!("expected image")
+    };
+    assert_eq!(image.path.raw, "images/shared.png");
+}
+
+#[test]
+fn invalid_video_poster_is_a_parse_error() {
+    for poster in ["", "other.png", "https://example.com/poster.jpg", "images/"] {
+        let markdown = format!("![Introduction](video/intro.mp4;poster={poster})");
+        let (refs, errors) = collect_media_refs_with_errors(&markdown);
+        assert!(refs.is_empty(), "{poster}");
+        assert_eq!(errors.len(), 1, "{poster}");
+        assert!(errors[0].contains("invalid poster"));
+    }
+}

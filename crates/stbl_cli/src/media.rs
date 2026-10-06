@@ -5,7 +5,9 @@ use std::process::Command;
 use anyhow::{Context, Result, bail};
 use image::{ColorType, GenericImageView};
 use stbl_core::assets::AssetSourceId;
-use stbl_core::media::{ImagePlanInput, MediaDimensions, MediaRef, VideoPlanInput};
+use stbl_core::media::{
+    ImagePlanInput, MediaDimensions, MediaRef, VideoPlanInput, normalize_media_path,
+};
 use stbl_core::model::{Page, Project};
 
 #[derive(Debug, Default, Clone)]
@@ -32,20 +34,36 @@ impl VideoSourceLookup {
 
 pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSourceLookup)> {
     let mut paths = BTreeSet::new();
+    let mut posters = BTreeSet::new();
     for page in all_pages(project) {
         for media_ref in &page.media_refs {
-            if let MediaRef::Image(image_ref) = media_ref {
-                paths.insert(image_ref.path.raw.clone());
+            match media_ref {
+                MediaRef::Image(image_ref) => {
+                    paths.insert(image_ref.path.raw.clone());
+                }
+                MediaRef::Video(video_ref) => {
+                    if let Some(poster) = &video_ref.poster {
+                        posters.insert(poster.raw.clone());
+                    }
+                }
             }
         }
         if let Some(name) = page.banner_name.as_ref() {
             let resolved = resolve_banner_name(&project.root, name)
                 .with_context(|| format!("failed to resolve banner '{}'", name))?;
-            paths.insert(resolved);
+            paths.insert(normalize_media_path(&resolved));
         }
     }
     if let Some(path) = resolve_wide_background_image_path(project)? {
-        paths.insert(path);
+        paths.insert(normalize_media_path(&path));
+    }
+    let required_paths = paths.clone();
+    for poster in posters {
+        if project.root.join(&poster).is_file() {
+            paths.insert(poster);
+        } else if !paths.contains(&poster) {
+            eprintln!("warning: poster image not found: {poster}; using generated video poster");
+        }
     }
 
     let mut sources = BTreeMap::new();
@@ -58,8 +76,19 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
         if !abs_path.exists() {
             bail!("image not found: {}", abs_path.display());
         }
-        let (has_alpha, detected) = detect_alpha_and_dimensions(&abs_path)
-            .with_context(|| format!("failed to inspect image {}", abs_path.display()))?;
+        let (has_alpha, detected) = match detect_alpha_and_dimensions(&abs_path) {
+            Ok(metadata) => metadata,
+            Err(error) if !required_paths.contains(&logical) => {
+                eprintln!(
+                    "warning: failed to inspect poster {logical}: {error}; using generated video poster"
+                );
+                continue;
+            }
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to inspect image {}", abs_path.display()));
+            }
+        };
         if let Some(detected) = detected {
             dimensions.insert(logical.clone(), detected);
         }

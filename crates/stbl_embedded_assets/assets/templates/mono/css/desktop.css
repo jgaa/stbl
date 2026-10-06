@@ -6,3 +6,8 @@
 .landing-feature--reverse .landing-feature__image { order: 2; }
 .page-meta { align-items: baseline; }
 @media (min-width: 1400px) { main > .page { max-width: calc(var(--mono-content-width) + 2 * var(--mono-page-padding)); } }
+
+.landing-hero--split { grid-template-columns: minmax(0, var(--hero-text-weight, 1fr)) minmax(0, var(--hero-image-weight, 1fr)); }
+.landing-hero--split.landing-hero--reverse { grid-template-columns: minmax(0, var(--hero-image-weight, 1fr)) minmax(0, var(--hero-text-weight, 1fr)); }
+.landing-hero--reverse .landing-hero__image { grid-column: 1; grid-row: 1; }
+.landing-hero--reverse .landing-hero__content { grid-column: 2; grid-row: 1; }

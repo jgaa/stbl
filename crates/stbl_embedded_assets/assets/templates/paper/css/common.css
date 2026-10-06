@@ -85,3 +85,6 @@ footer p, footer .footer-link { color: var(--c-muted); font-size: 0.88rem; }
 @media (prefers-color-scheme: dark) {
   :root { --c-bg: #1d1b19; --c-fg: #ece7df; --c-heading: #ece7df; --c-title-fg: #ece7df; --c-muted: #a8a097; --c-border: #49433d; --c-link: #d6b37d; --c-link-hover: #efd19f; --c-surface: #272421; --c-code-bg: #272421; --c-code-fg: #ece7df; --c-accent: #d6b37d; --c-nav-bg: #1d1b19; --c-nav-fg: #ece7df; --c-nav-border: #49433d; }
 }
+
+/* Keep the video area stable as responsive poster variants change. */
+.video > .video__el { width: 100%; }

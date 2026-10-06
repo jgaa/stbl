@@ -27,6 +27,9 @@ theme:
   #   menu_align: left
   #   # title_size: "1.3rem"
   #   # tagline_size: "1rem"
+  #   # action: # optional header button in the product theme
+  #   #   title: "Get Started"
+  #   #   href: "download"
   # wide_background:
   #   color: "#ffffff"
   #   image: "images/hero.jpg"

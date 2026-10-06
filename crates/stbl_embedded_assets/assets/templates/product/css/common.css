@@ -921,5 +921,52 @@ footer p:last-child {
 .landing-hero__image picture { display: block; }
 .landing-hero__image img { display: block; width: 100%; height: auto; }
 
-/* Keep the video area stable as responsive poster variants change. */
-.video > .video__el { width: 100%; }
+/* Product presentation: quiet navigation and a clear hierarchy of actions. */
+:root { color-scheme: light dark; }
+body { line-height: 1.65; }
+:focus-visible { outline: 3px solid var(--c-link); outline-offset: 4px; }
+.skip-link { position: absolute; top: -5rem; left: 1rem; padding: .75rem 1rem; z-index: 1000; background: var(--c-bg); color: var(--c-fg); }
+.skip-link:focus { top: 1rem; }
+h1, h2, h3, h4, h5, h6 { font-weight: 800; letter-spacing: -.035em; }
+h1 { font-size: clamp(2.2rem, 4vw, 3.4rem); line-height: 1.08; }
+h2 { font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.15; }
+h3 { font-size: 1.2rem; line-height: 1.3; }
+.product-header { background: var(--c-bg); color: var(--c-fg); border-bottom: 1px solid var(--c-border); }
+.product-header .page { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1rem; padding-block: 1.15rem; }
+.brand { min-width: 0; }
+.brand-text { min-width: 0; }
+.brand-title { font-weight: 800; letter-spacing: -.025em; }
+.brand-tagline { font-size: min(var(--header-tagline-size), .9rem); }
+.brand-logo { flex-shrink: 0; }
+.site-nav ul { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .3rem 1rem; list-style: none; margin: 0; padding: 0; }
+.site-nav a { display: inline-block; padding: .4rem 0; color: var(--c-fg); font-size: .9rem; font-weight: 600; text-decoration: none; }
+.site-nav a:hover, .site-nav a[aria-current="page"] { color: var(--c-link); text-decoration: underline; text-underline-offset: .35em; }
+.product-header .header-action { justify-self: end; margin: 0; white-space: nowrap; }
+.button { display: inline-flex; align-items: center; justify-content: center; gap: .6rem; min-height: 2.75rem; padding: .7rem 1.25rem; margin: .3rem .65rem .3rem 0; border: 1px solid transparent; border-radius: .55rem; font: inherit; font-size: .95rem; font-weight: 700; line-height: 1.3; text-decoration: none; vertical-align: middle; }
+.button--primary { background: var(--c-accent); color: var(--c-accent-fg); border-color: var(--c-accent); }
+.button--primary:hover { color: var(--c-accent-fg); text-decoration: none; outline: 2px solid var(--c-accent); outline-offset: 3px; }
+.button--secondary { background: transparent; color: var(--c-link); padding-inline: .65rem; }
+.button--secondary:hover { color: var(--c-link-hover); text-decoration: underline; text-underline-offset: .25em; }
+.button--play::before { content: "▶"; display: inline-flex; align-items: center; justify-content: center; width: 1.45rem; height: 1.45rem; flex-shrink: 0; border: 1.5px solid currentColor; border-radius: 50%; font-size: .6rem; padding-left: .08rem; }
+.landing-hero, .landing-section, .landing-features, .landing-feature, .landing-callout { margin-block: clamp(3rem, 6vw, 5rem); }
+.landing-hero__content > p { max-width: 36rem; font-size: 1.075rem; }
+.landing-hero--center { max-width: 56rem; margin-inline: auto; }
+.landing-hero--center > p { max-width: 40rem; margin-inline: auto; }
+.landing-section { padding: clamp(1.5rem, 4vw, 3rem); border-radius: 1rem; }
+.landing-section h2, .landing-features > h2 { text-align: center; }
+.landing-card { padding: 1.75rem; border-radius: 1rem; background: var(--c-bg); }
+.landing-card h3 { margin-top: .5rem; }
+.landing-card__icon { width: 3rem; height: 3rem; }
+.landing-feature__content { min-width: 0; }
+.landing-callout { padding: clamp(2rem, 5vw, 4rem); text-align: center; border-radius: 1rem; background: var(--c-surface); background: linear-gradient(135deg, color-mix(in srgb, var(--c-accent) 9%, var(--c-bg)), var(--c-surface)); }
+.landing-callout h2 { margin-top: 0; }
+.landing-callout p { max-width: 40rem; margin-inline: auto; }
+.landing-section--accent { color: var(--c-accent-fg); }
+.landing-section--accent :is(h1,h2,h3,h4,h5,h6), .landing-section--contrast :is(h1,h2,h3,h4,h5,h6) { color: inherit; }
+.landing-section--contrast .landing-callout, .landing-section--accent .landing-callout, .landing-section--contrast .landing-card, .landing-section--accent .landing-card { color: var(--c-fg); }
+.landing-section--contrast .landing-callout :is(h1,h2,h3,h4,h5,h6), .landing-section--accent .landing-callout :is(h1,h2,h3,h4,h5,h6), .landing-section--contrast .landing-card :is(h1,h2,h3,h4,h5,h6), .landing-section--accent .landing-card :is(h1,h2,h3,h4,h5,h6) { color: var(--c-heading); }
+
+.landing-section > p > video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: var(--video-maxh); background: var(--c-surface); }
+
+/* Managed video keeps the same presentation as an ordinary native video. */
+.landing-section .video > .video__el { width: 100%; aspect-ratio: 16 / 9; }

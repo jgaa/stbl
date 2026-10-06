@@ -36,7 +36,11 @@ DarkSpeak is a private messenger designed around peer-to-peer communication.
 
 The available components are:
 
-- `hero` — the introductory page section; accepts `align=left` or `align=center`.
+- `hero` — the introductory page section; accepts `align=left` or `align=center`,
+  and the boolean `reverse` attribute. By default, the first standalone Markdown
+  image sits to the right of the text on desktop. `reverse` puts it on the left.
+  Both stack with text first on mobile. `align=center` keeps the centered,
+  stacked presentation.
 - `section` — a visual section; accepts `tone=default`, `subtle`, `accent`, or
   `contrast`.
 - `features` — a collection of feature cards.
@@ -48,6 +52,68 @@ The available components are:
 
 Attributes are deliberately limited to semantic content. Do not use columns,
 breakpoints, colors, inline styles, or CSS classes in page content.
+
+## Hero images
+
+Use a standalone Markdown image without width constraints; the theme sizes it
+within the available image area:
+
+```markdown
+::: hero
+# I built NextApp to organize myself
+
+NextApp is a private personal organizer for your work and your life.
+
+![NextApp application](images/nextapp-banner-blue.png)
+:::
+```
+
+Use `::: hero reverse` for an image on the left. To change the desktop split,
+use an image constraint such as `;maxw=60%`: the image receives 60% of the
+available hero width after the gap, and the text receives the rest. Percentage
+constraints are applied once to the column; mobile images fill the stacked
+image area. Without a percentage, the desktop split is equal. Inline images, images in lists
+or quotes, and additional images retain ordinary Markdown rendering.
+
+Split hero images use the configured image variants, with `srcset` and `sizes`
+so the browser can select a width for the image area and device pixel density.
+All configured widths up to the source width are generated; images are never
+upscaled. Hero images load eagerly because they appear at the top of the page.
+
+## Buttons without JavaScript
+
+The `product` theme styles `@[button]` macros as ordinary accessible links:
+
+```markdown
+::: hero
+# A better way to get things done
+
+Stay organized, reduce stress and focus on what matters.
+
+@[button](text="Get Started", href="download")
+@[button](text="Watch Video", href="#demo", kind=secondary, icon=play)
+
+![Application](images/app.png;maxw=60%)
+:::
+
+::: callout
+## Ready to get started?
+
+@[button](text="Get Started", href="download")
+:::
+```
+
+`text` and `href` are required. `kind` accepts `primary` (default) or `secondary`.
+The optional `icon=play` adds a CSS play symbol; the visible text remains the
+accessible name. Relative page destinations follow the site's URL style and
+base path; a fragment can target a video section on the same page. Other themes
+preserve the clickable link even when they do not style buttons. Macros must be
+enabled (the default). Unsupported arguments and unsafe URL schemes leave the
+macro unexpanded.
+
+Configure `theme.header.action` to repeat the primary action beside the logo
+and menu. Buttons keep their color scheme's accent, with a contrasting text
+color generated at build time.
 
 ## Complete example
 

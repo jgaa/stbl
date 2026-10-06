@@ -12,7 +12,9 @@ use crate::media::{
 use crate::model::{ImageFormatMode, ImageOutputFormat, Page, Project};
 use crate::syntax_highlight::highlight_code_html_classed;
 
+#[derive(Clone, Copy)]
 pub struct RenderOptions<'a> {
+    pub hero_image: Option<f32>,
     pub macro_project: Option<&'a Project>,
     pub macro_page: Option<&'a Page>,
     pub macros_enabled: bool,
@@ -39,6 +41,7 @@ struct CalloutRenderer<'a> {
 impl MarkdownRenderer for CalloutRenderer<'_> {
     fn render(&self, md: &str) -> String {
         let options = RenderOptions {
+            hero_image: None,
             macro_project: self.options.macro_project,
             macro_page: self.options.macro_page,
             macros_enabled: false,
@@ -299,9 +302,18 @@ pub fn render_media_element_html(
 }
 
 pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>) -> String {
-    let Some(MediaRef::Image(image)) = parse_media_destination(dest_url, alt) else {
+    let Some(MediaRef::Image(mut image)) = parse_media_destination(dest_url, alt) else {
         return render_plain_image(dest_url, alt);
     };
+    // A percentage in a split hero sizes the column, not nested media elements.
+    if options.hero_image.is_some()
+        && image
+            .maxw
+            .as_deref()
+            .is_some_and(|width| width.ends_with('%'))
+    {
+        image.maxw = None;
+    }
     let mut html = render_image_picture_html(&image, options);
     let is_banner = image
         .attrs
@@ -339,7 +351,7 @@ fn render_image_picture_html(
     image: &crate::media::ImageRef,
     options: &RenderOptions<'_>,
 ) -> String {
-    if !image.has_args {
+    if !image.has_args && options.hero_image.is_none() {
         return render_plain_media_image(image, options);
     }
     let path = image.path.raw.as_str();
@@ -443,7 +455,11 @@ fn render_image_picture_html(
         html.push_str(style_attr);
         html.push('"');
     }
-    html.push_str(" loading=\"lazy\" decoding=\"async\">");
+    if options.hero_image.is_some() {
+        html.push_str(" loading=\"eager\" fetchpriority=\"high\" decoding=\"async\">");
+    } else {
+        html.push_str(" loading=\"lazy\" decoding=\"async\">");
+    }
     html.push_str("</picture>");
     html
 }
@@ -640,10 +656,19 @@ fn render_video_element_html(
 
     let mut html = String::new();
     html.push_str("<video class=\"video__el\"");
-    html.push_str(" controls preload=\"metadata\" poster=\"");
+    html.push_str(" controls preload=\"none\" poster=\"");
     html.push_str(options.rel_prefix);
     html.push_str(&poster_rel);
     html.push('"');
+    if let Some(poster) = video
+        .poster
+        .as_ref()
+        .and_then(|poster| video_poster_data(&poster.raw, options))
+    {
+        html.push_str(" data-video-poster=\"");
+        html.push_str(&escape_attr(&poster));
+        html.push('"');
+    }
     let alt_trimmed = video.alt.trim();
     if !alt_trimmed.is_empty() {
         html.push_str(" aria-label=\"");
@@ -670,6 +695,65 @@ fn render_video_element_html(
     html.push_str("\">download it</a>.");
     html.push_str("</video>");
     html
+}
+
+fn video_poster_data(path: &str, options: &RenderOptions<'_>) -> Option<String> {
+    if options
+        .image_alpha
+        .is_some_and(|images| !images.contains_key(path))
+    {
+        return None;
+    }
+    let variants = options.image_variants.and_then(|index| index.get(path));
+    let has_alpha = image_has_alpha(path, options);
+    let fallback = fallback_format(has_alpha);
+    let original = format!("{}{path}", options.rel_prefix);
+    if path.to_ascii_lowercase().ends_with(".svg")
+        || (options.image_variants.is_some() && variants.is_none())
+    {
+        return Some(serde_json::json!({"src": original, "sources": []}).to_string());
+    }
+    let rel = path.strip_prefix("images/").unwrap_or(path);
+    let formats = image_output_formats(options.image_format_mode, has_alpha);
+    let mut sources = Vec::new();
+    for format in formats {
+        let srcset = if let Some(variants) = variants {
+            srcset_for_variant_format(variants, format, options.rel_prefix)
+        } else {
+            srcset_for_format(
+                rel,
+                options.image_widths,
+                format_extension(format),
+                options.rel_prefix,
+            )
+        };
+        if let Some(srcset) = srcset {
+            sources.push(serde_json::json!({"type": format_mime(format), "srcset": srcset}));
+        }
+    }
+    let fallback_src = variants
+        .and_then(|variants| {
+            variants
+                .range(..=720)
+                .next_back()
+                .or_else(|| variants.iter().next())
+        })
+        .map(|(_, set)| format!("{}{}", options.rel_prefix, set.fallback.path))
+        .unwrap_or(original);
+    let fallback_srcset = if let Some(variants) = variants {
+        srcset_for_variant_format(variants, fallback, options.rel_prefix)
+    } else {
+        srcset_for_format(
+            rel,
+            options.image_widths,
+            format_extension(fallback),
+            options.rel_prefix,
+        )
+    };
+    Some(
+        serde_json::json!({"src": fallback_src, "srcset": fallback_srcset, "sources": sources})
+            .to_string(),
+    )
 }
 
 struct VideoPaths {
@@ -740,6 +824,14 @@ fn ordered_heights(heights: &[u32], prefer_p: u16) -> Vec<u32> {
 }
 
 fn image_sizes(attrs: &[crate::media::ImageAttr], options: &RenderOptions<'_>) -> String {
+    if let Some(percent) = options.hero_image {
+        return format!(
+            "(min-width: {}) calc((min(100vw, {}) - 3.5rem) * {}), calc(100vw - 2rem)",
+            options.desktop_min,
+            options.max_body_width,
+            percent / 100.0
+        );
+    }
     for attr in attrs {
         if let crate::media::ImageAttr::WidthPercent(percent) = attr {
             return format!("{percent}vw");
@@ -916,6 +1008,7 @@ mod tests {
         image_widths: &'a [u32],
     ) -> RenderOptions<'a> {
         RenderOptions {
+            hero_image: None,
             macro_project: None,
             macro_page: None,
             macros_enabled: false,
@@ -1021,5 +1114,114 @@ mod tests {
         let html = render_markdown_to_html_with_media(md, &options);
         assert!(html.contains("<picture"));
         assert!(html.contains("srcset="));
+    }
+    #[test]
+    fn hero_image_uses_all_planned_variants_and_column_sizes_without_arguments() {
+        use crate::assets::AssetSourceId;
+        use crate::media::{ImagePlanInput, MediaDimensions, build_image_variant_index};
+        use std::collections::BTreeMap;
+        let path = "images/hero.png".to_string();
+        let input = ImagePlanInput {
+            sources: BTreeMap::from([(path.clone(), AssetSourceId("hero".into()))]),
+            hashes: BTreeMap::from([(path.clone(), blake3::hash(b"hero"))]),
+            alpha: BTreeMap::from([(path.clone(), false)]),
+            dimensions: BTreeMap::from([(
+                path,
+                MediaDimensions {
+                    width: 1000,
+                    height: 600,
+                },
+            )]),
+        };
+        let widths = [94, 128, 248, 360, 480, 640, 720, 950, 1280, 1440];
+        let variants = build_image_variant_index(&input, &widths, ImageFormatMode::Normal);
+        let mut options = base_render_options(&[], &widths);
+        options.hero_image = Some(50.0);
+        options.image_variants = Some(&variants);
+        options.image_alpha = Some(&input.alpha);
+        let html = render_markdown_to_html_with_media("![App](images/hero.png)", &options);
+        for width in widths.into_iter().filter(|width| *width <= 1000) {
+            assert!(html.contains(&format!("images/_scale_{width}/hero.webp {width}w")));
+            assert!(html.contains(&format!("images/_scale_{width}/hero.jpg {width}w")));
+        }
+        assert!(!html.contains("_scale_1280"));
+        assert!(html.contains("sizes=\"(min-width: 768px) calc((min(100vw, 72rem) - 3.5rem) * 0.5), calc(100vw - 2rem)\""));
+        assert!(html.contains("loading=\"eager\" fetchpriority=\"high\""));
+        assert!(html.contains("alt=\"App\""));
+        options.hero_image = Some(60.0);
+        let constrained =
+            render_markdown_to_html_with_media("![App](images/hero.png;maxw=60%)", &options);
+        assert!(!constrained.contains("--media-maxw"));
+        assert!(!constrained.contains("media-frame"));
+        assert!(constrained.contains("calc((min(100vw, 72rem) - 3.5rem) * 0.6)"));
+        let height_constrained = render_markdown_to_html_with_media(
+            "![App](images/hero.png;maxw=60%;maxh=80vh)",
+            &options,
+        );
+        assert!(!height_constrained.contains("--media-maxw"));
+        assert!(height_constrained.contains("--media-maxh: 80vh"));
+        options.hero_image = None;
+        let ordinary = render_markdown_to_html_with_media("![App](images/hero.png)", &options);
+        assert!(!ordinary.contains("srcset="));
+    }
+    #[test]
+    fn video_custom_poster_uses_only_available_variants_and_keeps_generated_fallback() {
+        use crate::assets::AssetSourceId;
+        use crate::media::{ImagePlanInput, MediaDimensions, build_image_variant_index};
+        use std::collections::BTreeMap;
+        let path = "images/shared.png".to_string();
+        let input = ImagePlanInput {
+            sources: BTreeMap::from([(path.clone(), AssetSourceId("shared".into()))]),
+            hashes: BTreeMap::from([(path.clone(), blake3::hash(b"shared"))]),
+            alpha: BTreeMap::from([(path.clone(), false)]),
+            dimensions: BTreeMap::from([(
+                path,
+                MediaDimensions {
+                    width: 800,
+                    height: 450,
+                },
+            )]),
+        };
+        let widths = [128, 360, 720, 1440];
+        let variants = build_image_variant_index(&input, &widths, ImageFormatMode::Normal);
+        let mut options = base_render_options(&[360, 720], &widths);
+        options.rel_prefix = "/products/demo/";
+        options.image_variants = Some(&variants);
+        options.image_alpha = Some(&input.alpha);
+        let html = render_markdown_to_html_with_media(
+            "![Introduction](video/intro.mp4;poster=images/shared.png)",
+            &options,
+        );
+        assert!(html.contains("poster=\"/products/demo/video/_poster_/intro.jpg\""));
+        assert!(html.contains("preload=\"none\""));
+        assert!(html.contains("data-video-poster="));
+        assert!(html.contains("/products/demo/images/_scale_128/shared.webp 128w"));
+        assert!(html.contains("/products/demo/images/_scale_720/shared.jpg 720w"));
+        assert!(!html.contains("_scale_1440"));
+        let fallback = render_markdown_to_html_with_media(
+            "![Introduction](video/intro.mp4;poster=images/missing.png)",
+            &options,
+        );
+        assert!(fallback.contains("poster=\"/products/demo/video/_poster_/intro.jpg\""));
+        assert!(!fallback.contains("data-video-poster="));
+        let automatic =
+            render_markdown_to_html_with_media("![Introduction](video/intro.mp4)", &options);
+        assert!(!automatic.contains("data-video-poster="));
+    }
+
+    #[test]
+    fn video_svg_poster_uses_original_scalable_asset() {
+        let alpha = std::collections::BTreeMap::from([("images/poster.svg".to_string(), false)]);
+        let index = crate::media::ImageVariantIndex::new();
+        let mut options = base_render_options(&[360], &[128, 720]);
+        options.image_alpha = Some(&alpha);
+        options.image_variants = Some(&index);
+        let html = render_markdown_to_html_with_media(
+            "![Introduction](video/intro.mp4;poster=images/poster.svg)",
+            &options,
+        );
+        assert!(html.contains("data-video-poster="));
+        assert!(html.contains("images/poster.svg"));
+        assert!(!html.contains("images/_scale"));
     }
 }

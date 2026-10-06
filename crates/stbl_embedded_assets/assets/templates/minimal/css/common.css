@@ -129,3 +129,13 @@ footer p { margin: 0; color: var(--c-muted); font-size: 0.875rem; }
 @media (prefers-color-scheme: dark) {
   :root { --c-bg: #171817; --c-fg: #e8e9e6; --c-heading: #e8e9e6; --c-title-fg: #e8e9e6; --c-muted: #a5a8a2; --c-border: #393c38; --c-link: #8ab4de; --c-link-hover: #afd0ed; --c-surface: #202220; --c-code-bg: #202220; --c-code-fg: #e8e9e6; --c-accent: #8ab4de; --c-nav-bg: #171817; --c-nav-fg: #e8e9e6; --c-nav-border: #393c38; }
 }
+
+/* Hero text and media keep their reading order when stacked. */
+.landing-hero--split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-items: center; }
+.landing-hero__content, .landing-hero__image { min-width: 0; }
+.landing-hero__image > p, .landing-hero__image .media-frame { margin: 0; }
+.landing-hero__image picture { display: block; }
+.landing-hero__image img { display: block; width: 100%; height: auto; }
+
+/* Keep the video area stable as responsive poster variants change. */
+.video > .video__el { width: 100%; }

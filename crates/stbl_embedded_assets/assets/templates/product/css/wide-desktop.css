@@ -1,0 +1,55 @@
+/* Wide desktop: subtle background outside the max-width column */
+body { background: transparent; }
+
+.wide-bg {
+  min-height: 100vh;
+  background-color: var(--c-wide-bg);
+  position: relative;
+}
+
+.wide-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--wide-bg-image);
+  background-repeat: var(--wide-bg-repeat);
+  background-size: var(--wide-bg-size);
+  background-position: var(--wide-bg-position);
+  opacity: var(--wide-bg-opacity);
+  pointer-events: none;
+}
+
+.wide-bg > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Keep page content on normal site background; only gutters use wide background */
+.wide-bg > header .page,
+.wide-bg > main .page,
+.wide-bg > footer .page {
+  background: var(--c-bg);
+}
+
+/* Wide background mode: keep bottom spacing inside the white column */
+.wide-bg > main {
+  padding-bottom: 0;
+}
+
+.wide-bg > main .page {
+  padding-bottom: 2rem;
+}
+
+/* Wide background mode: footer separator should NOT span the full width */
+.wide-bg footer {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.wide-bg footer .page {
+  border-top: 1px solid var(--c-border);
+  margin-top: 0;
+  padding: 1.5rem 1rem 2rem;
+}

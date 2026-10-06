@@ -5,6 +5,8 @@
 
 use std::collections::BTreeMap;
 
+use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+
 use crate::header::{Header, TemplateId};
 use crate::model::DiagnosticLevel;
 
@@ -58,11 +60,20 @@ pub fn validate(markdown: &str, enabled: bool) -> Vec<LandingDiagnostic> {
 }
 
 pub fn render(markdown: &str, rel: &str, render_markdown: impl Fn(&str) -> String) -> String {
+    render_with_context(markdown, rel, |fragment, _| render_markdown(fragment))
+}
+
+/// The callback receives the image column percentage for a split hero.
+pub fn render_with_context(
+    markdown: &str,
+    rel: &str,
+    render_markdown: impl Fn(&str, Option<f32>) -> String,
+) -> String {
     match parse(markdown) {
         Ok(nodes) => render_nodes(&nodes, rel, &render_markdown),
         // Assembly validation prevents this in normal builds. Keep content usable
         // for direct library callers as well.
-        Err(_) => render_markdown(&strip_containers(markdown)),
+        Err(_) => render_markdown(&strip_containers(markdown), None),
     }
 }
 
@@ -120,7 +131,10 @@ fn validate_nodes(nodes: &[Node], inside_features: bool, diagnostics: &mut Vec<L
 fn validate_attributes(component: &Component, diagnostics: &mut Vec<LandingDiagnostic>) {
     for (name, value) in &component.attrs {
         let supported = match component.name.as_str() {
-            "hero" => name == "align" && matches!(value.as_deref(), Some("left" | "center")),
+            "hero" => {
+                (name == "align" && matches!(value.as_deref(), Some("left" | "center")))
+                    || (name == "reverse" && value.is_none())
+            }
             "section" => {
                 name == "tone"
                     && matches!(
@@ -301,11 +315,15 @@ fn opening_name(line: &str) -> Option<&str> {
     rest.split_whitespace().next()
 }
 
-fn render_nodes(nodes: &[Node], rel: &str, render_markdown: &impl Fn(&str) -> String) -> String {
+fn render_nodes(
+    nodes: &[Node],
+    rel: &str,
+    render_markdown: &impl Fn(&str, Option<f32>) -> String,
+) -> String {
     nodes
         .iter()
         .map(|node| match node {
-            Node::Markdown(markdown) => render_markdown(markdown),
+            Node::Markdown(markdown) => render_markdown(markdown, None),
             Node::Component(component) => render_component(component, rel, render_markdown),
         })
         .collect()
@@ -314,14 +332,13 @@ fn render_nodes(nodes: &[Node], rel: &str, render_markdown: &impl Fn(&str) -> St
 fn render_component(
     component: &Component,
     rel: &str,
-    render_markdown: &impl Fn(&str) -> String,
+    render_markdown: &impl Fn(&str, Option<f32>) -> String,
 ) -> String {
+    if component.name == "hero" {
+        return render_hero(component, rel, render_markdown);
+    }
     let content = render_nodes(&component.children, rel, render_markdown);
     match component.name.as_str() {
-        "hero" => format!(
-            "<section class=\"landing-hero landing-hero--{}\">{content}</section>",
-            allowed_attr(component, "align", &["left", "center"]).unwrap_or("left")
-        ),
         "section" => format!(
             "<section class=\"landing-section landing-section--{}\">{content}</section>",
             allowed_attr(
@@ -357,10 +374,130 @@ fn render_component(
     }
 }
 
+fn render_hero(
+    component: &Component,
+    rel: &str,
+    render_markdown: &impl Fn(&str, Option<f32>) -> String,
+) -> String {
+    let align = allowed_attr(component, "align", &["left", "center"]).unwrap_or("left");
+    let reverse = matches!(component.attrs.get("reverse"), Some(None));
+    let mut content = String::new();
+    let mut image = None;
+    let mut percent = 50.0;
+    for child in &component.children {
+        let split = match child {
+            Node::Markdown(markdown) if align != "center" && image.is_none() => {
+                split_hero_image(markdown)
+            }
+            _ => None,
+        };
+        if let Some((text, media, width)) = split {
+            percent = width;
+            content.push_str(&render_markdown(&text, None));
+            image = Some(render_markdown(&media, Some(percent)));
+        } else {
+            content.push_str(&render_nodes(
+                std::slice::from_ref(child),
+                rel,
+                render_markdown,
+            ));
+        }
+    }
+    let body = if let Some(image) = image {
+        format!(
+            "<div class=\"landing-hero__content\">{content}</div><div class=\"landing-hero__image\">{image}</div>"
+        )
+    } else {
+        return format!(
+            "<section class=\"landing-hero landing-hero--{align}\">{content}</section>"
+        );
+    };
+    format!(
+        "<section class=\"landing-hero landing-hero--{align} landing-hero--split{}\" style=\"--hero-image-weight: {percent}fr; --hero-text-weight: {}fr\">{body}</section>",
+        if reverse {
+            " landing-hero--reverse"
+        } else {
+            ""
+        },
+        100.0 - percent
+    )
+}
+
+/// Select only a top-level paragraph containing a single image. Inline images,
+/// code examples, lists and block quotes remain part of the ordinary content.
+fn split_hero_image(markdown: &str) -> Option<(String, String, f32)> {
+    let parser = Parser::new(markdown);
+    let definitions = parser
+        .reference_definitions()
+        .iter()
+        .map(|(_, definition)| &markdown[definition.span.clone()])
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut depth = 0;
+    let mut paragraph = None;
+    let mut image_count = 0;
+    let mut image_depth = 0;
+    let mut image_only = false;
+    let mut percent = 50.0;
+    for (event, range) in parser.into_offset_iter() {
+        match event {
+            Event::Start(tag) => {
+                if depth == 0 && tag == Tag::Paragraph {
+                    paragraph = Some(range.clone());
+                    image_count = 0;
+                    image_only = true;
+                    percent = 50.0;
+                } else if paragraph.is_some() && image_depth == 0 {
+                    if let Tag::Image { dest_url, .. } = &tag {
+                        if let Some(crate::media::MediaRef::Image(image)) =
+                            crate::media::parse_media_destination(dest_url, "")
+                        {
+                            percent = image
+                                .maxw
+                                .as_deref()
+                                .and_then(|width| width.strip_suffix('%'))
+                                .and_then(|width| width.parse::<f32>().ok())
+                                .filter(|width| *width > 0.0 && *width < 100.0)
+                                .unwrap_or(50.0);
+                        }
+                        image_count += 1;
+                        image_depth = depth + 1;
+                    } else {
+                        image_only = false;
+                    }
+                }
+                depth += 1;
+            }
+            Event::End(tag) => {
+                if depth == image_depth {
+                    image_depth = 0;
+                }
+                depth -= 1;
+                if tag == TagEnd::Paragraph && depth == 0 {
+                    if let Some(paragraph) = paragraph.take() {
+                        if image_only && image_count == 1 {
+                            let span = paragraph.start..range.end;
+                            let mut text = markdown.to_string();
+                            text.replace_range(span.clone(), "");
+                            let media = format!("{}\n\n{definitions}", &markdown[span]);
+                            return Some((text, media, percent));
+                        }
+                    }
+                }
+            }
+            Event::Text(text) if image_depth == 0 && !text.trim().is_empty() => image_only = false,
+            Event::SoftBreak | Event::HardBreak => {}
+            _ if image_depth == 0 => image_only = false,
+            _ => {}
+        }
+    }
+    None
+}
+
 fn render_features(
     component: &Component,
     rel: &str,
-    render_markdown: &impl Fn(&str) -> String,
+    render_markdown: &impl Fn(&str, Option<f32>) -> String,
 ) -> String {
     let mut out = String::from("<section class=\"landing-features\">");
     let mut cards = String::new();
@@ -505,5 +642,85 @@ mod tests {
             value.to_string()
         });
         assert!(html.contains("::: hero"));
+    }
+    #[test]
+    fn hero_splits_standalone_image_and_preserves_markdown() {
+        let html = render(
+            "::: hero reverse\n# Product\n\nSome **text** and [Download](download/).\n\n![Screen](images/screen.png)\n:::\n",
+            "",
+            crate::render::render_markdown_to_html,
+        );
+        assert!(html.contains("landing-hero--split landing-hero--reverse"));
+        assert!(html.contains("<strong>text</strong>"));
+        assert!(html.contains("href=\"download/\""));
+        assert!(html.contains("alt=\"Screen\""));
+        assert!(
+            html.find("landing-hero__content").unwrap() < html.find("landing-hero__image").unwrap()
+        );
+        assert_eq!(html.matches("<img ").count(), 1);
+        assert!(validate("::: hero reverse\nText\n:::\n", true).is_empty());
+        assert_eq!(validate("::: hero reverse=yes\nText\n:::\n", true).len(), 1);
+    }
+
+    #[test]
+    fn hero_preserves_reference_images_and_links() {
+        let html = render(
+            "::: hero\n# Product\n\n[Download][download]\n\n![Screen][screen]\n\n[screen]: images/screen.png\n[download]: download/\n:::\n",
+            "",
+            crate::render::render_markdown_to_html,
+        );
+        assert!(html.contains("landing-hero--split"));
+        assert!(html.contains("src=\"images/screen.png\""));
+        assert!(html.contains("href=\"download/\""));
+    }
+
+    #[test]
+    fn hero_leaves_inline_nested_and_code_images_in_content() {
+        for markdown in [
+            "Text ![Screen](images/screen.png)",
+            "> ![Screen](images/screen.png)",
+            "- ![Screen](images/screen.png)",
+            "```\n![Screen](images/screen.png)\n```",
+            "No image",
+            "![A](images/a.png) ![B](images/b.png)",
+        ] {
+            let html = render(
+                &format!("::: hero\n{markdown}\n:::\n"),
+                "",
+                crate::render::render_markdown_to_html,
+            );
+            assert!(!html.contains("landing-hero--split"), "{markdown}");
+        }
+    }
+
+    #[test]
+    fn centered_hero_keeps_stacked_presentation() {
+        let html = render(
+            "::: hero align=center\n# Product\n\n![Screen](images/screen.png)\n:::\n",
+            "",
+            crate::render::render_markdown_to_html,
+        );
+        assert!(html.contains("landing-hero--center"));
+        assert!(!html.contains("landing-hero--split"));
+    }
+    #[test]
+    fn hero_percentage_sizes_column_and_reaches_media_renderer() {
+        for reverse in ["", " reverse"] {
+            let html = render_with_context(
+                &format!(
+                    "::: hero{reverse}\n# Product\n\n![Screen](images/screen.png;maxw=60%)\n:::\n"
+                ),
+                "",
+                |markdown, width| {
+                    if markdown.contains("![Screen]") {
+                        assert_eq!(width, Some(60.0));
+                    } else {
+                        assert_eq!(width, None);
+                    }
+                    crate::render::render_markdown_to_html(markdown)
+                },
+            );
+            assert!(html.contains("--hero-image-weight: 60fr; --hero-text-weight: 40fr"));
+        }
     }
 }

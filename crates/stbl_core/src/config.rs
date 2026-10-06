@@ -140,6 +140,7 @@ struct ThemeNavRaw {
 
 #[derive(Debug, Deserialize)]
 struct ThemeHeaderRaw {
+    action: Option<MenuItemRaw>,
     layout: Option<ThemeHeaderLayout>,
     menu_align: Option<MenuAlign>,
     title_size: Option<String>,
@@ -526,6 +527,16 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
             )?,
         },
         header: ThemeHeaderConfig {
+            action: theme_raw
+                .and_then(|theme| theme.header.as_ref())
+                .and_then(|header| header.action.as_ref())
+                .map(|action| -> Result<MenuItem> {
+                    Ok(MenuItem {
+                        title: required_string(action.title.clone(), "theme.header.action.title")?,
+                        href: required_string(action.href.clone(), "theme.header.action.href")?,
+                    })
+                })
+                .transpose()?,
             layout: theme_raw
                 .and_then(|theme| theme.header.as_ref())
                 .and_then(|header| header.layout)
