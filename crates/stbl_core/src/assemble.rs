@@ -56,6 +56,16 @@ pub fn assemble_site_with_template_policy(
             &mut diagnostics,
             &doc.parsed.src.source_path,
         );
+        for landing_diagnostic in crate::landing::validate(
+            &doc.parsed.body_markdown,
+            crate::landing::uses_landing_layout(&header),
+        ) {
+            diagnostics.push(Diagnostic {
+                level: landing_diagnostic.level,
+                source_path: Some(doc.parsed.src.source_path.clone()),
+                message: landing_diagnostic.message,
+            });
+        }
         let needs_title = match header.title.as_deref().map(str::trim) {
             None => true,
             Some(value) => value.is_empty(),

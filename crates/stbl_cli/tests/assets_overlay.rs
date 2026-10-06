@@ -111,8 +111,8 @@ fn configured_svg_site_icon_is_rendered_as_a_32_pixel_png() {
     .expect("write icon");
 
     let config = load_site_config(&site_root.join("stbl.yaml")).expect("load config");
-    let (mut asset_index, mut lookup) = discover_assets_for_theme(&site_root, "stbl")
-        .expect("discover assets");
+    let (mut asset_index, mut lookup) =
+        discover_assets_for_theme(&site_root, "stbl").expect("discover assets");
     stbl_cli::assets::include_site_icon(&site_root, &config, &mut asset_index, &mut lookup)
         .expect("include site icon");
     let (tasks, _manifest) = plan_assets(&asset_index, false, blake3::hash(b"config").into());

@@ -6,6 +6,7 @@ pub mod comments;
 pub mod config;
 pub mod feeds;
 pub mod header;
+pub mod landing;
 pub mod macros;
 pub mod media;
 pub mod model;

@@ -1,6 +1,8 @@
 use anyhow::Result;
 
-use crate::blog_index::{canonical_tag_map, collect_recent_blog_items, iter_visible_posts, tag_key};
+use crate::blog_index::{
+    canonical_tag_map, collect_recent_blog_items, iter_visible_posts, tag_key,
+};
 use crate::model::{Page, Project};
 use crate::templates::format_timestamp_ymd;
 use crate::url::{UrlMapper, logical_key_from_source_path};
@@ -1713,8 +1715,11 @@ mod tests {
         header.published = Some(20);
         let standalone = make_page("standalone", "articles/standalone.md", header.clone());
 
-        let mut series =
-            make_series("series", "Series Title", &[(1, "Part One"), (2, "Part Two")]);
+        let mut series = make_series(
+            "series",
+            "Series Title",
+            &[(1, "Part One"), (2, "Part Two")],
+        );
         series.parts[0].page.header.published = Some(30);
         series.parts[1].page.header.published = Some(40);
 

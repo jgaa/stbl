@@ -1011,9 +1011,7 @@ fn normalized_video_scale_filter(height: u32) -> String {
     if height == u32::MAX {
         "scale=trunc(iw*sar/2)*2:ih,setsar=1".to_string()
     } else {
-        format!(
-            "scale=trunc(iw*sar*min(1\\,{height}/ih)/2)*2:min({height}\\,ih),setsar=1"
-        )
+        format!("scale=trunc(iw*sar*min(1\\,{height}/ih)/2)*2:min({height}\\,ih),setsar=1")
     }
 }
 

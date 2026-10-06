@@ -1,3 +1,7 @@
 .nav-mobile { display: none; }
+
+.landing-features__cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.landing-feature { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
+.landing-feature--reverse .landing-feature__image { order: 2; }
 .nav-desktop { display: block; }
 @media (min-width: 1400px) { main > .page { max-width: calc(var(--content-width) + 2 * var(--page-padding)); } }

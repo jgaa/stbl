@@ -24,6 +24,20 @@ a:hover { color: var(--c-link-hover); text-decoration: underline; }
 
 img, video { max-width: 100%; height: auto; }
 
+/* Semantic landing-page components. Themes may override these stable hooks. */
+.landing-hero, .landing-section, .landing-features, .landing-feature, .landing-callout { margin-block: 3rem; }
+.landing-hero--center { text-align: center; }
+.landing-section { padding: 1.5rem 0; }
+.landing-section--subtle { background: var(--c-surface); }
+.landing-section--accent { background: var(--c-accent); color: var(--c-bg); }
+.landing-section--contrast { background: var(--c-fg); color: var(--c-bg); }
+.landing-features__cards { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.landing-card { padding: 1.25rem; border: 1px solid var(--c-border); border-radius: .5rem; background: var(--c-surface); }
+.landing-card__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: .75rem; }
+.landing-feature { display: flex; flex-direction: column; gap: 1.5rem; }
+.landing-feature__image { width: 100%; object-fit: contain; }
+.landing-callout { padding: 1.5rem; border: 1px solid var(--c-border); border-radius: .5rem; background: var(--c-surface); }
+
 /* Media constraints (images + videos) */
 .media-frame {
   display: flex;

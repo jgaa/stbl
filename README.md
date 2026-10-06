@@ -87,6 +87,7 @@ The only runtime dependency is `ffmpeg`. This is required only if you use videos
 - [CLI Reference](docs/cli.md)
 - [Project Structure](docs/project-structure.md)
 - [Content Format](docs/content-format.md)
+- [Landing Pages](docs/landing-pages.md)
 - [Page Types](docs/page-types.md)
 - [Timestamps](docs/timestamps.md)
 - [Series](docs/series.md)

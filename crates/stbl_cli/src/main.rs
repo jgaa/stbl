@@ -30,13 +30,11 @@ use serde_yaml::Value;
 use stbl_cache::{CacheStore, SqliteCacheStore};
 use stbl_core::assemble::assemble_site;
 use stbl_core::header::UnknownKeyPolicy;
-use stbl_core::model::{
-    ThemeColorScheme, ThemeColorSchemeMode, ThemeColorSchemeSource,
-};
 use stbl_core::model::{DiagnosticLevel, SiteConfig, SiteContent, SystemConfig, WriteBackEdit};
-use std::process::Command as ProcessCommand;
+use stbl_core::model::{ThemeColorScheme, ThemeColorSchemeMode, ThemeColorSchemeSource};
 use stbl_core::templates::normalize_timestamp;
 use stbl_embedded_assets as embedded;
+use std::process::Command as ProcessCommand;
 use walkdir::WalkDir;
 
 #[derive(Debug, Parser)]
@@ -489,9 +487,7 @@ fn apply_build_overrides(
             bail!("--theme must not be empty");
         }
         config.theme.variant = theme.to_string();
-        eprintln!(
-            "warning: using build-only theme override '{theme}'; stbl.yaml was not modified"
-        );
+        eprintln!("warning: using build-only theme override '{theme}'; stbl.yaml was not modified");
     }
 
     if let Some(color_theme) = color_theme_override {
@@ -1016,7 +1012,9 @@ fn handle_writeback(
 }
 
 fn write_markdown_preserving_mtime(path: &Path, contents: &str) -> Result<()> {
-    let original_mtime = fs::metadata(path).and_then(|metadata| metadata.modified()).ok();
+    let original_mtime = fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok();
     fs::write(path, contents)?;
     if let Some(mtime) = original_mtime {
         restore_file_mtime(path, mtime)?;
@@ -1119,7 +1117,14 @@ fn assign_writeback_timestamps(
     let now_ts = current_writeback_timestamp(config.system.as_ref());
 
     for page in &mut site.pages {
-        assign_page_writeback_timestamps(root, &mut site.write_back.edits, &page.source_path, &mut page.header, now_ts, config.system.as_ref())?;
+        assign_page_writeback_timestamps(
+            root,
+            &mut site.write_back.edits,
+            &page.source_path,
+            &mut page.header,
+            now_ts,
+            config.system.as_ref(),
+        )?;
     }
     for series in &mut site.series {
         assign_page_writeback_timestamps(
@@ -1160,10 +1165,7 @@ fn assign_page_writeback_timestamps(
     let published_baseline = normalized_published_baseline(header, now_ts, system);
     if header.published_needs_writeback && header.published.is_none() {
         header.published = Some(published_baseline);
-        updates.push((
-            "published",
-            format_writeback_timestamp(published_baseline),
-        ));
+        updates.push(("published", format_writeback_timestamp(published_baseline)));
     }
 
     if !header.updated_disabled {
@@ -1258,12 +1260,7 @@ fn apply_header_updates(
     Ok(())
 }
 
-fn rewrite_header_line(
-    header_text: &mut String,
-    style: HeaderBlockStyle,
-    key: &str,
-    value: &str,
-) {
+fn rewrite_header_line(header_text: &mut String, style: HeaderBlockStyle, key: &str, value: &str) {
     let mut lines = header_text.lines().map(str::to_string).collect::<Vec<_>>();
     let mut replaced = false;
     for line in &mut lines {
@@ -1305,7 +1302,11 @@ enum HeaderBlockStyle {
 }
 
 fn detect_header_block_style(header_text: &str) -> HeaderBlockStyle {
-    if header_text.lines().next().is_some_and(|line| line.trim() == "---") {
+    if header_text
+        .lines()
+        .next()
+        .is_some_and(|line| line.trim() == "---")
+    {
         HeaderBlockStyle::FrontMatter
     } else {
         HeaderBlockStyle::Plain
@@ -1318,7 +1319,11 @@ fn split_header_and_body(raw: &str) -> Option<(String, String, HeaderBlockStyle)
     }
     let header_end = header_end_index(raw)?;
     let (header_text, body) = raw.split_at(header_end);
-    Some((header_text.to_string(), body.to_string(), HeaderBlockStyle::Plain))
+    Some((
+        header_text.to_string(),
+        body.to_string(),
+        HeaderBlockStyle::Plain,
+    ))
 }
 
 fn split_frontmatter_header_and_body(raw: &str) -> Option<(String, &str)> {
@@ -1738,7 +1743,8 @@ mod tests {
     fn build_overrides_are_applied_without_changing_config_file() {
         let temp = TempDir::new().expect("tempdir");
         let config_path = temp.path().join("stbl.yaml");
-        let original = "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/\n  language: en\n";
+        let original =
+            "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/\n  language: en\n";
         fs::write(&config_path, original).expect("write config");
         let mut config = crate::config_loader::load_config(temp.path()).expect("load config");
 
@@ -1753,9 +1759,22 @@ mod tests {
 
         assert_eq!(config.theme.variant, "minimal");
         assert_eq!(config.theme.colors.bg.as_deref(), Some("#f8fafc"));
-        assert_eq!(config.theme.color_scheme.as_ref().and_then(|s| s.name.as_deref()), Some("slate"));
-        assert_eq!(config.site.base_url, "https://nextapp.org/sites/a/b/c/demo/");
-        assert_eq!(fs::read_to_string(config_path).expect("read config"), original);
+        assert_eq!(
+            config
+                .theme
+                .color_scheme
+                .as_ref()
+                .and_then(|s| s.name.as_deref()),
+            Some("slate")
+        );
+        assert_eq!(
+            config.site.base_url,
+            "https://nextapp.org/sites/a/b/c/demo/"
+        );
+        assert_eq!(
+            fs::read_to_string(config_path).expect("read config"),
+            original
+        );
     }
 
     #[test]
@@ -1914,7 +1933,11 @@ mod tests {
             "site:\n  id: \"fixture\"\n  title: \"Fixture\"\n  base_url: \"https://example.com/\"\n  language: \"en\"\nsystem:\n  date:\n    format: \"%Y-%m-%d %H:%M\"\n    roundup_seconds: 3600\n",
         )
         .expect("write config");
-        fs::write(temp.path().join("articles/page.md"), "title: Page\n\nBody\n").expect("write page");
+        fs::write(
+            temp.path().join("articles/page.md"),
+            "title: Page\n\nBody\n",
+        )
+        .expect("write page");
 
         let mut header = stbl_core::header::Header::default();
         header.title = Some("Page".to_string());
@@ -1933,13 +1956,14 @@ mod tests {
             }],
             ..SiteContent::default()
         };
-        let config =
-            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let config = crate::config_loader::load_config_for_build(temp.path()).expect("load config");
 
         let now_ts = 1_720_006_949;
-        let expected_published =
-            normalize_timestamp(site.pages[0].header.updated_fallback, config.system.as_ref())
-                .unwrap();
+        let expected_published = normalize_timestamp(
+            site.pages[0].header.updated_fallback,
+            config.system.as_ref(),
+        )
+        .unwrap();
         assign_page_writeback_timestamps(
             temp.path(),
             &mut site.write_back.edits,
@@ -1982,8 +2006,7 @@ mod tests {
         header.updated = Some(1_704_103_200);
         header.updated_fallback = Some(1_704_110_500);
         let mut edits = Vec::new();
-        let config =
-            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let config = crate::config_loader::load_config_for_build(temp.path()).expect("load config");
 
         assign_page_writeback_timestamps(
             temp.path(),
@@ -2029,8 +2052,7 @@ mod tests {
         )
         .expect("write config");
 
-        let config =
-            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let config = crate::config_loader::load_config_for_build(temp.path()).expect("load config");
         let mut header = stbl_core::header::Header::default();
         header.title = Some("Page".to_string());
         header.published_needs_writeback = true;
@@ -2091,8 +2113,7 @@ mod tests {
         )
         .expect("walk content");
         let mut content = assemble_site(docs).expect("assemble site");
-        let config =
-            crate::config_loader::load_config_for_build(temp.path()).expect("load config");
+        let config = crate::config_loader::load_config_for_build(temp.path()).expect("load config");
         let effective_preview = match &cli.command {
             Command::Build {
                 preview,
@@ -2101,8 +2122,7 @@ mod tests {
             } => *preview || *preview_open,
             _ => false,
         };
-        assign_writeback_timestamps(temp.path(), &mut content, &config)
-            .expect("assign timestamps");
+        assign_writeback_timestamps(temp.path(), &mut content, &config).expect("assign timestamps");
         if effective_preview {
             content.write_back.edits.clear();
         }

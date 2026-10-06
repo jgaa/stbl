@@ -57,13 +57,18 @@ fn minimal_template_is_embedded_with_theme_overrides() {
         "css/common.css",
         "css/mobile.css",
     ] {
-        assert!(paths.contains(required), "missing minimal asset: {required}");
+        assert!(
+            paths.contains(required),
+            "missing minimal asset: {required}"
+        );
     }
 
     let colors = embedded::template_colors_yaml("minimal").expect("minimal colors yaml");
-    assert!(std::str::from_utf8(colors)
-        .expect("minimal colors utf8")
-        .contains("#315f8c"));
+    assert!(
+        std::str::from_utf8(colors)
+            .expect("minimal colors utf8")
+            .contains("#315f8c")
+    );
 }
 
 #[test]
@@ -82,7 +87,10 @@ fn liberty_theme_is_embedded_with_dark_defaults() {
         "css/mobile.css",
         "css/syntax.css",
     ] {
-        assert!(paths.contains(required), "missing liberty asset: {required}");
+        assert!(
+            paths.contains(required),
+            "missing liberty asset: {required}"
+        );
     }
 
     let colors = embedded::template_colors_yaml("liberty").expect("liberty colors yaml");

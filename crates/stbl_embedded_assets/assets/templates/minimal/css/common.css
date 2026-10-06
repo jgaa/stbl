@@ -25,6 +25,19 @@ a:hover { color: var(--c-link-hover); }
 :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 3px; }
 img, video { max-width: 100%; height: auto; }
 
+.landing-hero, .landing-section, .landing-features, .landing-feature, .landing-callout { margin-block: var(--space-2xl); }
+.landing-hero--center { text-align: center; }
+.landing-section { padding: var(--space-lg) 0; }
+.landing-section--subtle { background: var(--c-surface); }
+.landing-section--accent { background: var(--c-accent); color: var(--c-bg); }
+.landing-section--contrast { background: var(--c-fg); color: var(--c-bg); }
+.landing-features__cards { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
+.landing-card { padding: var(--space-lg); border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-surface); }
+.landing-card__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: var(--space-sm); }
+.landing-feature { display: flex; flex-direction: column; gap: var(--space-lg); }
+.landing-feature__image { width: 100%; object-fit: contain; }
+.landing-callout { padding: var(--space-xl); border: 1px solid var(--c-border); background: var(--c-surface); }
+
 .page { max-width: var(--layout-max-width, 72rem); margin: 0 auto; padding-inline: var(--page-padding); }
 .skip-link { position: absolute; left: 1rem; top: -4rem; z-index: 10; padding: 0.5rem 0.75rem; background: var(--c-bg); border: 1px solid var(--c-border); }
 .skip-link:focus { top: 1rem; }

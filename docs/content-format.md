@@ -134,6 +134,17 @@ Accepted legacy aliases:
 - `list-articles.html` -> `blog_index`
 - `info.html` -> `info`
 
+### `layout`
+
+- Optional page layout selector.
+- `layout: landing` enables semantic landing-page containers.
+- Any other explicit value, such as `layout: standard`, keeps normal Markdown
+  rendering.
+- `template: landingpage.html` implies `layout: landing` only when `layout` is
+  not explicitly set.
+
+See [Landing Pages](landing-pages.md) for the container syntax.
+
 ### `type`
 
 - Optional content type string.

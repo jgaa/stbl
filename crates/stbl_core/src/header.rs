@@ -15,6 +15,9 @@ pub struct Header {
     pub abstract_text: Option<String>,
     pub template: Option<TemplateId>,
     pub template_raw: Option<String>,
+    /// Explicit page layout. Layout is intentionally independent from templates:
+    /// a template may select a default layout, but an explicit layout wins.
+    pub layout: Option<String>,
     pub content_type: Option<String>,
     pub menu: Option<String>,
     pub icon: Option<String>,
@@ -44,6 +47,7 @@ impl Default for Header {
             abstract_text: None,
             template: None,
             template_raw: None,
+            layout: None,
             content_type: None,
             menu: None,
             icon: None,
@@ -203,6 +207,7 @@ pub fn parse_header(
             }
             "abstract" => header.abstract_text = non_empty(value),
             "template" => header.template_raw = non_empty(value),
+            "layout" => header.layout = non_empty(value),
             "type" => header.content_type = non_empty(value),
             "menu" => header.menu = non_empty(value),
             "icon" => header.icon = non_empty(value),

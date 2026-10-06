@@ -173,6 +173,7 @@ pub fn render_page_with_series_nav(
         &page.body_markdown,
         &rel,
         include_provider,
+        crate::landing::uses_landing_layout(&page.header),
     );
     let banner_html = render_banner_html(project, page, &rel);
     let comments_html =
@@ -269,7 +270,7 @@ pub fn render_markdown_page(
 ) -> Result<String> {
     let rel = root_prefix_for_base_url(&project.config.site.base_url);
     let body_html =
-        render_markdown_with_media(project, None, body_markdown, &rel, include_provider);
+        render_markdown_with_media(project, None, body_markdown, &rel, include_provider, false);
     render_with_context(
         project,
         title.to_string(),
@@ -569,6 +570,7 @@ pub fn render_series_index(
             &index.body_markdown,
             &rel,
             include_provider,
+            crate::landing::uses_landing_layout(&index.header),
         ))
     };
 
@@ -869,6 +871,7 @@ fn render_markdown_with_media(
     markdown: &str,
     rel: &str,
     include_provider: Option<&dyn IncludeProvider>,
+    landing: bool,
 ) -> String {
     let options = RenderOptions {
         macro_project: Some(project),
@@ -889,7 +892,13 @@ fn render_markdown_with_media(
         syntax_theme: &project.config.syntax.theme,
         syntax_line_numbers: project.config.syntax.line_numbers,
     };
-    render_markdown_to_html_with_media(markdown, &options)
+    if landing {
+        crate::landing::render(markdown, rel, |fragment| {
+            render_markdown_to_html_with_media(fragment, &options)
+        })
+    } else {
+        render_markdown_to_html_with_media(&crate::landing::strip_containers(markdown), &options)
+    }
 }
 
 pub fn render_banner_html(project: &Project, page: &Page, rel: &str) -> Option<String> {
