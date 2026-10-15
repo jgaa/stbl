@@ -59,6 +59,34 @@ pub fn validate(markdown: &str, enabled: bool) -> Vec<LandingDiagnostic> {
     diagnostics
 }
 
+/// Images in component metadata participate in the same plan as Markdown images.
+pub fn collect_media_refs(markdown: &str) -> Vec<crate::media::MediaRef> {
+    fn collect(nodes: &[Node], refs: &mut Vec<crate::media::MediaRef>) {
+        for node in nodes {
+            let Node::Component(component) = node else {
+                continue;
+            };
+            let key = match component.name.as_str() {
+                "card" => "icon",
+                "feature" => "image",
+                _ => "",
+            };
+            if let Some(path) = attr(component, key)
+                && let Some(crate::media::MediaRef::Image(image)) =
+                    crate::media::parse_media_destination(path, "")
+            {
+                refs.push(crate::media::MediaRef::Image(image));
+            }
+            collect(&component.children, refs);
+        }
+    }
+    let mut refs = Vec::new();
+    if let Ok(nodes) = parse(markdown) {
+        collect(&nodes, &mut refs);
+    }
+    refs
+}
+
 pub fn render(markdown: &str, rel: &str, render_markdown: impl Fn(&str) -> String) -> String {
     render_with_context(markdown, rel, |fragment, _| render_markdown(fragment))
 }
@@ -69,8 +97,30 @@ pub fn render_with_context(
     rel: &str,
     render_markdown: impl Fn(&str, Option<f32>) -> String,
 ) -> String {
+    render_with_media(markdown, rel, render_markdown, |path, _| {
+        format!(
+            "<img src=\"{}\" alt=\"\">",
+            escape_attr(&resolve_asset(path, rel))
+        )
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ComponentImage {
+    CardIcon,
+    CardImage,
+    Feature,
+}
+
+/// Themes render component images using the same planned variants as Markdown.
+pub fn render_with_media(
+    markdown: &str,
+    rel: &str,
+    render_markdown: impl Fn(&str, Option<f32>) -> String,
+    render_image: impl Fn(&str, ComponentImage) -> String,
+) -> String {
     match parse(markdown) {
-        Ok(nodes) => render_nodes(&nodes, rel, &render_markdown),
+        Ok(nodes) => render_nodes(&nodes, rel, &render_markdown, &render_image),
         // Assembly validation prevents this in normal builds. Keep content usable
         // for direct library callers as well.
         Err(_) => render_markdown(&strip_containers(markdown), None),
@@ -134,13 +184,16 @@ fn validate_attributes(component: &Component, diagnostics: &mut Vec<LandingDiagn
             "hero" => {
                 (name == "align" && matches!(value.as_deref(), Some("left" | "center")))
                     || (name == "reverse" && value.is_none())
+                    || (name == "image-align" && matches!(value.as_deref(), Some("left" | "right")))
             }
             "section" => {
-                name == "tone"
+                (name == "tone"
                     && matches!(
                         value.as_deref(),
                         Some("default" | "subtle" | "accent" | "contrast")
-                    )
+                    ))
+                    || (name == "image-align"
+                        && matches!(value.as_deref(), Some("left" | "right" | "center")))
             }
             "card" => name == "icon" && value.is_some(),
             "feature" => {
@@ -319,12 +372,15 @@ fn render_nodes(
     nodes: &[Node],
     rel: &str,
     render_markdown: &impl Fn(&str, Option<f32>) -> String,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     nodes
         .iter()
         .map(|node| match node {
             Node::Markdown(markdown) => render_markdown(markdown, None),
-            Node::Component(component) => render_component(component, rel, render_markdown),
+            Node::Component(component) => {
+                render_component(component, rel, render_markdown, render_image)
+            }
         })
         .collect()
 }
@@ -333,30 +389,27 @@ fn render_component(
     component: &Component,
     rel: &str,
     render_markdown: &impl Fn(&str, Option<f32>) -> String,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     if component.name == "hero" {
-        return render_hero(component, rel, render_markdown);
+        return render_hero(component, rel, render_markdown, render_image);
     }
-    let content = render_nodes(&component.children, rel, render_markdown);
+    if component.name == "features" {
+        return render_features(component, rel, render_markdown, render_image);
+    }
+    if component.name == "section" {
+        return render_section(component, rel, render_markdown, render_image);
+    }
+    let content = render_nodes(&component.children, rel, render_markdown, render_image);
     match component.name.as_str() {
-        "section" => format!(
-            "<section class=\"landing-section landing-section--{}\">{content}</section>",
-            allowed_attr(
-                component,
-                "tone",
-                &["default", "subtle", "accent", "contrast"]
-            )
-            .unwrap_or("default")
-        ),
-        "features" => render_features(component, rel, render_markdown),
-        "card" => render_card(component, rel, &content),
+        "card" => render_card(component, &content, render_image),
         "feature" => {
             let reverse = matches!(component.attrs.get("reverse"), Some(None));
             let image = attr(component, "image")
                 .map(|path| {
                     format!(
-                        "<img class=\"landing-feature__image\" src=\"{}\" alt=\"\">",
-                        escape_attr(&resolve_asset(path, rel))
+                        "<div class=\"landing-feature__image\">{}</div>",
+                        render_image(path, ComponentImage::Feature)
                     )
                 })
                 .unwrap_or_default();
@@ -374,13 +427,61 @@ fn render_component(
     }
 }
 
+fn render_section(
+    component: &Component,
+    rel: &str,
+    render_markdown: &impl Fn(&str, Option<f32>) -> String,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
+) -> String {
+    let side = allowed_attr(component, "image-align", &["left", "right"]);
+    let mut children = component.children.as_slice();
+    let intro = if let Some(side) = side
+        && let Some(Node::Markdown(markdown)) = children.first()
+        && let Some((text, media, percent)) = split_hero_image(markdown)
+    {
+        children = &children[1..];
+        format!(
+            "<div class=\"landing-section__intro landing-hero--split{}\" style=\"--hero-image-weight: {percent}fr; --hero-text-weight: {}fr\"><div class=\"landing-hero__content\">{}</div><div class=\"landing-hero__image\">{}</div></div>",
+            if side == "left" {
+                " landing-hero--reverse"
+            } else {
+                ""
+            },
+            100.0 - percent,
+            render_markdown(&text, None),
+            render_markdown(&media, Some(percent)),
+        )
+    } else {
+        String::new()
+    };
+    let content = render_nodes(children, rel, render_markdown, render_image);
+    let tone = allowed_attr(
+        component,
+        "tone",
+        &["default", "subtle", "accent", "contrast"],
+    )
+    .unwrap_or("default");
+    let centered = if attr(component, "image-align") == Some("center") {
+        " landing-section--image-center"
+    } else {
+        ""
+    };
+    format!(
+        "<section class=\"landing-section landing-section--{tone}{centered}\">{intro}{content}</section>"
+    )
+}
+
 fn render_hero(
     component: &Component,
     rel: &str,
     render_markdown: &impl Fn(&str, Option<f32>) -> String,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     let align = allowed_attr(component, "align", &["left", "center"]).unwrap_or("left");
-    let reverse = matches!(component.attrs.get("reverse"), Some(None));
+    let reverse = match allowed_attr(component, "image-align", &["left", "right"]) {
+        Some(side) => side == "left",
+        None => matches!(component.attrs.get("reverse"), Some(None)),
+    };
     let mut content = String::new();
     let mut image = None;
     let mut percent = 50.0;
@@ -400,6 +501,7 @@ fn render_hero(
                 std::slice::from_ref(child),
                 rel,
                 render_markdown,
+                render_image,
             ));
         }
     }
@@ -498,6 +600,7 @@ fn render_features(
     component: &Component,
     rel: &str,
     render_markdown: &impl Fn(&str, Option<f32>) -> String,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     let mut out = String::from("<section class=\"landing-features\">");
     let mut cards = String::new();
@@ -516,13 +619,14 @@ fn render_features(
         if let Node::Component(card) = child
             && card.name == "card"
         {
-            cards.push_str(&render_component(card, rel, render_markdown));
+            cards.push_str(&render_component(card, rel, render_markdown, render_image));
         } else {
             flush_cards(&mut out, &mut cards);
             out.push_str(&render_nodes(
                 std::slice::from_ref(child),
                 rel,
                 render_markdown,
+                render_image,
             ));
         }
     }
@@ -531,13 +635,19 @@ fn render_features(
     out
 }
 
-fn render_card(component: &Component, rel: &str, content: &str) -> String {
+fn render_card(
+    component: &Component,
+    content: &str,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
+) -> String {
     let icon = attr(component, "icon")
         .map(|path| {
-            format!(
-                "<img class=\"landing-card__icon\" src=\"{}\" alt=\"\">",
-                escape_attr(&resolve_asset(path, rel))
-            )
+            let (class, kind) = if path.to_ascii_lowercase().ends_with(".svg") {
+                ("landing-card__icon", ComponentImage::CardIcon)
+            } else {
+                ("landing-card__image", ComponentImage::CardImage)
+            };
+            format!("<div class=\"{class}\">{}</div>", render_image(path, kind))
         })
         .unwrap_or_default();
     format!(
@@ -583,6 +693,160 @@ fn escape_attr(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::header::Header;
+
+    #[test]
+    fn centered_section_preserves_image_position_and_normal_width_constraints() {
+        let source = "::: section image-align=center\n## Heading\n\nText above.\n\n![Illustration](images/example.png;maxw=50%)\n\nText below.\n\n::: features\n::: card\n### Card\nCard text.\n:::\n:::\n:::\n";
+        assert!(validate(source, true).is_empty());
+        let html = render_with_context(source, "", |markdown, width| {
+            assert_eq!(width, None);
+            crate::render::render_markdown_to_html(markdown)
+        });
+        assert!(html.contains("landing-section--image-center"));
+        assert!(!html.contains("landing-hero--split"));
+        assert!(html.find("Text above.").unwrap() < html.find("<img ").unwrap());
+        assert!(html.find("<img ").unwrap() < html.find("Text below.").unwrap());
+        assert!(html.find("Text below.").unwrap() < html.find("landing-features__cards").unwrap());
+        assert!(html.contains("images/example.png;maxw=50%"));
+        assert!(html.contains("alt=\"Illustration\""));
+    }
+
+    #[test]
+    fn section_image_alignment_splits_intro_and_keeps_cards_below() {
+        for side in ["left", "right"] {
+            let source = format!(
+                "::: section tone=subtle image-align={side}\n## Privacy\n\n![Private](images/privacy.png;maxw=60%)\n\nSome **text**.\n\n::: features\n::: card\n### Card\nText\n:::\n:::\n:::\n"
+            );
+            assert!(validate(&source, true).is_empty());
+            let html = render_with_context(&source, "", |markdown, width| {
+                if markdown.contains("![Private]") {
+                    assert_eq!(width, Some(60.0));
+                } else {
+                    assert_eq!(width, None);
+                }
+                crate::render::render_markdown_to_html(markdown)
+            });
+            assert!(html.contains("landing-section--subtle"));
+            assert!(html.contains("landing-section__intro landing-hero--split"));
+            assert_eq!(html.contains("landing-hero--reverse"), side == "left");
+            assert!(html.contains("--hero-image-weight: 60fr; --hero-text-weight: 40fr"));
+            assert!(html.contains("<strong>text</strong>"));
+            assert!(html.contains("alt=\"Private\""));
+            assert_eq!(html.matches("<img ").count(), 1);
+            assert!(
+                html.find("landing-hero__content").unwrap()
+                    < html.find("landing-hero__image").unwrap()
+            );
+            assert!(html.contains("</div></div><section class=\"landing-features\">"));
+        }
+    }
+
+    #[test]
+    fn section_images_split_only_when_requested_and_standalone_in_intro() {
+        for (attribute, markdown) in [
+            ("", "![Private](images/privacy.png)"),
+            (" image-align=left", "Text ![Private](images/privacy.png)"),
+            (" image-align=right", "> ![Private](images/privacy.png)"),
+            (" image-align=left", "No image"),
+            (
+                " image-align=right",
+                "::: features\n![Private](images/privacy.png)\n:::",
+            ),
+        ] {
+            let html = render(
+                &format!("::: section{attribute}\n{markdown}\n:::\n"),
+                "",
+                crate::render::render_markdown_to_html,
+            );
+            assert!(!html.contains("landing-section__intro"), "{markdown}");
+        }
+        for component in ["section", "hero"] {
+            for side in ["left", "right"] {
+                assert!(
+                    validate(
+                        &format!("::: {component} image-align={side}\nText\n:::\n"),
+                        true
+                    )
+                    .is_empty()
+                );
+            }
+            assert_eq!(
+                validate(
+                    &format!("::: {component} image-align=center\nText\n:::\n"),
+                    true
+                )
+                .len(),
+                usize::from(component == "hero")
+            );
+        }
+    }
+
+    #[test]
+    fn hero_image_alignment_overrides_reverse_and_preserves_centered_layout() {
+        for (attributes, reverse, split) in [
+            ("image-align=left", true, true),
+            ("image-align=right", false, true),
+            ("reverse image-align=right", false, true),
+            ("align=center image-align=left", false, false),
+        ] {
+            let html = render(
+                &format!("::: hero {attributes}\n# Hero\n\n![Image](images/hero.png)\n:::\n"),
+                "",
+                crate::render::render_markdown_to_html,
+            );
+            assert_eq!(
+                html.contains("landing-hero--reverse"),
+                reverse,
+                "{attributes}"
+            );
+            assert_eq!(html.contains("landing-hero--split"), split, "{attributes}");
+        }
+    }
+
+    #[test]
+    fn discovers_nested_component_images_but_ignores_code_and_remote_assets() {
+        let refs = collect_media_refs(
+            "::: section\n::: features\n::: card icon=\"images/cards/a b.png\"\nCard\n:::\n::: card icon=images/icons/check.svg\nIcon\n:::\n::: card icon=https://example.com/remote.png\nRemote\n:::\n:::\n:::\n::: feature image=images/features/demo.jpg\nFeature\n:::\n```\n::: card icon=images/code.png\n:::\n```\n",
+        );
+        let paths = refs
+            .iter()
+            .map(|media| match media {
+                crate::media::MediaRef::Image(image) => image.path.raw.as_str(),
+                _ => panic!("expected image"),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            paths,
+            [
+                "images/cards/a b.png",
+                "images/icons/check.svg",
+                "images/features/demo.jpg"
+            ]
+        );
+    }
+
+    #[test]
+    fn component_image_callback_distinguishes_photos_icons_and_features() {
+        let html = render_with_media(
+            "::: features\n::: card icon=images/cards/photo.png\nPhoto\n:::\n::: card icon=images/icons/check.svg\nIcon\n:::\n:::\n::: feature image=images/demo.jpg\nFeature\n:::\n",
+            "../",
+            |text, _| text.to_string(),
+            |path, kind| format!("<media data-kind=\"{kind:?}\">{path}</media>"),
+        );
+        assert!(html.contains("class=\"landing-card__image\"><media data-kind=\"CardImage\""));
+        assert!(html.contains("class=\"landing-card__icon\"><media data-kind=\"CardIcon\""));
+        assert!(html.contains("class=\"landing-feature__image\"><media data-kind=\"Feature\""));
+    }
+
+    #[test]
+    fn fallback_component_images_escape_attributes() {
+        let html = render(
+            "::: card icon=images/a&b.png\nCard\n:::\n",
+            "../",
+            str::to_string,
+        );
+        assert!(html.contains("src=\"../images/a&amp;b.png\" alt=\"\""));
+    }
 
     #[test]
     fn layout_detection_honors_explicit_layout() {

@@ -37,12 +37,15 @@ DarkSpeak is a private messenger designed around peer-to-peer communication.
 The available components are:
 
 - `hero` — the introductory page section; accepts `align=left` or `align=center`,
-  and the boolean `reverse` attribute. By default, the first standalone Markdown
+  `image-align=left` or `image-align=right`, and the boolean `reverse` attribute.
+  By default, the first standalone Markdown
   image sits to the right of the text on desktop. `reverse` puts it on the left.
   Both stack with text first on mobile. `align=center` keeps the centered,
   stacked presentation.
 - `section` — a visual section; accepts `tone=default`, `subtle`, `accent`, or
-  `contrast`.
+  `contrast`, plus `image-align=left` or `image-align=right` for an image beside
+  the introductory text, or `image-align=center` for centered images in normal
+  document flow.
 - `features` — a collection of feature cards.
 - `card` — a small feature item, normally placed inside `features`; accepts
   `icon="path"`.
@@ -52,6 +55,29 @@ The available components are:
 
 Attributes are deliberately limited to semantic content. Do not use columns,
 breakpoints, colors, inline styles, or CSS classes in page content.
+
+## Card images
+
+Wrap cards in `::: features` to use the theme's responsive card grid. The `icon`
+attribute accepts both SVG icons and raster images:
+
+```markdown
+::: features
+::: card icon="images/cards/capture.png"
+### Capture it
+
+Add tasks, ideas and notes in seconds.
+:::
+:::
+```
+
+Built-in themes show SVGs as small icons and raster images across the card width,
+preserving their aspect ratio. Local paths under `images/`, including subfolders,
+are copied and prepared using the configured image widths and formats. Cards use
+responsive `picture`/`srcset` markup, load lazily, and never upscale the source.
+Component images are decorative (`alt=""`); use a normal Markdown image inside
+the card when the image needs descriptive alt text. `feature image="images/..."`
+uses the same image preparation pipeline.
 
 ## Hero images
 
@@ -79,6 +105,58 @@ Split hero images use the configured image variants, with `srcset` and `sizes`
 so the browser can select a width for the image area and device pixel density.
 All configured widths up to the source width are generated; images are never
 upscaled. Hero images load eagerly because they appear at the top of the page.
+
+## Section image alignment
+
+Use `image-align=left` or `image-align=right` on a section to give its introduction
+the same image/text presentation as a split hero:
+
+```markdown
+::: section tone=subtle image-align=left
+## Privacy matters
+
+![Privacy illustration](images/privacy.png;maxw=60%)
+
+Your personal information stays private.
+
+::: features
+::: card
+### Your data is yours
+
+No telemetry or profiling.
+:::
+:::
+:::
+```
+
+The first standalone image in the introductory Markdown moves into an image
+column. Nested components, such as feature cards, remain below the introduction
+at full width. A percentage image constraint sizes the image column once; without
+one, the split is equal. Mobile keeps the text first and stacks the image below it.
+Sections without `image-align` keep their normal vertical layout.
+
+Use `image-align=center` to center ordinary images while keeping text above and
+below them in source order:
+
+```markdown
+::: section image-align=center
+## What you need to know
+
+Text above the image.
+
+![Illustration](images/example.png;maxw=50%)
+
+Text below the image.
+:::
+```
+
+Here `maxw=50%` limits the image to half the section's available content width.
+The constraint applies once, to the picture wrapper; the image inside can fill
+that wrapper. Centering does not create an image/text split or center the text.
+
+Heroes also accept `image-align=left` and `image-align=right`. An explicit
+`image-align` takes precedence over `reverse`; `align=center` retains the centered,
+stacked hero presentation.
 
 ## Buttons without JavaScript
 

@@ -284,7 +284,7 @@ pub fn render_media_element_html(
 ) -> RenderedMedia {
     match parse_media_destination(dest_url, alt) {
         Some(MediaRef::Image(image)) => RenderedMedia {
-            html: render_image_picture_html(&image, options),
+            html: render_image_picture_html(&image, options, None),
             maxw: image.maxw,
             maxh: image.maxh,
         },
@@ -314,7 +314,7 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     {
         image.maxw = None;
     }
-    let mut html = render_image_picture_html(&image, options);
+    let mut html = render_image_picture_html(&image, options, None);
     let is_banner = image
         .attrs
         .iter()
@@ -347,9 +347,27 @@ pub fn render_image_html(dest_url: &str, alt: &str, options: &RenderOptions<'_>)
     html
 }
 
+/// Render component metadata images against the planned variant index.
+pub fn render_component_image_html(path: &str, options: &RenderOptions<'_>, sizes: &str) -> String {
+    let Some(MediaRef::Image(mut image)) = parse_media_destination(path, "") else {
+        let path = if path.contains("://") || path.starts_with('/') || path.starts_with('#') {
+            path.to_string()
+        } else {
+            format!("{}{path}", options.rel_prefix)
+        };
+        return format!(
+            "<img src=\"{}\" alt=\"\" loading=\"lazy\" decoding=\"async\">",
+            escape_attr(&path)
+        );
+    };
+    image.has_args = true;
+    render_image_picture_html(&image, options, Some(sizes))
+}
+
 fn render_image_picture_html(
     image: &crate::media::ImageRef,
     options: &RenderOptions<'_>,
+    component_sizes: Option<&str>,
 ) -> String {
     if !image.has_args && options.hero_image.is_none() {
         return render_plain_media_image(image, options);
@@ -396,7 +414,9 @@ fn render_image_picture_html(
             ),
         )
     };
-    let sizes = image_sizes(&image.attrs, options);
+    let sizes = component_sizes
+        .map(str::to_owned)
+        .unwrap_or_else(|| image_sizes(&image.attrs, options));
     let (class_attr, style_attr) = image_class_style(&image.attrs);
     let alt = escape_attr(image.alt.trim());
 
@@ -429,25 +449,25 @@ fn render_image_picture_html(
                 html.push_str("<source type=\"");
                 html.push_str(format_mime(format));
                 html.push_str("\" srcset=\"");
-                html.push_str(&srcset);
+                html.push_str(&escape_attr(&srcset));
                 html.push_str("\" sizes=\"");
-                html.push_str(&sizes);
+                html.push_str(&escape_attr(&sizes));
                 html.push_str("\">");
             }
         }
     }
     html.push_str("<img src=\"");
-    html.push_str(&src);
+    html.push_str(&escape_attr(&src));
     html.push('"');
     html.push_str(" alt=\"");
     html.push_str(&alt);
     html.push('"');
     if let Some(srcset) = srcset {
         html.push_str(" srcset=\"");
-        html.push_str(&srcset);
+        html.push_str(&escape_attr(&srcset));
         html.push('"');
         html.push_str(" sizes=\"");
-        html.push_str(&sizes);
+        html.push_str(&escape_attr(&sizes));
         html.push('"');
     }
     if let Some(style_attr) = style_attr.as_ref() {
@@ -1026,6 +1046,31 @@ mod tests {
             syntax_highlight: true,
             syntax_theme: "GitHub",
             syntax_line_numbers: true,
+        }
+    }
+
+    #[test]
+    fn component_images_use_original_when_no_variants_are_planned() {
+        let empty = Default::default();
+        let mut options = base_render_options(&[], &[200, 500]);
+        options.rel_prefix = "../";
+        options.image_variants = Some(&empty);
+        for path in ["images/cards/tiny.png", "images/icons/check.svg"] {
+            let html = super::render_component_image_html(path, &options, "3rem");
+            assert!(html.contains(&format!("src=\"../{path}\"")));
+            assert!(!html.contains("srcset="));
+            assert!(html.contains("alt=\"\""));
+            assert!(html.contains("loading=\"lazy\""));
+        }
+    }
+
+    #[test]
+    fn component_images_escape_paths_in_originals_variants_and_remote_urls() {
+        let options = base_render_options(&[], &[200]);
+        for path in ["images/cards/a\"b.png", "https://example.com/a\"b.png"] {
+            let html = super::render_component_image_html(path, &options, "3rem");
+            assert!(html.contains("a&quot;b"));
+            assert!(!html.contains("a\"b"));
         }
     }
 

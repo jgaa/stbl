@@ -894,15 +894,33 @@ fn render_markdown_with_media(
         syntax_line_numbers: project.config.syntax.line_numbers,
     };
     if landing {
-        crate::landing::render_with_context(markdown, rel, |fragment, hero_image| {
-            render_markdown_to_html_with_media(
-                fragment,
-                &RenderOptions {
-                    hero_image,
-                    ..options
-                },
-            )
-        })
+        crate::landing::render_with_media(
+            markdown,
+            rel,
+            |fragment, hero_image| {
+                render_markdown_to_html_with_media(
+                    fragment,
+                    &RenderOptions {
+                        hero_image,
+                        ..options
+                    },
+                )
+            },
+            |path, kind| {
+                let sizes = match kind {
+                    crate::landing::ComponentImage::CardIcon => "3rem".to_string(),
+                    crate::landing::ComponentImage::CardImage => format!(
+                        "(min-width: {}) calc((min(100vw, {}) - 4rem) / 3), calc(100vw - 4rem)",
+                        options.desktop_min, options.max_body_width
+                    ),
+                    crate::landing::ComponentImage::Feature => format!(
+                        "(min-width: {}) calc(min(100vw, {}) / 2), calc(100vw - 2rem)",
+                        options.desktop_min, options.max_body_width
+                    ),
+                };
+                crate::render::render_component_image_html(path, &options, &sizes)
+            },
+        )
     } else {
         render_markdown_to_html_with_media(&crate::landing::strip_containers(markdown), &options)
     }

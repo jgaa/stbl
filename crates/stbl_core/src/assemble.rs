@@ -77,8 +77,13 @@ pub fn assemble_site_with_template_policy(
                 header.title = Some(deduced);
             }
         }
-        let (media_refs, media_errors) =
+        let (mut media_refs, media_errors) =
             crate::media::collect_media_refs_with_errors(&doc.parsed.body_markdown);
+        if crate::landing::uses_landing_layout(&header) {
+            media_refs.extend(crate::landing::collect_media_refs(
+                &doc.parsed.body_markdown,
+            ));
+        }
         for message in media_errors {
             diagnostics.push(Diagnostic {
                 level: DiagnosticLevel::Error,
@@ -480,6 +485,36 @@ mod tests {
         header.uuid = Some(Uuid::new_v4());
         header.template_raw = Some(template.to_string());
         header
+    }
+
+    #[test]
+    fn component_media_discovery_honors_landing_layout_selection() {
+        for (layout, template, expected) in [
+            (Some("landing"), None, 1),
+            (None, Some("landingpage.html"), 1),
+            (Some("standard"), Some("landingpage.html"), 0),
+            (None, None, 0),
+        ] {
+            let header = Header {
+                layout: layout.map(str::to_string),
+                template_raw: template.map(str::to_string),
+                ..Header::default()
+            };
+            let mut doc = parsed("articles/index.md", "articles", "index.md", header);
+            doc.body_markdown =
+                "::: features\n::: card icon=images/cards/photo.png\nCard\n:::\n:::\n".into();
+            let site = assemble_site(vec![DiscoveredDoc {
+                parsed: doc,
+                kind: DocKind::Page,
+                series_dir: None,
+            }])
+            .expect("assemble page");
+            assert_eq!(
+                site.pages[0].media_refs.len(),
+                expected,
+                "{layout:?} {template:?}"
+            );
+        }
     }
 
     #[test]

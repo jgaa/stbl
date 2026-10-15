@@ -34,6 +34,11 @@ img, video { max-width: 100%; height: auto; }
 .landing-features__cards { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 .landing-card { padding: 1.25rem; border: 1px solid var(--c-border); border-radius: .5rem; background: var(--c-surface); }
 .landing-card__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: .75rem; }
+.landing-card__icon img { width: 100%; height: 100%; object-fit: contain; }
+.landing-card__image { margin-bottom: 1rem; }
+.landing-card__image picture { display: block; }
+.landing-card__image img { display: block; width: 100%; height: auto; }
+.landing-feature__image img { display: block; max-width: 100%; height: auto; }
 .landing-feature { display: flex; flex-direction: column; gap: 1.5rem; }
 .landing-feature__image { width: 100%; object-fit: contain; }
 .landing-callout { padding: 1.5rem; border: 1px solid var(--c-border); border-radius: .5rem; background: var(--c-surface); }
@@ -60,6 +65,9 @@ img, video { max-width: 100%; height: auto; }
   height: auto;
 }
 
+/* The picture owns the width constraint; do not apply percentages twice. */
+.media-frame > picture > img { max-width: 100%; }
+
 .figure {
   margin: 1.5rem 0;
 }
@@ -77,6 +85,8 @@ img, video { max-width: 100%; height: auto; }
   width: auto;
   height: auto;
 }
+
+.figure picture > img { max-width: 100%; }
 
 .figure figcaption {
   margin: 0.5rem 0 0;
@@ -923,3 +933,11 @@ footer p:last-child {
 
 /* Keep the video area stable as responsive poster variants change. */
 .video > .video__el { width: 100%; }
+
+.landing-section__intro .landing-hero__content h2 { text-align: left; }
+
+/* Center section images without moving their surrounding text. */
+.landing-section--image-center > p > :is(img, picture) { display: block; margin-inline: auto; }
+.landing-section--image-center > .media-frame { display: flex; justify-content: center; }
+.landing-section--image-center > .media-frame > picture { display: block; max-width: min(100%, var(--media-maxw, 100%)); }
+.landing-section--image-center > .media-frame > picture > img { max-width: 100%; }

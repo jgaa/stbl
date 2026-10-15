@@ -34,6 +34,11 @@ img, video { max-width: 100%; height: auto; }
 .landing-features__cards { display: grid; grid-template-columns: 1fr; gap: var(--space-md); }
 .landing-card { padding: var(--space-lg); border: 1px solid var(--c-border); border-radius: 4px; background: var(--c-surface); }
 .landing-card__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: var(--space-sm); }
+.landing-card__icon img { width: 100%; height: 100%; object-fit: contain; }
+.landing-card__image { margin-bottom: 1rem; }
+.landing-card__image picture { display: block; }
+.landing-card__image img { display: block; width: 100%; height: auto; }
+.landing-feature__image img { display: block; max-width: 100%; height: auto; }
 .landing-feature { display: flex; flex-direction: column; gap: var(--space-lg); }
 .landing-feature__image { width: 100%; object-fit: contain; }
 .landing-callout { padding: var(--space-xl); border: 1px solid var(--c-border); background: var(--c-surface); }
@@ -139,3 +144,11 @@ footer p { margin: 0; color: var(--c-muted); font-size: 0.875rem; }
 
 /* Keep the video area stable as responsive poster variants change. */
 .video > .video__el { width: 100%; }
+
+.landing-section__intro .landing-hero__content h2 { text-align: left; }
+
+/* Center section images without moving their surrounding text. */
+.landing-section--image-center > p > :is(img, picture) { display: block; margin-inline: auto; }
+.landing-section--image-center > .media-frame { display: flex; justify-content: center; }
+.landing-section--image-center > .media-frame > picture { display: block; max-width: min(100%, var(--media-maxw, 100%)); }
+.landing-section--image-center > .media-frame > picture > img { max-width: 100%; }
