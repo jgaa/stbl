@@ -910,9 +910,14 @@ fn render_markdown_with_media(
             },
             |path, kind| {
                 let sizes = match kind {
-                    crate::landing::ComponentImage::CardIcon => "3rem".to_string(),
+                    crate::landing::ComponentImage::CardIcon
+                    | crate::landing::ComponentImage::SectionIcon => "3rem".to_string(),
                     crate::landing::ComponentImage::CardImage => format!(
                         "(min-width: {}) calc((min(100vw, {}) - 4rem) / 3), calc(100vw - 4rem)",
+                        options.desktop_min, options.max_body_width
+                    ),
+                    crate::landing::ComponentImage::SectionImage => format!(
+                        "(min-width: {}) min(100vw, {}), calc(100vw - 2rem)",
                         options.desktop_min, options.max_body_width
                     ),
                     crate::landing::ComponentImage::Feature => format!(

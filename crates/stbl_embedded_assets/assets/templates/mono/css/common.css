@@ -28,11 +28,11 @@ img, video { max-width: 100%; height: auto; }
 .landing-section--contrast { background: var(--c-fg); color: var(--c-bg); }
 .landing-features__cards { display: grid; grid-template-columns: 1fr; gap: 1rem; }
 .landing-card { padding: 1.25rem; border: 1px solid var(--c-border); background: var(--c-surface); }
-.landing-card__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: .75rem; }
-.landing-card__icon img { width: 100%; height: 100%; object-fit: contain; }
-.landing-card__image { margin-bottom: 1rem; }
-.landing-card__image picture { display: block; }
-.landing-card__image img { display: block; width: 100%; height: auto; }
+.landing-card__icon, .landing-section__icon { width: 2rem; height: 2rem; object-fit: contain; margin-bottom: .75rem; }
+.landing-card__icon img, .landing-section__icon img { width: 100%; height: 100%; object-fit: contain; }
+.landing-card__image, .landing-section__image { margin-bottom: 1rem; }
+.landing-card__image picture, .landing-section__image picture { display: block; }
+.landing-card__image img, .landing-section__image img { display: block; width: 100%; height: auto; }
 .landing-feature__image img { display: block; max-width: 100%; height: auto; }
 .landing-feature { display: flex; flex-direction: column; gap: 1.5rem; }
 .landing-feature__image { width: 100%; object-fit: contain; }

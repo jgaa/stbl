@@ -115,7 +115,7 @@ fn image_resize_generates_variants() {
 }
 
 #[test]
-fn landing_card_images_are_copied_scaled_and_rendered_from_nested_folders() {
+fn landing_card_and_section_images_are_copied_scaled_and_rendered_from_nested_folders() {
     use std::process::Command;
 
     let temp = TempDir::new().expect("tempdir");
@@ -127,11 +127,17 @@ fn landing_card_images_are_copied_scaled_and_rendered_from_nested_folders() {
     fs::write(root.join("images/icons/check.svg"),
         r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><path d="M0 0h16v16H0z"/></svg>"#
     ).expect("write SVG");
+    fs::copy(
+        root.join("images/icons/check.svg"),
+        root.join("images/icons/blocks.svg"),
+    )
+    .expect("section SVG");
+    write_test_image(&root.join("images/cards/section.png"), 800, 400);
     fs::write(root.join("stbl.yaml"),
         "site:\n  id: landing-card-images\n  title: Cards\n  base_url: https://example.com/\n  language: en\ntheme:\n  variant: product\nmedia:\n  images:\n    widths: [200, 500, 1000]\n    quality: 90\n"
     ).expect("config");
     fs::write(root.join("articles/index.md"),
-        "---\ntitle: Cards\nlayout: landing\n---\n\n::: features\n::: card icon=images/cards/photo.png\n### Photo\n\nCard text.\n:::\n::: card icon=images/icons/check.svg\n### Icon\n:::\n:::\n\n::: section tone=subtle image-align=left\n## Privacy\n\n![Privacy illustration](images/cards/photo.png;maxw=60%)\n\nPrivate by design.\n\n::: features\n::: card\n### No tracking\nText\n:::\n:::\n:::\n\n::: section image-align=center\n## Centered illustration\n\nBefore image.\n\n![Centered](images/cards/photo.png;maxw=50%)\n\nAfter image.\n:::\n"
+        "---\ntitle: Cards\nlayout: landing\n---\n\n::: features\n::: card icon=images/cards/photo.png\n### Photo\n\nCard text.\n:::\n::: card icon=images/icons/check.svg\n### Icon\n:::\n:::\n\n::: section tone=subtle icon=\"images/icons/blocks.svg\" image-align=left\n## Privacy\n\n![Privacy illustration](images/cards/photo.png;maxw=60%)\n\nPrivate by design.\n\n::: features\n::: card\n### No tracking\nText\n:::\n:::\n:::\n\n::: section icon=images/cards/section.png image-align=center\n## Centered illustration\n\nBefore image.\n\n![Centered](images/cards/photo.png;maxw=50%)\n\nAfter image.\n:::\n"
     ).expect("content");
     let out = root.join("out");
     // Build twice to exercise both execution and incremental reuse.
@@ -161,6 +167,9 @@ fn landing_card_images_are_copied_scaled_and_rendered_from_nested_folders() {
         fs::read(root.join("images/cards/photo.png")).unwrap()
     );
     assert!(out.join("images/icons/check.svg").exists());
+    assert!(out.join("images/icons/blocks.svg").exists());
+    assert!(out.join("images/cards/section.png").exists());
+    assert!(out.join("images/_scale_200/cards/section.webp").exists());
     for width in [200, 500] {
         for extension in ["jpg", "webp"] {
             let path = out.join(format!("images/_scale_{width}/cards/photo.{extension}"));
@@ -173,6 +182,10 @@ fn landing_card_images_are_copied_scaled_and_rendered_from_nested_folders() {
     let config = load_site_config(&root.join("stbl.yaml")).expect("config");
     let mapper = stbl_core::url::UrlMapper::new(&config);
     let html = fs::read_to_string(out.join(mapper.map("index").primary_output)).expect("HTML");
+    assert!(html.contains("class=\"landing-section__icon\"><picture><img"));
+    assert!(html.contains("images/icons/blocks.svg"));
+    assert!(html.contains("class=\"landing-section__image\"><picture>"));
+    assert!(html.contains("images/_scale_200/cards/section.webp 200w"));
     assert!(html.contains("class=\"landing-card__image\"><picture>"));
     assert!(html.contains("images/_scale_200/cards/photo.webp 200w"));
     assert!(html.contains("images/_scale_500/cards/photo.jpg 500w"));

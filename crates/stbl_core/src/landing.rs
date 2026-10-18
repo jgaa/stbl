@@ -67,7 +67,7 @@ pub fn collect_media_refs(markdown: &str) -> Vec<crate::media::MediaRef> {
                 continue;
             };
             let key = match component.name.as_str() {
-                "card" => "icon",
+                "card" | "section" => "icon",
                 "feature" => "image",
                 _ => "",
             };
@@ -109,6 +109,8 @@ pub fn render_with_context(
 pub enum ComponentImage {
     CardIcon,
     CardImage,
+    SectionIcon,
+    SectionImage,
     Feature,
 }
 
@@ -187,11 +189,12 @@ fn validate_attributes(component: &Component, diagnostics: &mut Vec<LandingDiagn
                     || (name == "image-align" && matches!(value.as_deref(), Some("left" | "right")))
             }
             "section" => {
-                (name == "tone"
-                    && matches!(
-                        value.as_deref(),
-                        Some("default" | "subtle" | "accent" | "contrast")
-                    ))
+                (name == "icon" && value.is_some())
+                    || (name == "tone"
+                        && matches!(
+                            value.as_deref(),
+                            Some("default" | "subtle" | "accent" | "contrast")
+                        ))
                     || (name == "image-align"
                         && matches!(value.as_deref(), Some("left" | "right" | "center")))
             }
@@ -466,8 +469,9 @@ fn render_section(
     } else {
         ""
     };
+    let icon = render_icon(component, render_image);
     format!(
-        "<section class=\"landing-section landing-section--{tone}{centered}\">{intro}{content}</section>"
+        "<section class=\"landing-section landing-section--{tone}{centered}\">{icon}{intro}{content}</section>"
     )
 }
 
@@ -640,19 +644,33 @@ fn render_card(
     content: &str,
     render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
-    let icon = attr(component, "icon")
-        .map(|path| {
-            let (class, kind) = if path.to_ascii_lowercase().ends_with(".svg") {
-                ("landing-card__icon", ComponentImage::CardIcon)
-            } else {
-                ("landing-card__image", ComponentImage::CardImage)
-            };
-            format!("<div class=\"{class}\">{}</div>", render_image(path, kind))
-        })
-        .unwrap_or_default();
+    let icon = render_icon(component, render_image);
     format!(
         "<article class=\"landing-card\">{icon}<div class=\"landing-card__content\">{content}</div></article>"
     )
+}
+
+fn render_icon(
+    component: &Component,
+    render_image: &impl Fn(&str, ComponentImage) -> String,
+) -> String {
+    attr(component, "icon")
+        .map(|path| {
+            let is_svg = path.to_ascii_lowercase().ends_with(".svg");
+            let kind = match (component.name.as_str(), is_svg) {
+                ("section", true) => ComponentImage::SectionIcon,
+                ("section", false) => ComponentImage::SectionImage,
+                (_, true) => ComponentImage::CardIcon,
+                (_, false) => ComponentImage::CardImage,
+            };
+            let suffix = if is_svg { "icon" } else { "image" };
+            format!(
+                "<div class=\"landing-{}__{suffix}\">{}</div>",
+                component.name,
+                render_image(path, kind)
+            )
+        })
+        .unwrap_or_default()
 }
 
 fn attr<'a>(component: &'a Component, name: &str) -> Option<&'a str> {
@@ -693,6 +711,55 @@ fn escape_attr(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::header::Header;
+
+    #[test]
+    fn section_icons_validate_render_and_resolve_like_card_icons() {
+        for path in ["images/icons/a & b.svg", "images/photo.png"] {
+            let source =
+                format!("::: section tone=subtle icon=\"{path}\"\n## Heading\n\nContent.\n:::\n");
+            assert!(validate(&source, true).is_empty());
+            let html = render(&source, "../", crate::render::render_markdown_to_html);
+            let suffix = if path.ends_with(".svg") {
+                "icon"
+            } else {
+                "image"
+            };
+            assert!(html.starts_with(&format!(
+                "<section class=\"landing-section landing-section--subtle\"><div class=\"landing-section__{suffix}\">"
+            )));
+            assert!(html.contains(&format!(
+                "src=\"../{}\" alt=\"\"",
+                path.replace('&', "&amp;")
+            )));
+            assert!(html.find("</div>").unwrap() < html.find("<h2>").unwrap());
+            assert_eq!(collect_media_refs(&source).len(), 1);
+        }
+        assert_eq!(validate("::: section icon\nContent\n:::", true).len(), 1);
+        assert!(
+            !render("::: section\nContent\n:::", "", str::to_string)
+                .contains("landing-section__icon")
+        );
+    }
+
+    #[test]
+    fn section_icon_callback_distinguishes_svg_and_raster_media() {
+        for (path, kind) in [
+            ("images/blocks.SVG", ComponentImage::SectionIcon),
+            ("images/photo.png", ComponentImage::SectionImage),
+        ] {
+            let html = render_with_media(
+                &format!("::: section icon={path}\nContent\n:::\n"),
+                "../",
+                |text, _| text.to_string(),
+                |actual_path, actual_kind| {
+                    assert_eq!(actual_path, path);
+                    assert_eq!(actual_kind, kind);
+                    "<planned-image>".to_string()
+                },
+            );
+            assert!(html.contains("<planned-image>"));
+        }
+    }
 
     #[test]
     fn centered_section_preserves_image_position_and_normal_width_constraints() {

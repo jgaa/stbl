@@ -212,6 +212,19 @@ Content goes here.
 :::
 ```
 
+Sections may optionally specify an icon, rendered before the section content with
+the same sizing and spacing as card icons. SVGs use the small icon treatment;
+raster images use the full-width image treatment. Local assets participate in
+normal media planning and copying.
+
+```markdown
+::: section tone=subtle icon="images/icons/blocks.svg"
+## Building blocks
+
+Content goes here.
+:::
+```
+
 Sections may optionally specify a semantic tone:
 
 ```markdown
