@@ -44,6 +44,7 @@ The directory contains special files such as CSS and templates for generating HT
 * **Color schemes** — easily change or modify colors
 * **Template-driven rendering** for maximum flexibility
 * **Macros** for dynamic content injection
+* [Contact and feedback forms](docs/web-forms.md), with an optional local-mail CGI receiver
 * Works fully **without JavaScript**
 * [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
 * Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html)

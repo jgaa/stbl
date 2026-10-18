@@ -15,6 +15,10 @@ pub struct AssetSourceLookup {
 }
 
 impl AssetSourceLookup {
+    pub fn insert(&mut self, source: AssetSourceId, asset: AssetSource) {
+        self.sources.insert(source, asset);
+    }
+
     pub fn resolve(&self, source: &AssetSourceId) -> Option<&AssetSource> {
         self.sources.get(source)
     }
@@ -98,6 +102,7 @@ pub fn discover_assets_for_theme(
         })
         .collect::<Vec<_>>();
 
+    validate_form_assets(&assets, &sources)?;
     Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
 }
 
@@ -129,7 +134,27 @@ fn discover_assets_legacy(
         })
         .collect::<Vec<_>>();
 
+    validate_form_assets(&assets, &sources)?;
     Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
+}
+
+fn validate_form_assets(
+    assets: &[ResolvedAsset],
+    sources: &BTreeMap<AssetSourceId, AssetSource>,
+) -> Result<()> {
+    for asset in assets {
+        if stbl_core::forms::is_definition_asset(&asset.rel.0) {
+            let bytes = match sources.get(&asset.source).expect("resolved source") {
+                AssetSource::File(path) => std::fs::read(path)?,
+                AssetSource::Embedded(bytes) => bytes.clone(),
+                AssetSource::SiteIcon(_) => unreachable!("a form definition is not an icon"),
+            };
+            let form: stbl_core::forms::Form = serde_yaml::from_slice(&bytes)
+                .with_context(|| format!("invalid form definition {}", asset.rel.0))?;
+            stbl_core::forms::render_definition(&form).map_err(anyhow::Error::msg)?;
+        }
+    }
+    Ok(())
 }
 
 fn overlay_embedded_theme_assets(
@@ -322,6 +347,11 @@ pub fn copy_asset_to_out(
     } else {
         std::fs::write(&out_path, &bytes)
             .with_context(|| format!("failed to write {}", out_path.display()))?;
+    }
+    #[cfg(unix)]
+    if out_rel == "stbl-forms/stbl-form-receiver" {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&out_path, std::fs::Permissions::from_mode(0o755))?;
     }
     Ok(())
 }

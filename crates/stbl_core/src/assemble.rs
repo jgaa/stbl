@@ -56,10 +56,20 @@ pub fn assemble_site_with_template_policy(
             &mut diagnostics,
             &doc.parsed.src.source_path,
         );
-        for landing_diagnostic in crate::landing::validate(
-            &doc.parsed.body_markdown,
-            crate::landing::uses_landing_layout(&header),
-        ) {
+        let form_markdown = match crate::forms::expand(&doc.parsed.body_markdown) {
+            Ok(markdown) => markdown,
+            Err(message) => {
+                diagnostics.push(Diagnostic {
+                    level: DiagnosticLevel::Error,
+                    source_path: Some(doc.parsed.src.source_path.clone()),
+                    message,
+                });
+                doc.parsed.body_markdown.clone()
+            }
+        };
+        for landing_diagnostic in
+            crate::landing::validate(&form_markdown, crate::landing::uses_landing_layout(&header))
+        {
             diagnostics.push(Diagnostic {
                 level: landing_diagnostic.level,
                 source_path: Some(doc.parsed.src.source_path.clone()),
@@ -80,9 +90,7 @@ pub fn assemble_site_with_template_policy(
         let (mut media_refs, media_errors) =
             crate::media::collect_media_refs_with_errors(&doc.parsed.body_markdown);
         if crate::landing::uses_landing_layout(&header) {
-            media_refs.extend(crate::landing::collect_media_refs(
-                &doc.parsed.body_markdown,
-            ));
+            media_refs.extend(crate::landing::collect_media_refs(&form_markdown));
         }
         for message in media_errors {
             diagnostics.push(Diagnostic {

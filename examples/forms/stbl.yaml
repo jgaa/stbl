@@ -1,0 +1,9 @@
+site:
+  id: contact-example
+  title: Contact us
+  base_url: https://example.org/
+  language: en
+theme:
+  variant: minimal
+assets:
+  cache_busting: true

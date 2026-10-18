@@ -893,6 +893,8 @@ fn render_markdown_with_media(
         syntax_theme: &project.config.syntax.theme,
         syntax_line_numbers: project.config.syntax.line_numbers,
     };
+    let expanded_forms = crate::forms::expand(markdown).unwrap_or_else(|_| markdown.to_string());
+    let markdown = expanded_forms.as_str();
     if landing {
         crate::landing::render_with_media(
             markdown,

@@ -5,6 +5,7 @@ mod color_presets;
 mod color_preview;
 mod config_loader;
 mod exec;
+mod form_deployment;
 mod init;
 mod media;
 mod precompress;
@@ -409,6 +410,7 @@ fn run_plan(cli: &Cli, articles_dir: &PathBuf, dot: Option<&PathBuf>) -> Result<
         .with_context(|| "failed to resolve site.logo")?;
     assets::include_site_icon(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.icon")?;
+    form_deployment::include_form_deployment(&project, &mut asset_index, &mut asset_lookup)?;
     let (image_plan, _image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();
@@ -612,6 +614,7 @@ fn run_build(
         .with_context(|| "failed to resolve site.logo")?;
     assets::include_site_icon(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.icon")?;
+    form_deployment::include_form_deployment(&project, &mut asset_index, &mut asset_lookup)?;
     let (image_plan, image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();

@@ -4,6 +4,8 @@ pub mod color_derive;
 pub mod color_presets;
 pub mod config_loader;
 pub mod exec;
+pub mod form_receiver;
+pub mod form_deployment;
 pub mod init;
 pub mod media;
 pub mod precompress;

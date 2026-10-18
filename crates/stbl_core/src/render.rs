@@ -75,6 +75,8 @@ impl MediaRenderer for MacroMediaRenderer<'_> {
 }
 
 pub fn render_markdown_to_html(md: &str) -> String {
+    let expanded = crate::forms::expand(md).unwrap_or_else(|_| md.to_string());
+    let md = expanded.as_str();
     let mut options = Options::empty();
     options.insert(Options::ENABLE_TABLES);
     let parser = Parser::new_ext(md, options);
@@ -103,6 +105,7 @@ pub fn render_markdown_to_html_with_media(md: &str, options: &RenderOptions<'_>)
         }
         None => md.to_string(),
     };
+    let expanded = crate::forms::expand(&expanded).unwrap_or(expanded);
     let mut cmark_options = Options::empty();
     cmark_options.insert(Options::ENABLE_TABLES);
     let parser = Parser::new_ext(&expanded, cmark_options);

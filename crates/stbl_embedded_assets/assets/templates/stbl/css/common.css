@@ -941,3 +941,15 @@ footer p:last-child {
 .landing-section--image-center > .media-frame { display: flex; justify-content: center; }
 .landing-section--image-center > .media-frame > picture { display: block; max-width: min(100%, var(--media-maxw, 100%)); }
 .landing-section--image-center > .media-frame > picture > img { max-width: 100%; }
+
+/* Accessible, single-column forms inherit each theme's palette and type. */
+.stbl-form { display: grid; gap: 1rem; width: 100%; max-width: 42rem; margin-block: 1.5rem; }
+.stbl-form-field { display: grid; gap: .35rem; min-width: 0; font-weight: 600; }
+.stbl-form input, .stbl-form textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: .7rem; border: 1px solid var(--c-border); border-radius: .25rem; background: var(--c-bg); color: var(--c-fg); font: inherit; font-weight: 400; }
+.stbl-form textarea { resize: vertical; }
+.stbl-form button { justify-self: start; padding: .75rem 1.2rem; border: 1px solid currentColor; border-radius: .25rem; background: var(--c-fg); color: var(--c-bg); font: inherit; cursor: pointer; min-height: 44px; }
+.stbl-form button:disabled { opacity: .65; cursor: default; }
+.stbl-form :focus-visible { outline: 3px solid var(--c-link); outline-offset: 3px; }
+.stbl-form [aria-invalid="true"] { outline: 2px solid var(--c-link); }
+.stbl-form-status { margin: 0; overflow-wrap: anywhere; }
+.stbl-form-honeypot { display: none !important; }

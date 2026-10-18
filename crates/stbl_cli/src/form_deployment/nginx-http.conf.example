@@ -1,0 +1,5 @@
+# Install ONCE in nginx's http {} context, before the server {} blocks.
+# On Debian/Ubuntu: /etc/nginx/conf.d/stbl-forms-rate-limit.conf.
+# Tune these bounded-memory limits for your traffic and shared client IPs.
+limit_req_zone $binary_remote_addr zone=stbl_forms_per_ip:1m rate=10r/m;
+limit_req_zone $server_name zone=stbl_forms_per_site:1m rate=60r/m;

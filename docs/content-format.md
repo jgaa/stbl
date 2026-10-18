@@ -269,3 +269,10 @@ template: page
 - `docs/page-types.md`
 - `docs/timestamps.md`
 - `docs/series.md`
+
+## Web forms
+
+Use `:::form` YAML containers or `@[form](path="forms/contact.yaml")` for
+reusable definitions under `assets/forms/`. Forms support text, email, and
+textarea fields; `required` defaults to false. See [Web forms](web-forms.md)
+for syntax, examples, and CGI receiver deployment.

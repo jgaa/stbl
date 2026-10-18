@@ -48,6 +48,17 @@ impl UrlMapper {
         Some(format!("{root_prefix}{}{suffix}", mapped.href))
     }
 
+    /// Form receivers are endpoints, not logical pages: preserve their exact path.
+    pub fn form_action(target: &str) -> Option<&str> {
+        let valid_scheme =
+            target.starts_with('/') && !target.starts_with("//") || target.starts_with("https://");
+        (valid_scheme
+            && !target
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control() || c == '\\'))
+        .then_some(target)
+    }
+
     pub fn map(&self, logical_key: &str) -> UrlMapping {
         let logical = normalize_logical_key(logical_key);
         match self.style {

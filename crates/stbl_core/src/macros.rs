@@ -230,6 +230,7 @@ fn expand_macro(
     match name.as_str() {
         "blogitems" => Some(expand_blogitems(invocation.args(), ctx)),
         "include" => Some(expand_include(invocation.args(), ctx, options, state)),
+        "form" => Some(expand_form(invocation.args(), ctx)),
         "note" | "tip" | "info" | "warning" | "danger" => expand_callout(invocation, &name, ctx),
         "quote" => expand_quote(invocation, ctx),
         "button" => expand_button(invocation.args(), ctx),
@@ -241,6 +242,43 @@ fn expand_macro(
         "related" => Some(expand_related(invocation.args(), ctx)),
         "toc" => Some(expand_toc(invocation.args(), input_md)),
         _ => None,
+    }
+}
+
+fn expand_form(args: Option<&str>, ctx: &MacroContext<'_>) -> String {
+    let args = parse_args(args.unwrap_or_default());
+    let path = match args.as_slice() {
+        [(key, path)]
+            if key == "path"
+                && crate::forms::is_definition_asset(path)
+                && path
+                    .split('/')
+                    .all(|part| !part.is_empty() && part != "." && part != "..")
+                && !path.contains('\\') =>
+        {
+            path
+        }
+        _ => return warning_block("form macro requires path=\"forms/name.yaml\""),
+    };
+    let Some(provider) = ctx.include_provider else {
+        return warning_block("form macro is not enabled for this build");
+    };
+    let path = format!("assets/{path}");
+    let request = IncludeRequest {
+        path: &path,
+        current_source_path: None,
+        site_root: Some(ctx.project.root.as_path()),
+    };
+    let result = provider.include(&request).and_then(|response| {
+        let form: crate::forms::Form = serde_yaml::from_str(&response.content)?;
+        crate::forms::render_definition(&form).map_err(anyhow::Error::msg)
+    });
+    match result {
+        Ok(html) => html,
+        Err(error) => warning_block(&format!(
+            "unable to load form: {}",
+            crate::forms::escape(&error.to_string())
+        )),
     }
 }
 
@@ -2364,6 +2402,38 @@ Hello *world*.
         assert!(output.contains("- [Section](#section)"));
         assert!(output.contains("- [Sub](#sub)"));
         assert!(!output.contains("- [Title](#title)"));
+    }
+
+    #[test]
+    fn form_macro_loads_a_root_asset_and_rejects_invalid_paths() {
+        let project = project_with_pages(Vec::new());
+        let provider = FakeIncludeProvider {
+            map: std::collections::BTreeMap::from([(
+                "assets/forms/contact.yaml".into(),
+                "action: /cgi-bin/contact\nfields:\n  - name: email\n    type: email\n".into(),
+            )]),
+        };
+        let ctx = MacroContext {
+            project: &project,
+            page: None,
+            include_provider: Some(&provider),
+            render_markdown: None,
+            render_media: None,
+        };
+        let output = expand_macros("@[form](path=\"forms/contact.yaml\")", &ctx).unwrap();
+        assert!(output.contains("<form "));
+        assert!(output.contains("novalidate"));
+        for path in [
+            "forms/../secret.yaml",
+            "contact.yaml",
+            "/forms/contact.yaml",
+            "forms/contact.txt",
+        ] {
+            let output = expand_macros(&format!("@[form](path=\"{path}\")"), &ctx).unwrap();
+            assert!(output.contains("form macro requires"), "{path}: {output}");
+        }
+        let output = expand_macros("@[form](path=\"forms/missing.yaml\")", &ctx).unwrap();
+        assert!(output.contains("unable to load form"));
     }
 
     #[test]

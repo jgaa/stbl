@@ -30,7 +30,23 @@ pub fn build_plan(
     image_plan: &ImagePlanInput,
     video_plan: &VideoPlanInput,
 ) -> BuildPlan {
-    let ctx = build_plan_hash_context(project);
+    let mut ctx = build_plan_hash_context(project);
+    // A shared definition changes the rendered form as well as its copied artifact.
+    let mut form_assets = asset_index
+        .assets
+        .iter()
+        .filter(|asset| crate::forms::is_definition_asset(&asset.rel.0))
+        .collect::<Vec<_>>();
+    form_assets.sort_by(|a, b| a.rel.cmp(&b.rel));
+    if !form_assets.is_empty() {
+        let mut hash = Hasher::new();
+        hash.update(&ctx.render_config_hash);
+        for asset in form_assets {
+            hash.update(asset.rel.0.as_bytes());
+            hash.update(asset.content_hash.as_bytes());
+        }
+        ctx.render_config_hash = *hash.finalize().as_bytes();
+    }
     let mapper = UrlMapper::new(&project.config);
     let mut tasks = Vec::new();
     let mut edges = Vec::new();

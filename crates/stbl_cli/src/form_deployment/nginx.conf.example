@@ -1,0 +1,19 @@
+# Paste these location blocks into the existing server {} serving your site.
+# Edit the server-owned config path and site key. This is not a complete vhost.
+location ^~ /stbl-forms/ {
+    return 404;
+}
+
+# First install nginx-http.conf.example in http {} once.
+# Use one exact location per configured form action.
+location = /cgi-bin/contact {
+    limit_req zone=stbl_forms_per_ip burst=5 nodelay;
+    limit_req zone=stbl_forms_per_site burst=10 nodelay;
+    limit_req_status 429;
+    include fastcgi_params;
+    fastcgi_pass unix:/run/fcgiwrap.socket;
+    fastcgi_param SCRIPT_FILENAME $document_root/stbl-forms/stbl-form-receiver;
+    fastcgi_param STBL_FORM_CONFIG /etc/stbl/forms.yaml;
+    fastcgi_param STBL_FORM_SITE example;
+    fastcgi_intercept_errors off;
+}

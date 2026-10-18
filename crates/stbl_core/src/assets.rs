@@ -107,6 +107,9 @@ fn add_str(hasher: &mut Hasher, value: &str) {
 }
 
 fn out_rel_for_asset(rel: &AssetRelPath, content_hash: &str, cache_busting: bool) -> String {
+    if rel.0.starts_with("stbl-forms/") {
+        return rel.0.clone();
+    }
     let rel_path = Path::new(&rel.0);
     let file_name = rel_path
         .file_name()
@@ -116,7 +119,7 @@ fn out_rel_for_asset(rel: &AssetRelPath, content_hash: &str, cache_busting: bool
         Some((stem, ext)) => (stem, Some(ext)),
         None => (file_name, None),
     };
-    let hashed_name = if cache_busting {
+    let hashed_name = if cache_busting && !crate::forms::is_definition_asset(&rel.0) {
         let short = content_hash.get(0..8).unwrap_or(content_hash);
         match ext {
             Some(ext) => format!("{stem}.{short}.{ext}"),

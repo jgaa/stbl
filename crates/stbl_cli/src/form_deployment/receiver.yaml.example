@@ -1,0 +1,14 @@
+rate_dir: /var/lib/stbl-forms
+max_request_bytes: 32768
+requests_per_minute: 5
+global_requests_per_minute: 1000
+sendmail_timeout_seconds: 10
+sendmail: /usr/sbin/sendmail
+sites:
+  example:
+    website_root: /var/www/example
+    forms:
+      /cgi-bin/contact:
+        sender: forms@example.org
+        recipient: owner@example.org
+        subject: Website form submission

@@ -5,6 +5,7 @@ pub mod blog_index;
 pub mod comments;
 pub mod config;
 pub mod feeds;
+pub mod forms;
 pub mod header;
 pub mod landing;
 pub mod macros;
