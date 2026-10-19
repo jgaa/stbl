@@ -984,6 +984,7 @@ struct SiteBrandView {
     logo: Option<String>,
     logo_url: Option<String>,
     icon_url: Option<String>,
+    icon_is_generated: bool,
     header_action: Option<NavItemView>,
 }
 
@@ -1057,6 +1058,24 @@ fn build_site_brand_view(
     let icon_url = asset_manifest
         .entries
         .get("site-icon.png")
+        .or_else(|| {
+            ["favicon.svg", "favicon.ico", "favicon.png"]
+                .iter()
+                .find_map(|name| asset_manifest.entries.get(*name))
+                .or_else(|| {
+                    asset_manifest.entries.iter().find_map(|(name, resolved)| {
+                        (crate::assets::is_root_asset(name)
+                            && name.starts_with("favicon")
+                            && matches!(
+                                std::path::Path::new(name)
+                                    .extension()
+                                    .and_then(|ext| ext.to_str()),
+                                Some("svg" | "ico" | "png")
+                            ))
+                        .then_some(resolved)
+                    })
+                })
+        })
         .map(|resolved| format!("{rel}{resolved}"));
     let header_action = project
         .config
@@ -1078,6 +1097,7 @@ fn build_site_brand_view(
         logo,
         logo_url,
         icon_url,
+        icon_is_generated: asset_manifest.entries.contains_key("site-icon.png"),
     }
 }
 

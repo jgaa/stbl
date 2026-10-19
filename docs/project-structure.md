@@ -41,7 +41,12 @@ my-site/
   - Static passthrough files copied as-is to output under `files/`.
 - `artifacts/`
   - Common place for generated/static runtime assets referenced by config/publish workflows.
-  - Usually produced in output; a project-level `artifacts/` directory may also be used in workflows.
+  - `artifacts/robots.txt` overrides the default generated `robots.txt`; it is copied to the output root.
+  - Without `site.icon`, regular files matching `artifacts/favicon*` are copied to the output root with their original names. Missing favicon files produce a build warning.
+  - `site.icon` retains precedence and its existing SVG-to-PNG conversion.
+  - `artifacts/well-known/` is copied recursively to `.well-known/` in the output root, preserving filenames and subdirectories. For example, `artifacts/well-known/security.txt` becomes `.well-known/security.txt`.
+  - Files in `artifacts/well-known/` override matching files from `assets/.well-known/`.
+  - These root files and `.well-known/` files keep stable names even when asset cache busting is enabled.
 - `stbl/`
   - Optional advanced override tree for theme-scoped assets.
 
@@ -132,3 +137,25 @@ Unexpected stale files in output:
 - `docs/content-format.md`
 - `docs/page-types.md`
 - `docs/templates-and-themes.md`
+
+## Generated crawler files
+
+Builds generate `sitemap.xml` and, unless overridden by `artifacts/robots.txt`,
+`robots.txt` in the output root. The default robots file allows crawling and
+advertises the absolute sitemap URL derived from `site.base_url`.
+For sites hosted under a URL subdirectory, arrange for `robots.txt` to be served
+at the domain root so crawlers can discover it.
+
+## Well-known files
+
+Place discovery, verification, or security contact files in `artifacts/well-known/`:
+
+```text
+artifacts/well-known/security.txt       → .well-known/security.txt
+artifacts/well-known/acme-challenge/id  → .well-known/acme-challenge/id
+```
+
+No configuration is required. `scan` and `plan` do not copy files; `build` copies
+them as planned assets. Subsequent builds update changed files and remove output
+files whose sources were deleted. Configure hosting to serve `.well-known/`
+at the domain root, including when the site is hosted under a URL subdirectory.

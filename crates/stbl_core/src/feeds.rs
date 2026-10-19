@@ -2,6 +2,14 @@ use crate::blog_index::{collect_tag_list, iter_visible_posts};
 use crate::model::{Page, Project};
 use crate::url::{UrlMapper, logical_key_from_source_path, map_series_index};
 use chrono::{DateTime, Duration, Utc};
+
+pub fn render_robots(project: &Project) -> String {
+    format!(
+        "User-agent: *\nAllow: /\n\nSitemap: {}\n",
+        base_url_join(&project.config.site.base_url, "sitemap.xml")
+    )
+}
+
 pub fn render_rss(project: &Project, mapper: &UrlMapper) -> String {
     let rss_config = match project.config.rss.as_ref() {
         Some(config) if config.enabled => config,

@@ -31,17 +31,21 @@ pub fn build_plan(
     video_plan: &VideoPlanInput,
 ) -> BuildPlan {
     let mut ctx = build_plan_hash_context(project);
-    // A shared definition changes the rendered form as well as its copied artifact.
-    let mut form_assets = asset_index
+    // Shared form definitions and favicon selection affect rendered pages.
+    let mut render_assets = asset_index
         .assets
         .iter()
-        .filter(|asset| crate::forms::is_definition_asset(&asset.rel.0))
+        .filter(|asset| {
+            crate::forms::is_definition_asset(&asset.rel.0)
+                || asset.rel.0 == "site-icon.png"
+                || (crate::assets::is_root_asset(&asset.rel.0) && asset.rel.0 != "robots.txt")
+        })
         .collect::<Vec<_>>();
-    form_assets.sort_by(|a, b| a.rel.cmp(&b.rel));
-    if !form_assets.is_empty() {
+    render_assets.sort_by(|a, b| a.rel.cmp(&b.rel));
+    if !render_assets.is_empty() {
         let mut hash = Hasher::new();
         hash.update(&ctx.render_config_hash);
-        for asset in form_assets {
+        for asset in render_assets {
             hash.update(asset.rel.0.as_bytes());
             hash.update(asset.content_hash.as_bytes());
         }
@@ -205,6 +209,25 @@ pub fn build_plan(
                 edges.push((page_task, rss_id.clone()));
             }
         }
+    }
+
+    if !asset_index
+        .assets
+        .iter()
+        .any(|asset| asset.rel.0 == "robots.txt")
+    {
+        let id = TaskId::new("generate_robots", &[]);
+        let mut hasher = task_fingerprint_hasher(&id, "GenerateRobots");
+        hasher.update(project.config.site.base_url.as_bytes());
+        tasks.push(BuildTask {
+            id,
+            kind: TaskKind::GenerateRobots,
+            inputs_fingerprint: InputFingerprint(*hasher.finalize().as_bytes()),
+            inputs: Vec::new(),
+            outputs: vec![OutputArtifact {
+                path: PathBuf::from("robots.txt"),
+            }],
+        });
     }
 
     let sitemap_kind = TaskKind::GenerateSitemap;

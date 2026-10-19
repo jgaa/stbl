@@ -60,6 +60,7 @@ fn build_plan_is_deterministic_and_complete() {
         assert_eq!(kind_counts.get("GenerateRss"), None);
     }
     assert_eq!(kind_counts.get("GenerateSitemap"), Some(&1));
+    assert_eq!(kind_counts.get("GenerateRobots"), Some(&1));
 
     let rss_id = find_task_id(&plan.tasks, "GenerateRss");
     if let Some(rss_id) = rss_id {
@@ -291,6 +292,7 @@ fn kind_label(kind: &TaskKind) -> &'static str {
         TaskKind::ExtractVideoPoster { .. } => "ExtractVideoPoster",
         TaskKind::GenerateRss => "GenerateRss",
         TaskKind::GenerateSitemap => "GenerateSitemap",
+        TaskKind::GenerateRobots => "GenerateRobots",
         TaskKind::CopyAsset { .. } => "CopyAsset",
     }
 }

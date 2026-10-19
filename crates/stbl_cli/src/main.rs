@@ -1553,6 +1553,7 @@ fn kind_label(kind: &stbl_core::model::TaskKind) -> &'static str {
         stbl_core::model::TaskKind::ExtractVideoPoster { .. } => "ExtractVideoPoster",
         stbl_core::model::TaskKind::GenerateRss => "GenerateRss",
         stbl_core::model::TaskKind::GenerateSitemap => "GenerateSitemap",
+        stbl_core::model::TaskKind::GenerateRobots => "GenerateRobots",
         stbl_core::model::TaskKind::CopyAsset { .. } => "CopyAsset",
     }
 }

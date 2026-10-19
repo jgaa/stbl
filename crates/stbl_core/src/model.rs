@@ -637,6 +637,7 @@ pub enum TaskKind {
     },
     GenerateRss,
     GenerateSitemap,
+    GenerateRobots,
     CopyAsset {
         rel: AssetRelPath,
         source: AssetSourceId,

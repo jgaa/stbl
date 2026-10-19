@@ -14,7 +14,7 @@ use stbl_core::blog_index::{
     collect_tag_feed, paginate_blog_index,
 };
 use stbl_core::comments::CommentTemplateProvider;
-use stbl_core::feeds::{render_rss, render_sitemap};
+use stbl_core::feeds::{render_robots, render_rss, render_sitemap};
 use stbl_core::macros::{IncludeProvider, IncludeRequest, IncludeResponse};
 use stbl_core::model::{BuildPlan, BuildTask, DocId, Page, Project, Series, TaskKind};
 use stbl_core::render::{RenderOptions, render_markdown_to_html_with_media};
@@ -259,6 +259,16 @@ pub fn execute_plan(
     jobs: Option<usize>,
     regenerate_content: bool,
 ) -> Result<ExecSummary> {
+    if project.config.site.icon.is_none()
+        && !asset_index
+            .assets
+            .iter()
+            .any(|asset| !asset.rel.0.contains('/') && asset.rel.0.starts_with("favicon"))
+    {
+        eprintln!(
+            "warning: no favicon found; set site.icon in stbl.yaml or add favicon* files to artifacts/"
+        );
+    }
     let mut report = ExecSummary::default();
     let mapper = UrlMapper::new(&project.config);
     let build_date_ymd = build_date_ymd_now();
@@ -1043,6 +1053,7 @@ fn render_output(
             build_date_ymd,
         ),
         Some("xml") => render_xml_output(project, mapper, kind),
+        Some("txt") if matches!(kind, TaskKind::GenerateRobots) => Ok(render_robots(project)),
         _ => Ok(String::new()),
     }
 }

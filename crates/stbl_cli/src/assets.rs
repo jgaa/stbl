@@ -88,6 +88,11 @@ pub fn discover_assets_for_theme(
         &mut resolved,
     )?;
     collect_site_assets_mapped(&project_root.join("assets"), "", &mut resolved)?;
+    collect_site_assets_mapped(
+        &project_root.join("artifacts/well-known"),
+        ".well-known",
+        &mut resolved,
+    )?;
 
     let mut sources = BTreeMap::new();
     let assets = resolved
@@ -103,7 +108,19 @@ pub fn discover_assets_for_theme(
         .collect::<Vec<_>>();
 
     validate_form_assets(&assets, &sources)?;
-    Ok((AssetIndex { assets }, AssetSourceLookup { sources }))
+    let mut index = AssetIndex { assets };
+    let mut lookup = AssetSourceLookup { sources };
+    let robots = project_root.join("artifacts/robots.txt");
+    if robots.is_file() {
+        index.assets.retain(|asset| asset.rel.0 != "robots.txt");
+        add_file_asset(
+            &AssetRelPath("robots.txt".to_string()),
+            &robots,
+            &mut index,
+            &mut lookup,
+        )?;
+    }
+    Ok((index, lookup))
 }
 
 #[allow(dead_code)]
@@ -251,6 +268,19 @@ pub fn include_site_icon(
     lookup: &mut AssetSourceLookup,
 ) -> Result<()> {
     let Some(raw) = config.site.icon.as_deref() else {
+        let artifacts = root.join("artifacts");
+        if artifacts.is_dir() {
+            let mut entries =
+                std::fs::read_dir(&artifacts)?.collect::<std::io::Result<Vec<_>>>()?;
+            entries.sort_by_key(|entry| entry.file_name());
+            for entry in entries {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with("favicon") && entry.file_type()?.is_file() {
+                    asset_index.assets.retain(|asset| asset.rel.0 != name);
+                    add_file_asset(&AssetRelPath(name), &entry.path(), asset_index, lookup)?;
+                }
+            }
+        }
         return Ok(());
     };
     let trimmed = raw.trim();

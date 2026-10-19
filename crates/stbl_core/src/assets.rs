@@ -69,7 +69,13 @@ pub fn plan_assets(
                 source: asset.source.clone(),
                 out_rel: out_rel.clone(),
             };
-            let id = TaskId::new("copy_asset", &[rel.0.as_str()]);
+            // Both robots sources share a cache entry so switching between
+            // generated and copied contents always replaces the previous output.
+            let id = if rel.0 == "robots.txt" {
+                TaskId::new("generate_robots", &[])
+            } else {
+                TaskId::new("copy_asset", &[rel.0.as_str()])
+            };
             let inputs_fingerprint =
                 fingerprint_copy_asset(&id, render_config_hash, &asset.content_hash);
             BuildTask {
@@ -106,8 +112,15 @@ fn add_str(hasher: &mut Hasher, value: &str) {
     hasher.update(value.as_bytes());
 }
 
+pub fn is_root_asset(rel: &str) -> bool {
+    !rel.contains('/') && (rel == "robots.txt" || rel.starts_with("favicon"))
+}
+
 fn out_rel_for_asset(rel: &AssetRelPath, content_hash: &str, cache_busting: bool) -> String {
-    if rel.0.starts_with("stbl-forms/") {
+    if is_root_asset(&rel.0)
+        || rel.0.starts_with(".well-known/")
+        || rel.0.starts_with("stbl-forms/")
+    {
         return rel.0.clone();
     }
     let rel_path = Path::new(&rel.0);
