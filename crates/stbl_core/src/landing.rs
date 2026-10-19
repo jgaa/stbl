@@ -182,32 +182,33 @@ fn validate_nodes(nodes: &[Node], inside_features: bool, diagnostics: &mut Vec<L
 
 fn validate_attributes(component: &Component, diagnostics: &mut Vec<LandingDiagnostic>) {
     for (name, value) in &component.attrs {
-        let supported = match component.name.as_str() {
-            "hero" => {
-                (name == "align" && matches!(value.as_deref(), Some("left" | "center")))
-                    || (name == "reverse" && value.is_none())
-                    || (name == "image-align" && matches!(value.as_deref(), Some("left" | "right")))
-            }
-            "section" => {
-                (name == "icon" && value.is_some())
-                    || (name == "tone"
-                        && matches!(
-                            value.as_deref(),
-                            Some("default" | "subtle" | "accent" | "contrast")
-                        ))
-                    || (name == "image-align"
-                        && matches!(value.as_deref(), Some("left" | "right" | "center")))
-            }
-            "card" => {
-                (name == "icon" && value.is_some())
-                    || (name == "folded"
-                        && matches!(value.as_deref(), Some("yes" | "no" | "auto" | "off")))
-            }
-            "feature" => {
-                (name == "image" && value.is_some()) || (name == "reverse" && value.is_none())
-            }
-            _ => false,
-        };
+        let folding = matches!(component.name.as_str(), "card" | "features" | "section")
+            && name == "folded"
+            && matches!(value.as_deref(), Some("yes" | "no" | "auto" | "off"));
+        let supported = folding
+            || match component.name.as_str() {
+                "hero" => {
+                    (name == "align" && matches!(value.as_deref(), Some("left" | "center")))
+                        || (name == "reverse" && value.is_none())
+                        || (name == "image-align"
+                            && matches!(value.as_deref(), Some("left" | "right")))
+                }
+                "section" => {
+                    (name == "icon" && value.is_some())
+                        || (name == "tone"
+                            && matches!(
+                                value.as_deref(),
+                                Some("default" | "subtle" | "accent" | "contrast")
+                            ))
+                        || (name == "image-align"
+                            && matches!(value.as_deref(), Some("left" | "right" | "center")))
+                }
+                "card" => name == "icon" && value.is_some(),
+                "feature" => {
+                    (name == "image" && value.is_some()) || (name == "reverse" && value.is_none())
+                }
+                _ => false,
+            };
         if !supported {
             diagnostics.push(LandingDiagnostic {
                 level: DiagnosticLevel::Warning,
@@ -474,8 +475,9 @@ fn render_section(
         ""
     };
     let icon = render_icon(component, render_image);
+    let folded = folding_attribute(component);
     format!(
-        "<section class=\"landing-section landing-section--{tone}{centered}\">{icon}{intro}{content}</section>"
+        "<section class=\"landing-section landing-section--{tone}{centered}\"{folded}>{icon}{intro}{content}</section>"
     )
 }
 
@@ -610,7 +612,10 @@ fn render_features(
     render_markdown: &impl Fn(&str, Option<f32>) -> String,
     render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
-    let mut out = String::from("<section class=\"landing-features\">");
+    let mut out = format!(
+        "<section class=\"landing-features\"{}>",
+        folding_attribute(component)
+    );
     let mut cards = String::new();
     let flush_cards = |out: &mut String, cards: &mut String| {
         if !cards.is_empty() {
@@ -649,12 +654,16 @@ fn render_card(
     render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     let icon = render_icon(component, render_image);
-    let folded = allowed_attr(component, "folded", &["yes", "no", "auto", "off"])
-        .map(|value| format!(" data-folded=\"{value}\""))
-        .unwrap_or_default();
+    let folded = folding_attribute(component);
     format!(
         "<article class=\"landing-card\"{folded}>{icon}<div class=\"landing-card__content\">{content}</div></article>"
     )
+}
+
+fn folding_attribute(component: &Component) -> String {
+    allowed_attr(component, "folded", &["yes", "no", "auto", "off"])
+        .map(|value| format!(" data-folded=\"{value}\""))
+        .unwrap_or_default()
 }
 
 fn render_icon(
@@ -718,6 +727,38 @@ fn escape_attr(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::header::Header;
+
+    #[test]
+    fn section_and_features_folding_validate_and_keep_content_visible() {
+        for component in ["section", "features"] {
+            for mode in ["yes", "no", "auto", "off"] {
+                let source = format!(
+                    "::: {component} folded={mode}\n## Group\n\nIntroduction.\n\n::: features\n::: card folded=no\n### Card\n\nCard body.\n:::\n:::\n:::\n"
+                );
+                assert!(validate(&source, true).is_empty(), "{component}: {mode}");
+                let html = render(&source, "", crate::render::render_markdown_to_html);
+                assert!(html.contains(&format!("data-folded=\"{mode}\"")));
+                assert!(html.contains("<h2>Group</h2>"));
+                assert!(html.contains("<h3>Card</h3>"));
+                assert!(html.contains("<p>Card body.</p>"));
+                assert!(!html.contains("hidden"));
+                assert!(!html.contains("<button"));
+            }
+            for value in ["true", "false", "invalid"] {
+                let source = format!("::: {component} folded={value}\n## Group\n:::\n");
+                assert_eq!(validate(&source, true).len(), 1);
+                assert!(!render(&source, "", str::to_string).contains("data-folded"));
+            }
+            let source = format!("::: {component}\n## Group\n:::\n");
+            assert!(!render(&source, "", str::to_string).contains("data-folded"));
+        }
+        let source = "::: section folded=yes image-align=left icon=images/icon.svg\n## Split heading\n\nIntro text.\n\n![Image](images/photo.png)\n:::\n";
+        assert!(validate(source, true).is_empty());
+        let html = render(source, "", crate::render::render_markdown_to_html);
+        assert!(html.contains("data-folded=\"yes\""));
+        assert!(html.contains("landing-section__intro"));
+        assert!(html.contains("<h2>Split heading</h2>"));
+    }
 
     #[test]
     fn card_folding_accepts_only_supported_values() {

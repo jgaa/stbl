@@ -45,8 +45,8 @@ The available components are:
 - `section` — a visual section; accepts `tone=default`, `subtle`, `accent`, or
   `contrast`, plus `image-align=left` or `image-align=right` for an image beside
   the introductory text, or `image-align=center` for centered images in normal
-  document flow.
-- `features` — a collection of feature cards.
+  document flow. Also accepts `folded=yes|no|auto|off`.
+- `features` — a collection of feature cards; accepts `folded=yes|no|auto|off`.
 - `card` — a small feature item, normally placed inside `features`; accepts
   `icon="path"` and `folded=yes|no|auto|off`.
 - `feature` — a larger image-and-text section; accepts `image="path"` and the
@@ -79,9 +79,10 @@ Component images are decorative (`alt=""`); use a normal Markdown image inside
 the card when the image needs descriptive alt text. `feature image="images/..."`
 uses the same image preparation pipeline.
 
-## Foldable cards
+## Foldable cards and sections
 
-Add `folded` to an individual card to let readers expand and collapse it:
+Add `folded` to a `card`, `features`, or `section` container to let readers
+expand and collapse it:
 
 ```markdown
 ::: features
@@ -100,16 +101,43 @@ Your personal information stays private.
 - `folded=off`, or no `folded` attribute: shows the full card as before,
   without a toggle.
 
-Start the card content with a Markdown heading. When folded, only that heading
-and a chevron button appear; the card image and body are hidden. Readers can
-use the button with a mouse, touch, or keyboard to expand or fold each card
-independently. All built-in themes support this behavior.
+For example, fold an entire group independently of its individual cards:
 
-Folding requires JavaScript. Without it, the complete card remains visible and
-there is no inactive button. Cards without an initial heading also stay fully
+```markdown
+::: section folded=auto
+## More information
+
+Section introduction.
+
+::: features folded=no
+### Capabilities
+
+::: card folded=yes
+#### Private by design
+
+Your personal information stays private.
+:::
+:::
+:::
+```
+
+Start the container content with a Markdown heading. When folded, only that
+heading and a chevron button appear; images, text, and nested containers are
+hidden. A section's metadata icon may precede its heading; sections with
+`image-align=left|right` also support folding while preserving the expanded
+image/text layout. A container without its own introductory heading stays fully
+visible; it never borrows a nested card's heading. Readers can
+use the button with a mouse, touch, or keyboard to expand or fold each container
+independently. Nested containers keep their own fold state when their parent
+is closed and reopened. All built-in themes support this behavior.
+
+Folding requires JavaScript. Without it, the complete container remains visible and
+there is no inactive button. Containers without an initial heading also stay fully
 visible. Custom base templates must load `js/landing-cards.js` from the asset
-manifest, and custom stylesheets can use the `landing-card__header`,
-`landing-card__toggle`, `landing-card__body`, and `is-folded` hooks.
+manifest, and custom stylesheets can use the shared `landing-fold__header`,
+`landing-fold__toggle`, `landing-fold__body`, and `is-folded` hooks. Cards also
+retain their `landing-card__header`, `landing-card__toggle`, and
+`landing-card__body` hooks.
 
 ## Hero images
 

@@ -36,7 +36,7 @@ fn built_in_themes_load_foldable_cards_with_hashed_assets() {
                 layout: Some("landing".into()),
                 ..Header::default()
             },
-            body_markdown: "::: features\n::: card folded=auto\n### Card\n\nBody.\n:::\n::: card folded=yes\n### Folded\n\nFolded body.\n:::\n::: card folded=no\n### Expanded\n\nExpanded body.\n:::\n::: card folded=off\n### Static\n\nStatic body.\n:::\n:::\n"
+            body_markdown: "::: section folded=yes\n## Section\n\n::: features folded=no\n## Features\n\n::: card folded=auto\n### Card\n\nBody.\n:::\n::: card folded=yes\n### Folded\n\nFolded body.\n:::\n::: card folded=no\n### Expanded\n\nExpanded body.\n:::\n::: card folded=off\n### Static\n\nStatic body.\n:::\n:::\n:::\n"
                 .into(),
             banner_name: None,
             media_refs: Vec::new(),
@@ -62,6 +62,14 @@ fn built_in_themes_load_foldable_cards_with_hashed_assets() {
                 "{}\" defer></script>",
                 script.replace('/', "&#x2f;")
             )),
+            "{theme}"
+        );
+        assert!(
+            html.contains("class=\"landing-section landing-section--default\" data-folded=\"yes\""),
+            "{theme}"
+        );
+        assert!(
+            html.contains("class=\"landing-features\" data-folded=\"no\""),
             "{theme}"
         );
         for mode in ["yes", "no", "auto", "off"] {
