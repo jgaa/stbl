@@ -254,32 +254,33 @@ sudo systemctl reload nginx
 See the official [nginx FastCGI documentation](https://nginx.org/en/docs/http/ngx_http_fastcgi_module.html)
 and [fcgiwrap manual](https://manpages.ubuntu.com/manpages/jammy/man8/fcgiwrap.8.html).
 
-## stbl preview with nginx
+## Local preview
 
-The same receiver/manifest lives in the preview output. For example:
+`build --preview` and `build --preview-open` render forms without requiring
+`stbl-form-receiver`. Preview builds omit the `stbl-forms/` deployment files;
+the built-in static preview server does not execute CGI or deliver submissions.
+For example:
+
+```sh
+cargo run --release -- --source-dir /var/local/blog/cpp-freelancer.com \
+  build --out /tmp/cpp-freelancer.com --preview-open
+```
+
+To test actual submissions locally through nginx, build without either preview
+flag so the output includes the receiver and manifest:
 
 ```sh
 target/release/stbl_cli --source-dir /var/local/blog/cpp-freelancer.com \
-  build --out /tmp/cpp-freelancer.com --preview --preview-port 8080
+  build --out /tmp/cpp-freelancer.com
 ```
 
-In private server config set `website_root: /tmp/cpp-freelancer.com`. In nginx's
-exact CGI location set
-`SCRIPT_FILENAME /tmp/cpp-freelancer.com/stbl-forms/stbl-form-receiver` and the same
-private config/site parameters as above. Keep the deny location. Your existing
-nginx preview vhost can serve the rest through:
-
-```nginx
-location / {
-    proxy_pass http://127.0.0.1:8080;
-}
-```
-
-Browse the **nginx vhost's URL**, e.g. `http://127.0.0.1:8088/contact.html`, so both
-ordinary POST and fetch reach its CGI location. Opening stbl's port directly
-bypasses CGI. After editing source, stop/rebuild/restart preview and refresh;
-preview does not watch or rebuild automatically. No copying to another preview
-web root is needed. Rebuild after temporary-directory cleanup before submitting.
+Set the nginx vhost's `root` and the private receiver config's `website_root` to
+`/tmp/cpp-freelancer.com`. Set `SCRIPT_FILENAME` in each exact CGI location to
+`/tmp/cpp-freelancer.com/stbl-forms/stbl-form-receiver`, using the private
+config/site parameters and deny location described above. Browse the nginx
+vhost's URL to test both ordinary POST and JavaScript submissions. Rebuild after
+source edits or temporary-directory cleanup; preview does not watch or rebuild
+automatically.
 
 ## Test and troubleshoot deployment
 

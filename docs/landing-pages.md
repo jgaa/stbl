@@ -48,7 +48,7 @@ The available components are:
   document flow.
 - `features` — a collection of feature cards.
 - `card` — a small feature item, normally placed inside `features`; accepts
-  `icon="path"`.
+  `icon="path"` and `folded=yes|no|auto|off`.
 - `feature` — a larger image-and-text section; accepts `image="path"` and the
   boolean `reverse` attribute.
 - `callout` — a prominent statement or call to action.
@@ -78,6 +78,38 @@ responsive `picture`/`srcset` markup, load lazily, and never upscale the source.
 Component images are decorative (`alt=""`); use a normal Markdown image inside
 the card when the image needs descriptive alt text. `feature image="images/..."`
 uses the same image preparation pipeline.
+
+## Foldable cards
+
+Add `folded` to an individual card to let readers expand and collapse it:
+
+```markdown
+::: features
+::: card folded=auto
+### Privacy by design
+
+Your personal information stays private.
+:::
+:::
+```
+
+- `folded=auto`: starts folded on mobile (below 768px) and expanded on desktop.
+  Crossing that breakpoint resets the card to the corresponding state.
+- `folded=yes`: enables folding and starts folded on every screen size.
+- `folded=no`: enables folding and starts expanded on every screen size.
+- `folded=off`, or no `folded` attribute: shows the full card as before,
+  without a toggle.
+
+Start the card content with a Markdown heading. When folded, only that heading
+and a chevron button appear; the card image and body are hidden. Readers can
+use the button with a mouse, touch, or keyboard to expand or fold each card
+independently. All built-in themes support this behavior.
+
+Folding requires JavaScript. Without it, the complete card remains visible and
+there is no inactive button. Cards without an initial heading also stay fully
+visible. Custom base templates must load `js/landing-cards.js` from the asset
+manifest, and custom stylesheets can use the `landing-card__header`,
+`landing-card__toggle`, `landing-card__body`, and `is-folded` hooks.
 
 ## Hero images
 

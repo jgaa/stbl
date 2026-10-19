@@ -614,7 +614,9 @@ fn run_build(
         .with_context(|| "failed to resolve site.logo")?;
     assets::include_site_icon(&root, &project.config, &mut asset_index, &mut asset_lookup)
         .with_context(|| "failed to resolve site.icon")?;
-    form_deployment::include_form_deployment(&project, &mut asset_index, &mut asset_lookup)?;
+    if !effective_preview {
+        form_deployment::include_form_deployment(&project, &mut asset_index, &mut asset_lookup)?;
+    }
     let (image_plan, image_lookup) =
         media::discover_images(&project).with_context(|| "failed to discover images")?;
     project.image_alpha = image_plan.alpha.clone();

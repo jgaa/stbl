@@ -31,13 +31,14 @@ pub fn build_plan(
     video_plan: &VideoPlanInput,
 ) -> BuildPlan {
     let mut ctx = build_plan_hash_context(project);
-    // Shared form definitions and favicon selection affect rendered pages.
+    // Shared definitions, favicon selection, and the folding script affect rendered pages.
     let mut render_assets = asset_index
         .assets
         .iter()
         .filter(|asset| {
             crate::forms::is_definition_asset(&asset.rel.0)
                 || asset.rel.0 == "site-icon.png"
+                || asset.rel.0 == "js/landing-cards.js"
                 || (crate::assets::is_root_asset(&asset.rel.0) && asset.rel.0 != "robots.txt")
         })
         .collect::<Vec<_>>();

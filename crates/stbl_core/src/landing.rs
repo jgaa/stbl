@@ -198,7 +198,11 @@ fn validate_attributes(component: &Component, diagnostics: &mut Vec<LandingDiagn
                     || (name == "image-align"
                         && matches!(value.as_deref(), Some("left" | "right" | "center")))
             }
-            "card" => name == "icon" && value.is_some(),
+            "card" => {
+                (name == "icon" && value.is_some())
+                    || (name == "folded"
+                        && matches!(value.as_deref(), Some("yes" | "no" | "auto" | "off")))
+            }
             "feature" => {
                 (name == "image" && value.is_some()) || (name == "reverse" && value.is_none())
             }
@@ -645,8 +649,11 @@ fn render_card(
     render_image: &impl Fn(&str, ComponentImage) -> String,
 ) -> String {
     let icon = render_icon(component, render_image);
+    let folded = allowed_attr(component, "folded", &["yes", "no", "auto", "off"])
+        .map(|value| format!(" data-folded=\"{value}\""))
+        .unwrap_or_default();
     format!(
-        "<article class=\"landing-card\">{icon}<div class=\"landing-card__content\">{content}</div></article>"
+        "<article class=\"landing-card\"{folded}>{icon}<div class=\"landing-card__content\">{content}</div></article>"
     )
 }
 
@@ -711,6 +718,50 @@ fn escape_attr(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::header::Header;
+
+    #[test]
+    fn card_folding_accepts_only_supported_values() {
+        for value in ["yes", "no", "auto", "off", "\"auto\""] {
+            let source =
+                format!("::: features\n::: card folded={value}\n### Card\n\nBody\n:::\n:::\n");
+            assert!(validate(&source, true).is_empty(), "{value}");
+        }
+        for attribute in [
+            "folded",
+            "folded=true",
+            "folded=false",
+            "folded=",
+            "folded=YES",
+        ] {
+            let source = format!("::: features\n::: card {attribute}\n### Card\n:::\n:::\n");
+            assert!(!validate(&source, true).is_empty(), "{attribute}");
+            let html = render(&source, "", crate::render::render_markdown_to_html);
+            assert!(!html.contains("data-folded"));
+        }
+    }
+
+    #[test]
+    fn card_folding_preserves_visible_content_without_javascript() {
+        for value in ["yes", "no", "auto", "off"] {
+            let source = format!(
+                "::: features\n::: card folded={value} icon=images/test.svg\n### Card *title*\n\n[Read more](details)\n:::\n:::\n"
+            );
+            let html = render(&source, "", crate::render::render_markdown_to_html);
+            assert!(html.contains(&format!("data-folded=\"{value}\"")));
+            assert!(html.contains("<h3>Card <em>title</em></h3>"));
+            assert!(html.contains("<a href=\"details\">Read more</a>"));
+            assert!(html.contains("src=\"images/test.svg\""));
+            assert!(!html.contains("hidden"));
+            assert!(!html.contains("<button"));
+        }
+        let html = render(
+            "::: features\n::: card\n### Card\n:::\n:::\n",
+            "",
+            crate::render::render_markdown_to_html,
+        );
+        assert!(html.contains("<article class=\"landing-card\">"));
+        assert!(!html.contains("data-folded"));
+    }
 
     #[test]
     fn section_icons_validate_render_and_resolve_like_card_icons() {

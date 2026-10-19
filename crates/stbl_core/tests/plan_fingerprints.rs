@@ -347,3 +347,39 @@ fn to_relative_path(root: &Path, path: &Path) -> String {
         .to_string_lossy()
         .replace('\\', "/")
 }
+
+#[test]
+fn folding_script_changes_invalidate_cached_html() {
+    use stbl_core::assets::{AssetRelPath, AssetSourceId, ResolvedAsset};
+
+    let project = load_fixture_project();
+    let page_id = project
+        .content
+        .pages
+        .iter()
+        .find(|page| page.source_path.ends_with("page1.md"))
+        .expect("page1 exists")
+        .id;
+    let fingerprint = |script: Option<&str>| {
+        let assets = AssetIndex {
+            assets: script
+                .map(|text| ResolvedAsset {
+                    rel: AssetRelPath("js/landing-cards.js".into()),
+                    source: AssetSourceId("folding-script".into()),
+                    content_hash: blake3::hash(text.as_bytes()).to_hex().to_string(),
+                })
+                .into_iter()
+                .collect(),
+        };
+        let plan = build_plan(
+            &project,
+            &assets,
+            &ImagePlanInput::default(),
+            &VideoPlanInput::default(),
+        );
+        find_render_page_fingerprint(&plan, page_id)
+    };
+    let before = fingerprint(Some("original folding script"));
+    assert_ne!(before, fingerprint(Some("updated folding script")));
+    assert_ne!(before, fingerprint(None));
+}

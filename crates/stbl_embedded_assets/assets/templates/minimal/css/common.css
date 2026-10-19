@@ -164,3 +164,13 @@ footer p { margin: 0; color: var(--c-muted); font-size: 0.875rem; }
 .stbl-form [aria-invalid="true"] { outline: 2px solid var(--c-link); }
 .stbl-form-status { margin: 0; overflow-wrap: anywhere; }
 .stbl-form-honeypot { display: none !important; }
+
+/* Folding is activated by JavaScript; source HTML always exposes all content. */
+.landing-card.is-foldable { align-self: start; }
+.landing-card__header { display: flex; align-items: center; gap: .75rem; }
+.landing-card__header > :first-child { flex: 1; margin-block: 0; }
+.landing-card__toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; padding: .5rem; border: 1px solid var(--c-border); border-radius: .35rem; background: var(--c-surface); color: inherit; cursor: pointer; }
+.landing-card__toggle:focus-visible { outline: 2px solid var(--c-link); outline-offset: 2px; }
+.landing-card__toggle::before { content: ""; width: .5rem; height: .5rem; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(225deg); }
+.landing-card__toggle[aria-expanded="false"]::before { transform: rotate(45deg); }
+.landing-card__body[hidden], .landing-card.is-folded > .landing-card__icon, .landing-card.is-folded > .landing-card__image { display: none; }

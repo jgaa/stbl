@@ -410,3 +410,65 @@ fn sites_without_forms_do_not_get_deployment_files() {
     );
     assert!(!out.join("stbl-forms").exists());
 }
+
+#[test]
+fn preview_builds_render_forms_without_a_receiver_binary() {
+    // Isolate the CLI from Cargo's sibling receiver executable.
+    let temp = TempDir::new().unwrap();
+    let cli = temp
+        .path()
+        .join(format!("stbl_cli{}", std::env::consts::EXE_SUFFIX));
+    fs::copy(env!("CARGO_BIN_EXE_stbl_cli"), &cli).unwrap();
+    let source = temp.path().join("source");
+    fixture(&source);
+    let original = fs::read(source.join("articles/index.md")).unwrap();
+
+    // An occupied port stops preview after the build, before opening a browser.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port().to_string();
+    for flag in ["--preview", "--preview-open"] {
+        let out = temp.path().join(flag.trim_start_matches('-'));
+        let output = Command::new(&cli)
+            .arg("--source-dir")
+            .arg(&source)
+            .args([
+                "build",
+                flag,
+                "--preview-port",
+                &port,
+                "--no-cache",
+                "--precompress",
+                "false",
+                "--out",
+            ])
+            .arg(&out)
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success());
+        assert!(stderr.contains("failed to bind"), "{flag}: {stderr}");
+        assert!(
+            !stderr.contains("form deployment requires"),
+            "{flag}: {stderr}"
+        );
+        let html = fs::read_to_string(out.join("index.html")).unwrap();
+        assert!(html.contains("<form "), "{flag}");
+        assert!(!html.contains("@[form]"), "{flag}");
+        assert!(!out.join("stbl-forms").exists(), "{flag}");
+        assert_eq!(
+            fs::read(source.join("articles/index.md")).unwrap(),
+            original
+        );
+    }
+
+    // Ordinary builds still require and deploy the receiver.
+    let output = Command::new(&cli)
+        .arg("--source-dir")
+        .arg(&source)
+        .args(["build", "--no-cache", "--out"])
+        .arg(temp.path().join("production"))
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("form deployment requires"));
+}
