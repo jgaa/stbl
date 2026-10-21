@@ -125,6 +125,36 @@ Rules:
 * Optional
 * Short summary text used for blog listings
 * If missing and blog abstracts are enabled, an abstract is derived from the body
+* An explicit `abstract` header is also the fallback for the HTML meta description
+
+---
+
+### `description`
+
+* Optional, single-line plain text summary for HTML metadata
+* Rendered in `<head>` as `<meta name="description" content="...">`
+* Non-empty `description` takes precedence over non-empty `abstract`
+* Empty values are treated as unset; omit the tag if both fields are unset
+* HTML-escaped; no Markdown rendering or automatic truncation
+* Applies to content pages, including the homepage, blog indexes (all pagination
+  pages), and series indexes
+* The fallback uses only the explicit `abstract` header, independently of blog
+  excerpt settings; it does not use automatically derived body excerpts
+* Does not change listing abstracts or RSS descriptions
+
+---
+
+### `social-image`
+
+* Optional Open Graph preview image; empty means unset
+* Accepts a filename under `images/`, an `images/` path, or an HTTP(S) URL
+* Local paths cannot escape `images/`; local files must exist
+* Local images are planned and copied during build even when absent from the body
+* External URLs are emitted without network access
+* Image precedence: explicit `social-image`, own banner, configured
+  `seo.open_graph.default_image`, then the published frontpage banner when
+  `seo.open_graph.use_frontpage_banner` is enabled (default false)
+* Does not change the banner displayed on the page
 
 ---
 

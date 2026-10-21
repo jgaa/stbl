@@ -81,6 +81,72 @@ Core templates expected by the renderer:
 
 For comment providers, templates such as `templates/disqus.html` and partial variants may also be used.
 
+Content templates receive `page_description`: the non-empty `description`
+header, falling back to the explicit `abstract` header. The embedded base
+templates emit a description meta tag only when this value is present. Custom
+base templates can use the same context value:
+
+```html
+{% if page_description %}<meta name="description" content="{{ page_description }}">{% endif %}
+```
+
+Keep HTML autoescaping enabled for this value. See [Content Format](content-format.md#description)
+for the field's behavior on homepages, blog indexes, and series indexes.
+
+All page templates also receive `canonical_href`, an absolute URL built from
+`site.base_url` and the page's mapped URL. Embedded base templates emit:
+
+```html
+<link rel="canonical" href="{{ canonical_href }}">
+```
+
+Canonical URLs follow the existing URL style: `.html` in HTML mode and directory
+URLs in pretty modes. Series indexes retain their directory URL in every mode.
+Each pagination page has its own canonical URL; redirect pages point to their
+destination. Set `site.base_url` to the public production URL, including any
+mount path, to keep canonical links consistent with the sitemap and RSS links.
+Custom base templates should include this link with autoescaping enabled.
+
+## Open Graph
+
+Embedded themes emit `og:title`, `og:type`, `og:url`, and `og:site_name` for
+content pages and generated listings. They also emit `og:description` when a
+description or explicit abstract is available, and `og:image` when an image is
+available. Redirect stubs omit Open Graph tags.
+
+Blog posts use the `article` type. Homepages, landing and info pages, blog
+indexes, series indexes, and generated listings use `website`.
+
+```yaml
+seo:
+  open_graph:
+    default_image: images/social-card.jpg
+    use_frontpage_banner: false
+```
+
+Both options are optional. `default_image` accepts the same local paths and
+HTTP(S) URLs as the [`social-image` header](content-format.md#social-image).
+Local images are published through the image build plan; Open Graph links use
+the original image, with an absolute URL based on `site.base_url`.
+
+The image order is the page's `social-image`, its own banner, `default_image`,
+then the published frontpage's banner when `use_frontpage_banner: true`. The
+frontpage fallback is disabled by default. It uses the banner of the root
+`articles/index.md` page, including a homepage rendered as a blog index. If no
+image is selected, the image tag is omitted.
+
+For example, to use the frontpage banner only on pages without their own image:
+
+```yaml
+seo:
+  open_graph:
+    use_frontpage_banner: true
+```
+
+Custom templates receive `open_graph.kind` and `open_graph.image`, together with
+the existing `page_title`, `page_description`, `canonical_href`, and `site_title`
+values. Use `<meta property="og:..." content="...">` with HTML autoescaping.
+
 ## Asset and Template Override Order
 
 Assets are merged with later sources overriding earlier ones:

@@ -1,4 +1,5 @@
 title: Home
+description: Personal stories about programming, pets, travel, and science fiction.
 template: blog_index
 banner: blog-banner.png
 

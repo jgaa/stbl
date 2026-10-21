@@ -113,6 +113,50 @@ Behavior:
 
 - Optional summary text.
 - Used by listing templates.
+- Also used as the meta description when `description` is unset.
+
+### `description`
+
+- Optional, single-line plain text summary for search engines.
+- Rendered as `<meta name="description" content="...">` in the page's `<head>`.
+- A non-empty `description` takes precedence over `abstract`; empty values are unset.
+- Values are HTML-escaped, without Markdown rendering or automatic truncation.
+- Does not change listing excerpts or RSS descriptions.
+
+```text
+title: C++ consulting
+description: C++ development, performance tuning, and code reviews for production systems.
+abstract: How I help teams build reliable C++ software.
+```
+
+Set this on the homepage's content header as well as individual articles and
+series indexes. Blog index pages, including paginated pages, use their source
+header's description or abstract. This fallback uses the explicit `abstract`
+header even when blog excerpts are disabled; automatically derived listing
+excerpts are not used. If neither field is set, the meta tag is omitted.
+Generated pages without a content header (such as tag listings and redirects)
+do not receive a description from this setting.
+
+### `social-image`
+
+- Optional image for Open Graph link previews; overrides the page banner.
+- Accepts a filename under `images/`, a path beginning with `images/`, or an
+  absolute HTTP(S) image URL. Local paths must stay within `images/`.
+- Local files must exist. They are discovered during planning and copied into
+  the published site during build, even if they never appear in the page body.
+- External image URLs are used directly, without downloading them.
+
+```text
+title: C++ consulting
+description: C++ development, performance tuning, and code reviews.
+social-image: images/consulting-card.jpg
+```
+
+The preview image order is `social-image`, the page's banner,
+`seo.open_graph.default_image`, then the published frontpage's banner if
+`seo.open_graph.use_frontpage_banner` is enabled (default: false). The last two
+fallbacks also apply to generated listings such as tag pages. Without an image,
+`og:image` is omitted. See [Open Graph settings](templates-and-themes.md#open-graph).
 
 ### `template`
 

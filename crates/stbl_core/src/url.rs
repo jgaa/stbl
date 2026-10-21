@@ -20,6 +20,15 @@ pub struct UrlMapper {
 }
 
 impl UrlMapper {
+    /// Make a mapped, site-relative href absolute, preserving the site's mount path.
+    pub fn absolute_href(base_url: &str, href: &str) -> String {
+        format!(
+            "{}/{}",
+            base_url.trim_end_matches('/'),
+            href.trim_start_matches('/')
+        )
+    }
+
     pub fn new(cfg: &SiteConfig) -> Self {
         Self {
             style: cfg.site.url_style,

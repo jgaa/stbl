@@ -53,6 +53,154 @@ fn build(root: &Path) -> Output {
 }
 
 #[test]
+fn blog_homepage_description_updates_in_cached_builds() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fixture(root, None);
+    let config = stbl_core::config::load_site_config(&root.join("stbl.yaml")).unwrap();
+    let output = root.join("out").join(
+        stbl_core::url::UrlMapper::new(&config)
+            .map("index")
+            .primary_output,
+    );
+    for (header, expected) in [
+        (
+            "description: C++ & performance\nabstract: Listing summary\n",
+            Some("C++ &amp; performance"),
+        ),
+        (
+            "description: \nabstract: Listing summary\n",
+            Some("Listing summary"),
+        ),
+        ("", None),
+    ] {
+        let source = format!("---\ntitle: Home\ntemplate: blog_index\n{header}---\nHello\n");
+        fs::write(root.join("articles/index.md"), &source).unwrap();
+        build(root);
+        let html = fs::read_to_string(&output).unwrap();
+        let href = stbl_core::url::UrlMapper::new(&config).map("index").href;
+        let canonical = stbl_core::url::UrlMapper::absolute_href(&config.site.base_url, &href)
+            .replace('/', "&#x2f;");
+        assert!(html.contains(&format!("<link rel=\"canonical\" href=\"{canonical}\">")));
+        if let Some(expected) = expected {
+            assert!(html.contains(&format!(
+                "<meta name=\"description\" content=\"{expected}\">"
+            )));
+        } else {
+            assert!(!html.contains("name=\"description\""));
+        }
+        assert_eq!(
+            fs::read_to_string(root.join("articles/index.md")).unwrap(),
+            source
+        );
+    }
+}
+
+#[test]
+fn open_graph_images_are_planned_published_and_updated_in_cached_builds() {
+    use stbl_core::url::UrlMapper;
+    let temp = TempDir::new().unwrap();
+    let root = temp.path();
+    fixture(root, None);
+    fs::create_dir_all(root.join("images")).unwrap();
+    for name in [
+        "social.png",
+        "page.png",
+        "default.png",
+        "front-a.png",
+        "front-b.png",
+    ] {
+        image::RgbImage::new(8, 8)
+            .save(root.join("images").join(name))
+            .unwrap();
+    }
+    let config_source = fs::read_to_string(root.join("stbl.yaml")).unwrap();
+    let config = stbl_core::config::load_site_config(&root.join("stbl.yaml")).unwrap();
+    let mapper = UrlMapper::new(&config);
+    let post_output = root.join("out").join(mapper.map("post").primary_output);
+    let home_output = root.join("out").join(mapper.map("index").primary_output);
+    let home = "---\ntitle: Home\ntemplate: blog_index\nbanner: front-a.png\n---\nWelcome\n";
+    fs::write(root.join("articles/index.md"), home).unwrap();
+    let cases = [
+        (
+            "social-image: social.png\nbanner: page.png\n",
+            "{}",
+            Some("images/social.png"),
+        ),
+        ("banner: page.png\n", "{}", Some("images/page.png")),
+        ("", "{}", None),
+        (
+            "",
+            "{default_image: default.png}",
+            Some("images/default.png"),
+        ),
+        (
+            "",
+            "{default_image: default.png, use_frontpage_banner: true}",
+            Some("images/default.png"),
+        ),
+        (
+            "",
+            "{use_frontpage_banner: true}",
+            Some("images/front-a.png"),
+        ),
+    ];
+    for (header, settings, expected) in cases {
+        let source =
+            format!("---\ntitle: Post\ndescription: A post description\n{header}---\nBody\n");
+        fs::write(root.join("articles/post.md"), &source).unwrap();
+        fs::write(
+            root.join("stbl.yaml"),
+            format!("{config_source}seo:\n  open_graph: {settings}\n"),
+        )
+        .unwrap();
+        command(root, &["plan"]);
+        assert_eq!(
+            fs::read_to_string(root.join("articles/post.md")).unwrap(),
+            source
+        );
+        build(root);
+        let html = fs::read_to_string(&post_output).unwrap();
+        assert!(html.contains("<meta property=\"og:type\" content=\"article\">"));
+        assert!(html.contains("<meta property=\"og:description\" content=\"A post description\">"));
+        if let Some(path) = expected {
+            let absolute =
+                UrlMapper::absolute_href(&config.site.base_url, path).replace('/', "&#x2f;");
+            assert!(html.contains(&format!(
+                "<meta property=\"og:image\" content=\"{absolute}\">"
+            )));
+            assert!(root.join("out").join(path).is_file());
+        } else {
+            assert!(!html.contains("property=\"og:image\""));
+        }
+        let home_html = fs::read_to_string(&home_output).unwrap();
+        assert!(home_html.contains("<meta property=\"og:type\" content=\"website\">"));
+        assert!(home_html.contains("images&#x2f;front-a.png"));
+    }
+    // The post source stays unchanged while its inherited frontpage image changes.
+    fs::write(
+        root.join("articles/index.md"),
+        home.replace("front-a.png", "front-b.png"),
+    )
+    .unwrap();
+    build(root);
+    let html = fs::read_to_string(&post_output).unwrap();
+    assert!(html.contains("images&#x2f;front-b.png"));
+    assert!(!html.contains("images&#x2f;front-a.png"));
+
+    fs::write(
+        root.join("articles/post.md"),
+        "---\ntitle: Post\nsocial-image: https://cdn.example.com/social.png\n---\nBody\n",
+    )
+    .unwrap();
+    build(root);
+    let html = fs::read_to_string(&post_output).unwrap();
+    assert!(html.contains(
+        "<meta property=\"og:image\" content=\"https:&#x2f;&#x2f;cdn.example.com&#x2f;social.png\">"
+    ));
+}
+
+#[test]
 fn generates_robots_and_warns_for_missing_favicon() {
     let temp = TempDir::new().unwrap();
     let root = temp.path();

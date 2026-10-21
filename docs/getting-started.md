@@ -95,6 +95,7 @@ Create `articles/my-first-post.md`:
 ```markdown
 ---
 title: My First Post
+description: An introduction to my new site and the topics I plan to write about.
 abstract: First test post
 tags: intro, notes
 published: 2026-02-17 10:00

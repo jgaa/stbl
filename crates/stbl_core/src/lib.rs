@@ -11,6 +11,7 @@ pub mod landing;
 pub mod macros;
 pub mod media;
 pub mod model;
+pub mod open_graph;
 pub mod plan;
 pub mod project;
 pub mod render;

@@ -1,5 +1,6 @@
 ---
 title: Cats Are Cool
+description: Life with a cat: playful routines, favorite sun spots, and the personalities that make a house feel like home.
 published: 2025-01-09 08:30
 tags: pets, personal, home, cats
 ---

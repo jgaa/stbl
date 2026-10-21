@@ -3,6 +3,7 @@ title: Star Trek Versus Star Wars
 published: 2025-02-03 20:40
 tags: sci-fi, star-trek, star-wars, fandom, nerdy, media
 banner: startrek_vs_starwars.jpg
+social-image: images/startrek_vs_starwars.jpg
 ---
 
 The "Star Trek versus Star Wars" argument usually sounds like a fight about which franchise is better, but for fans of both, it is really a comparison of flavor. They serve different emotional needs, use different storytelling engines, and ask different questions about people, power, and the future.

@@ -147,6 +147,9 @@ rss:
 
 # Sitemap metadata.
 seo:
+  open_graph:
+    # default_image: images/hyperdrive-hero.png
+    use_frontpage_banner: false
   sitemap:
     # priority:
     #   frontpage: 1.0

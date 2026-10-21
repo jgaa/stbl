@@ -140,6 +140,9 @@ rss:
 
 # Sitemap metadata.
 seo:
+  open_graph:
+    # default_image: images/blog-banner.png
+    use_frontpage_banner: false
   sitemap:
     # priority:
     #   frontpage: 1.0

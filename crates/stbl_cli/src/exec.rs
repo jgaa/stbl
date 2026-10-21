@@ -1480,6 +1480,7 @@ fn render_blog_index_page(
     render_blog_index(
         project,
         title,
+        Some(source_page),
         intro_html,
         banner_html,
         items,
@@ -1843,6 +1844,11 @@ mod tests {
         let contents = fs::read_to_string(fallback_path).expect("read fallback");
         assert!(contents.contains("http-equiv=\"refresh\""));
         assert!(contents.contains("href=\"/page1/\""));
+        let project = build_project(UrlStyle::PrettyWithFallback);
+        let mapping = UrlMapper::new(&project.config).map("page1");
+        let canonical = UrlMapper::absolute_href(&project.config.site.base_url, &mapping.href)
+            .replace('/', "&#x2f;");
+        assert!(contents.contains(&format!("<link rel=\"canonical\" href=\"{canonical}\">")));
     }
 
     #[test]

@@ -238,6 +238,7 @@ pub fn render_page_with_series_nav(
     render_with_context(
         project,
         page_title,
+        Some(page),
         show_page_title,
         authors,
         published,
@@ -274,6 +275,7 @@ pub fn render_markdown_page(
     render_with_context(
         project,
         title.to_string(),
+        None,
         show_page_title,
         Vec::new(),
         None,
@@ -371,6 +373,7 @@ pub struct TagListingPage {
 pub fn render_blog_index(
     project: &Project,
     title: String,
+    source_page: Option<&Page>,
     intro_html: Option<String>,
     banner_html: Option<String>,
     items: Vec<BlogIndexItem>,
@@ -430,6 +433,8 @@ pub fn render_blog_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
+            canonical_href => UrlMapper::absolute_href(&project.config.site.base_url, current_href),
+            open_graph => crate::open_graph::build_open_graph(project, source_page, false),
             home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
@@ -439,6 +444,7 @@ pub fn render_blog_index(
             header_layout => header_layout,
             header_layout_class => header_layout_class,
             page_title => title,
+            page_description => source_page.and_then(|page| page.header.resolved_description()),
             show_page_title => show_page_title,
             intro_html => intro_html,
             banner_html => banner_html,
@@ -507,6 +513,8 @@ pub fn render_tag_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
+            canonical_href => UrlMapper::absolute_href(&project.config.site.base_url, current_href),
+            open_graph => crate::open_graph::build_open_graph(project, None, false),
             home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
@@ -579,6 +587,8 @@ pub fn render_series_index(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
+            canonical_href => UrlMapper::absolute_href(&project.config.site.base_url, current_href),
+            open_graph => crate::open_graph::build_open_graph(project, Some(index), false),
             home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
@@ -589,6 +599,7 @@ pub fn render_series_index(
             header_layout_class => header_layout_class,
             page_title => page_title,
             banner_html => banner_html,
+            page_description => index.header.resolved_description(),
             intro_html => intro_html,
             parts => parts,
             build_date_ymd => build_date_ymd,
@@ -671,6 +682,7 @@ fn template_env(theme_variant: &str) -> Result<Environment<'static>> {
 fn render_with_context(
     project: &Project,
     page_title: String,
+    source_page: Option<&Page>,
     show_page_title: bool,
     authors: Vec<AuthorView>,
     published: Option<String>,
@@ -715,6 +727,10 @@ fn render_with_context(
             site_title => project.config.site.title.clone(),
             site => site,
             site_language => project.config.site.language.clone(),
+            canonical_href => UrlMapper::absolute_href(
+                &project.config.site.base_url,
+                redirect_href.as_deref().unwrap_or(current_href),
+            ),
             home_href => resolve_root_href(&UrlMapper::new(&project.config).map("index").href, &rel),
             rel => rel,
             asset_manifest => asset_manifest.entries.clone(),
@@ -725,6 +741,10 @@ fn render_with_context(
             header_layout_class => header_layout_class,
             page_title => page_title,
             show_page_title => show_page_title,
+            page_description => source_page.and_then(|page| page.header.resolved_description()),
+            open_graph => crate::open_graph::build_open_graph(
+                project, source_page, source_page.is_some_and(|page| !is_blog_index_excluded(page, None)),
+            ),
             authors => authors,
             published => published,
             updated => updated,
@@ -1387,6 +1407,7 @@ mod tests {
     use crate::config::load_site_config;
     use crate::header::Header;
     use crate::model::{DateConfig, DocId, Page, Project, SiteContent};
+    use crate::url::UrlMapper;
     use chrono::TimeZone;
     use std::fs;
     use std::path::PathBuf;
@@ -1514,6 +1535,156 @@ mod tests {
         assert_eq!(items[1].href, "/about.html");
         assert_eq!(items[2].href, "https://example.com/");
         assert_eq!(items[3].href, "#top");
+    }
+
+    #[test]
+    fn open_graph_images_follow_precedence_and_frontpage_opt_in() {
+        use crate::model::{OpenGraphConfig, SeoConfig};
+        for theme in ["stbl", "minimal", "product", "liberty", "paper", "mono"] {
+            let mut project = project_with_config(
+                &format!(
+                    "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/blog/\n  language: en\ntheme:\n  variant: {theme}\n"
+                ),
+                SiteContent::default(),
+            );
+            let mut home = simple_page("Home", "articles/index.md");
+            home.banner_name = Some("images/home.png".to_string());
+            project.content.pages.push(home);
+            for (social, banner, default_image, enabled, published, expected) in [
+                (
+                    Some("https://cdn.example.com/card.png?a=1&b=2"),
+                    Some("page.jpg"),
+                    Some("default.jpg"),
+                    true,
+                    true,
+                    Some("https://cdn.example.com/card.png?a=1&b=2"),
+                ),
+                (
+                    Some("social.jpg"),
+                    Some("page.jpg"),
+                    Some("default.jpg"),
+                    true,
+                    true,
+                    Some("https://example.com/blog/images/social.jpg"),
+                ),
+                (
+                    None,
+                    Some("page.jpg"),
+                    Some("default.jpg"),
+                    true,
+                    true,
+                    Some("https://example.com/blog/images/page.jpg"),
+                ),
+                (
+                    None,
+                    None,
+                    Some("default.jpg"),
+                    true,
+                    true,
+                    Some("https://example.com/blog/images/default.jpg"),
+                ),
+                (
+                    None,
+                    None,
+                    None,
+                    true,
+                    true,
+                    Some("https://example.com/blog/images/home.png"),
+                ),
+                (None, None, None, false, true, None),
+                (None, None, None, true, false, None),
+            ] {
+                project.config.seo = Some(SeoConfig {
+                    sitemap: None,
+                    open_graph: Some(OpenGraphConfig {
+                        default_image: default_image.map(str::to_string),
+                        use_frontpage_banner: enabled,
+                    }),
+                });
+                project.content.pages[0].header.is_published = published;
+                let mut page = simple_page("A & \"B\"", "articles/post.md");
+                page.header.social_image = social.map(str::to_string);
+                page.banner_name = banner.map(str::to_string);
+                let current = UrlMapper::new(&project.config).map("post").href;
+                let html = render_page(
+                    &project,
+                    &page,
+                    &default_manifest(),
+                    &current,
+                    "2026-01-29",
+                    None,
+                    None,
+                )
+                .unwrap();
+                assert!(
+                    html.contains("<meta property=\"og:title\" content=\"A &amp; &quot;B&quot;\">")
+                );
+                assert!(html.contains("<meta property=\"og:type\" content=\"article\">"));
+                assert!(html.contains("<meta property=\"og:site_name\" content=\"Demo\">"));
+                if let Some(expected) = expected {
+                    let escaped = expected.replace('&', "&amp;").replace('/', "&#x2f;");
+                    assert!(
+                        html.contains(&format!(
+                            "<meta property=\"og:image\" content=\"{escaped}\">"
+                        )),
+                        "{theme}: {html}"
+                    );
+                    assert_eq!(html.matches("property=\"og:image\"").count(), 1);
+                } else {
+                    assert!(!html.contains("property=\"og:image\""), "{theme}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn page_description_is_escaped_and_falls_back_to_abstract_in_all_themes() {
+        for theme in ["stbl", "minimal", "product", "liberty", "paper", "mono"] {
+            let project = project_with_config(
+                &format!(
+                    "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/\n  language: en\ntheme:\n  variant: {theme}\nblog:\n  abstract:\n    enabled: false\n"
+                ),
+                SiteContent::default(),
+            );
+            for (description, abstract_text, expected) in [
+                (
+                    Some("C++ & <tools> \"guide\""),
+                    Some("Listing summary"),
+                    Some("C++ &amp; &lt;tools&gt; &quot;guide&quot;"),
+                ),
+                (None, Some("Listing summary"), Some("Listing summary")),
+                (Some("  "), Some("Listing summary"), Some("Listing summary")),
+                (None, None, None),
+                (Some("  "), Some("  "), None),
+            ] {
+                let mut page = simple_page("Home", "articles/index.md");
+                page.header.description = description.map(str::to_string);
+                page.header.abstract_text = abstract_text.map(str::to_string);
+                page.body_markdown = "Body text must not become a description.".to_string();
+                let html = render_page(
+                    &project,
+                    &page,
+                    &default_manifest(),
+                    "/",
+                    "2026-01-29",
+                    None,
+                    None,
+                )
+                .expect("render page");
+                if let Some(expected) = expected {
+                    let meta = format!("<meta name=\"description\" content=\"{expected}\">");
+                    let head_end = html.find("</head>").expect("head");
+                    assert!(html[..head_end].contains(&meta), "{theme}: {html}");
+                    assert_eq!(html.matches("name=\"description\"").count(), 1);
+                    assert!(html.contains(&format!(
+                        "<meta property=\"og:description\" content=\"{expected}\">"
+                    )));
+                } else {
+                    assert!(!html.contains("name=\"description\""), "{theme}");
+                    assert!(!html.contains("property=\"og:description\""), "{theme}");
+                }
+            }
+        }
     }
 
     #[test]
@@ -1932,6 +2103,7 @@ mod tests {
             "Blog".to_string(),
             None,
             None,
+            None,
             vec![item.clone()],
             None,
             None,
@@ -2024,6 +2196,7 @@ mod tests {
         );
         let mut index = simple_page("Series", "articles/series/index.md");
         index.banner_name = Some("series-banner.svg".to_string());
+        index.header.abstract_text = Some("Series overview".to_string());
         let parts = vec![
             SeriesIndexPart {
                 title: "Part 1".to_string(),
@@ -2048,6 +2221,7 @@ mod tests {
             None,
         )
         .expect("render series");
+        assert!(html.contains("<meta name=\"description\" content=\"Series overview\">"));
         let part1 = html.find("Part 1").expect("part1");
         let part2 = html.find("Part 2").expect("part2");
         assert!(part1 < part2);

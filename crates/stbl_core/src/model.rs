@@ -539,6 +539,14 @@ pub struct RssConfig {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct SeoConfig {
     pub sitemap: Option<SeoSitemapConfig>,
+    pub open_graph: Option<OpenGraphConfig>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct OpenGraphConfig {
+    pub default_image: Option<String>,
+    #[serde(default)]
+    pub use_frontpage_banner: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

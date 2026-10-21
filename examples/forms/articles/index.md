@@ -1,5 +1,6 @@
 ---
 title: Contact us
+description: Contact our team with questions or feedback, and leave an email address if you would like a reply.
 ---
 
 # Contact us

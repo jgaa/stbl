@@ -36,6 +36,9 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
     let mut paths = BTreeSet::new();
     let mut posters = BTreeSet::new();
     for page in all_pages(project) {
+        if let Some(image) = page.header.social_image.as_deref() {
+            add_social_image_path(&mut paths, image)?;
+        }
         for media_ref in &page.media_refs {
             match media_ref {
                 MediaRef::Image(image_ref) => {
@@ -53,6 +56,15 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
                 .with_context(|| format!("failed to resolve banner '{}'", name))?;
             paths.insert(normalize_media_path(&resolved));
         }
+    }
+    if let Some(image) = project
+        .config
+        .seo
+        .as_ref()
+        .and_then(|seo| seo.open_graph.as_ref())
+        .and_then(|config| config.default_image.as_deref())
+    {
+        add_social_image_path(&mut paths, image)?;
     }
     if let Some(path) = resolve_wide_background_image_path(project)? {
         paths.insert(normalize_media_path(&path));
@@ -109,6 +121,14 @@ pub fn discover_images(project: &Project) -> Result<(ImagePlanInput, ImageSource
         },
         lookup,
     ))
+}
+
+fn add_social_image_path(paths: &mut BTreeSet<String>, image: &str) -> Result<()> {
+    let image = stbl_core::open_graph::normalize_social_image(image)?;
+    if !image.starts_with("https://") && !image.starts_with("http://") {
+        paths.insert(image);
+    }
+    Ok(())
 }
 
 fn resolve_wide_background_image_path(project: &Project) -> Result<Option<String>> {

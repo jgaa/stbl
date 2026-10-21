@@ -1,12 +1,22 @@
 <!DOCTYPE html>
-<html lang="{{ site_language }}">
+<html lang="{{ site_language }}" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {% if page_description %}<meta name="description" content="{{ page_description }}">{% endif %}
   {% if redirect_href %}
   <meta http-equiv="refresh" content="0; url={{ redirect_href }}">
   {% endif %}
   <title>{{ page_title }} · {{ site_title }}</title>
+  <link rel="canonical" href="{{ canonical_href }}">
+  {% if not redirect_href %}
+  <meta property="og:title" content="{{ page_title }}">
+  <meta property="og:type" content="{{ open_graph.kind }}">
+  <meta property="og:url" content="{{ canonical_href }}">
+  <meta property="og:site_name" content="{{ site_title }}">
+  {% if page_description %}<meta property="og:description" content="{{ page_description }}">{% endif %}
+  {% if open_graph.image %}<meta property="og:image" content="{{ open_graph.image }}">{% endif %}
+  {% endif %}
   {% if site.icon_url %}<link rel="icon"{% if site.icon_is_generated %} type="image/png" sizes="32x32"{% endif %} href="{{ site.icon_url }}">{% endif %}
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/vars.css"] }}">
   <link rel="stylesheet" href="{{ rel }}{{ asset_manifest["css/common.css"] }}">

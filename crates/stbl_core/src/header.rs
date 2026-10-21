@@ -13,6 +13,8 @@ pub struct Header {
     pub updated_disabled: bool,
     pub updated_fallback: Option<i64>,
     pub abstract_text: Option<String>,
+    pub description: Option<String>,
+    pub social_image: Option<String>,
     pub template: Option<TemplateId>,
     pub template_raw: Option<String>,
     /// Explicit page layout. Layout is intentionally independent from templates:
@@ -45,6 +47,8 @@ impl Default for Header {
             updated_disabled: false,
             updated_fallback: None,
             abstract_text: None,
+            description: None,
+            social_image: None,
             template: None,
             template_raw: None,
             layout: None,
@@ -68,6 +72,19 @@ impl Default for Header {
 }
 
 impl Header {
+    pub fn resolved_description(&self) -> Option<&str> {
+        self.description
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                self.abstract_text
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+            })
+    }
+
     pub fn resolved_updated(&self) -> Option<i64> {
         if self.updated_disabled {
             None
@@ -137,6 +154,8 @@ pub struct HeaderParseResult {
 
 #[derive(Debug, Error)]
 pub enum HeaderError {
+    #[error("invalid social-image: {0}")]
+    InvalidSocialImage(String),
     #[error("invalid header line: {0}")]
     InvalidLine(String),
     #[error("invalid header key: {0}")]
@@ -206,6 +225,13 @@ pub fn parse_header(
                 }
             }
             "abstract" => header.abstract_text = non_empty(value),
+            "description" => header.description = non_empty(value),
+            "social-image" => {
+                header.social_image = non_empty(value)
+                    .map(|value| crate::open_graph::normalize_social_image(&value))
+                    .transpose()
+                    .map_err(|error| HeaderError::InvalidSocialImage(error.to_string()))?;
+            }
             "template" => header.template_raw = non_empty(value),
             "layout" => header.layout = non_empty(value),
             "type" => header.content_type = non_empty(value),
@@ -558,6 +584,55 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parse_header_social_image_accepts_local_and_external_images() {
+        for (input, expected) in [
+            ("social-image: card.jpg\n", Some("images/card.jpg")),
+            (
+                "social-image: images/social/card.png\n",
+                Some("images/social/card.png"),
+            ),
+            (
+                "social-image: https://cdn.example.com/card.jpg\n",
+                Some("https://cdn.example.com/card.jpg"),
+            ),
+            ("social-image: \n", None),
+        ] {
+            let parsed = parse_header(input, UnknownKeyPolicy::Error).unwrap();
+            assert_eq!(parsed.header.social_image.as_deref(), expected);
+        }
+        assert!(matches!(
+            parse_header(
+                "social-image: images/../secret.jpg\n",
+                UnknownKeyPolicy::Error
+            ),
+            Err(HeaderError::InvalidSocialImage(_))
+        ));
+    }
+
+    #[test]
+    fn parse_header_description_uses_abstract_only_when_unset() {
+        for (input, expected) in [
+            (
+                "description: Search summary\nabstract: Listing summary\n",
+                Some("Search summary"),
+            ),
+            (
+                "description:   \nabstract: Listing summary\n",
+                Some("Listing summary"),
+            ),
+            ("abstract: Listing summary\n", Some("Listing summary")),
+            ("description:   \nabstract:   \n", None),
+            ("title: No description\n", None),
+        ] {
+            let parsed = parse_header(input, UnknownKeyPolicy::Error).expect("parse header");
+            assert_eq!(parsed.header.resolved_description(), expected, "{input}");
+            assert!(parsed.warnings.is_empty());
+        }
+        let parsed = parse_header("description:   \n", UnknownKeyPolicy::Error).unwrap();
+        assert_eq!(parsed.header.description, None);
+    }
+
+    #[test]
     fn parses_all_fields() {
         let input = "\
 uuid: 4f234d4a-5c88-4fb8-9f55-3f75a8efc2c0
@@ -565,6 +640,7 @@ title: My Title
 tags: rust, yaml
 updated: 2024-01-02 03:04
 abstract: Summary
+description: Search summary
 template: post
 type: article
 menu: main
@@ -588,6 +664,7 @@ exclude_from_blog: true
         assert_eq!(header.title.as_deref(), Some("My Title"));
         assert_eq!(header.tags, vec!["rust".to_string(), "yaml".to_string()]);
         assert_eq!(header.abstract_text.as_deref(), Some("Summary"));
+        assert_eq!(header.description.as_deref(), Some("Search summary"));
         assert_eq!(header.template_raw.as_deref(), Some("post"));
         assert_eq!(header.content_type.as_deref(), Some("article"));
         assert_eq!(header.menu.as_deref(), Some("main"));

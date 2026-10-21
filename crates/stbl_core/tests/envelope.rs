@@ -14,12 +14,136 @@ use uuid::Uuid;
 const BUILD_DATE: &str = "2026-01-25";
 
 #[test]
+fn canonical_links_cover_all_renderers_themes_and_url_styles() {
+    use stbl_core::model::UrlStyle;
+    use stbl_core::templates::{render_markdown_page, render_redirect_page};
+    use stbl_core::url::{UrlMapper, map_series_index};
+
+    for theme in ["stbl", "minimal", "product", "liberty", "paper", "mono"] {
+        let config = format!(
+            "{}theme:\n  variant: {theme}\nseo:\n  open_graph:\n    default_image: https://cdn.example.com/default.png\n",
+            default_config().replace("https://example.com/", "https://example.com/blog/")
+        );
+        let (mut project, _) = project_with_config(&config);
+        let manifest = default_manifest();
+        let page = simple_page("Page", "articles/nested/page.md");
+        for style in [
+            UrlStyle::Html,
+            UrlStyle::Pretty,
+            UrlStyle::PrettyWithFallback,
+        ] {
+            project.config.site.url_style = style;
+            let mapper = UrlMapper::new(&project.config);
+            let page_href = mapper.map("nested/page").href;
+            let tag_href = mapper.map("tags/rust").href;
+            let series_href = map_series_index("series").href;
+            let blog_href = mapper.map("blog/page/2").href;
+            let tags_href = mapper.map("tags").href;
+            let rendered = [
+                (
+                    render_page(
+                        &project, &page, &manifest, &page_href, BUILD_DATE, None, None,
+                    )
+                    .unwrap(),
+                    page_href.clone(),
+                ),
+                (
+                    render_blog_index(
+                        &project,
+                        "Blog".to_string(),
+                        None,
+                        None,
+                        None,
+                        vec![],
+                        None,
+                        None,
+                        None,
+                        None,
+                        2,
+                        2,
+                        &manifest,
+                        &blog_href,
+                        BUILD_DATE,
+                        true,
+                    )
+                    .unwrap(),
+                    blog_href,
+                ),
+                (
+                    render_tag_index(
+                        &project,
+                        TagListingPage {
+                            tag: "rust".to_string(),
+                            items: vec![],
+                        },
+                        &manifest,
+                        &tag_href,
+                        BUILD_DATE,
+                    )
+                    .unwrap(),
+                    tag_href,
+                ),
+                (
+                    render_series_index(
+                        &project,
+                        &page,
+                        vec![],
+                        &manifest,
+                        &series_href,
+                        BUILD_DATE,
+                        None,
+                    )
+                    .unwrap(),
+                    series_href,
+                ),
+                (
+                    render_markdown_page(
+                        &project, "Tags", "Tags", &manifest, &tags_href, BUILD_DATE, None, true,
+                        None, None,
+                    )
+                    .unwrap(),
+                    tags_href,
+                ),
+                (
+                    render_redirect_page(&project, &page_href, &manifest, "old-page", BUILD_DATE)
+                        .unwrap(),
+                    page_href,
+                ),
+            ];
+            for (html, href) in rendered {
+                let absolute = UrlMapper::absolute_href(&project.config.site.base_url, &href);
+                let escaped = absolute.replace('/', "&#x2f;");
+                let link = format!("<link rel=\"canonical\" href=\"{escaped}\">");
+                let head_end = html.find("</head>").unwrap();
+                assert!(
+                    html[..head_end].contains(&link),
+                    "{theme}, {style:?}: {html}"
+                );
+                assert_eq!(html.matches("rel=\"canonical\"").count(), 1);
+                if html.contains("http-equiv=\"refresh\"") {
+                    assert!(!html.contains("property=\"og:"));
+                } else {
+                    assert!(
+                        html.contains(&format!("<meta property=\"og:url\" content=\"{escaped}\">"))
+                    );
+                    assert!(html.contains("<meta property=\"og:image\" content=\"https:&#x2f;&#x2f;cdn.example.com&#x2f;default.png\">"));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn envelope_blog_index_has_chrome_regions_and_single_h1() {
     let (project, site_title) = project_with_config(default_config());
     let item = simple_item();
+    let mut source = simple_page("Blog", "articles/index.md");
+    source.header.description = Some("Latest articles and news.".to_string());
+    source.header.social_image = Some("https://cdn.example.com/blog.png".to_string());
     let html = render_blog_index(
         &project,
         "Blog".to_string(),
+        Some(&source),
         None,
         None,
         vec![item],
@@ -37,6 +161,10 @@ fn envelope_blog_index_has_chrome_regions_and_single_h1() {
     .expect("render blog index");
 
     assert_envelope(&html, &site_title, 0);
+    assert!(html.contains("<meta name=\"description\" content=\"Latest articles and news.\">"));
+    assert!(html.contains(
+        "<meta property=\"og:image\" content=\"https:&#x2f;&#x2f;cdn.example.com&#x2f;blog.png\">"
+    ));
     assert!(html.contains(&format!("<title>Blog · {site_title}</title>")));
 }
 

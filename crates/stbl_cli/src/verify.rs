@@ -1121,8 +1121,17 @@ fn warn_unknown_system_entries(value: &Value, report: &mut Report, path: &str) {
 }
 
 fn warn_unknown_seo_entries(value: &Value, report: &mut Report, path: &str) {
-    warn_unknown_entries(value, report, path, "seo", &["sitemap"]);
+    warn_unknown_entries(value, report, path, "seo", &["sitemap", "open_graph"]);
     if let Some(map) = value.as_mapping() {
+        if let Some(open_graph) = map.get(&Value::String("open_graph".to_string())) {
+            warn_unknown_entries(
+                open_graph,
+                report,
+                path,
+                "seo.open_graph",
+                &["default_image", "use_frontpage_banner"],
+            );
+        }
         if let Some(sitemap) = map.get(&Value::String("sitemap".to_string())) {
             warn_unknown_entries(sitemap, report, path, "seo.sitemap", &["priority"]);
             if let Some(site_map) = sitemap.as_mapping() {
@@ -1461,6 +1470,10 @@ syntax:
   highlight: true
   theme: "GitHub"
   line_numbers: true
+seo:
+  open_graph:
+    default_image: images/social-card.jpg
+    use_frontpage_banner: false
 "#,
         )
         .expect("value");

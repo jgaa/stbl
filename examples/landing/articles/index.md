@@ -1,6 +1,8 @@
 ---
 title: Helios Drift Systems
+description: Helios Drift Systems builds practical M1 hyperdrives for survey boats, rescue cutters, medical shuttles, and couriers.
 template: landingpage.html
+social-image: images/hyperdrive-hero.png
 ---
 
 ::: hero

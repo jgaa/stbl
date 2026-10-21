@@ -166,6 +166,9 @@ rss:
   ttl_days: int     # optional, drop items older than N days since publish/update
 
 seo:
+  open_graph:
+    default_image: string        # optional; images/ path, filename, or HTTP(S) URL
+    use_frontpage_banner: bool   # optional; default false
   sitemap:
     priority:
       frontpage: number
@@ -388,6 +391,9 @@ rss:
   # ttl_days: 30    # optional additional cutoff you requested
 
 seo:
+  open_graph:
+    # default_image: images/social-card.jpg
+    use_frontpage_banner: false
   sitemap:
     priority:
       frontpage: 1.0

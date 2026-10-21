@@ -663,6 +663,17 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         },
     };
 
+    let mut seo = parsed.seo;
+    if let Some(open_graph) = seo.as_mut().and_then(|seo| seo.open_graph.as_mut()) {
+        open_graph.default_image = open_graph
+            .default_image
+            .take()
+            .filter(|value| !value.trim().is_empty())
+            .map(|value| crate::open_graph::normalize_social_image(&value))
+            .transpose()
+            .context("invalid seo.open_graph.default_image")?;
+    }
+
     Ok(SiteConfig {
         site,
         banner: parsed.banner.map(|banner| BannerConfig {
@@ -693,7 +704,7 @@ pub fn load_site_config(path: &Path) -> Result<SiteConfig> {
         system: parsed.system,
         publish: parsed.publish,
         rss,
-        seo: parsed.seo,
+        seo,
         comments: parsed.comments,
         chroma: parsed.chroma,
         plyr: parsed.plyr,
@@ -830,6 +841,39 @@ mod tests {
         );
         let config = load_site_config(&path).expect("config should load");
         assert_eq!(config.site.id, "demo");
+    }
+
+    #[test]
+    fn open_graph_config_defaults_and_validation() {
+        let base =
+            "site:\n  id: demo\n  title: Demo\n  base_url: https://example.com/\n  language: en\n";
+        for (settings, expected_image, enabled) in [
+            ("{}", None, false),
+            ("{default_image: card.jpg}", Some("images/card.jpg"), false),
+            (
+                "{default_image: 'https://cdn.example.com/card.png', use_frontpage_banner: true}",
+                Some("https://cdn.example.com/card.png"),
+                true,
+            ),
+            ("{default_image: '   '}", None, false),
+        ] {
+            let path = write_temp(&format!("{base}seo:\n  open_graph: {settings}\n"));
+            let config = load_site_config(&path)
+                .unwrap()
+                .seo
+                .unwrap()
+                .open_graph
+                .unwrap();
+            assert_eq!(config.default_image.as_deref(), expected_image);
+            assert_eq!(config.use_frontpage_banner, enabled);
+        }
+        for settings in [
+            "{default_image: '../secret.jpg'}",
+            "{use_frontpage_banner: invalid}",
+        ] {
+            let path = write_temp(&format!("{base}seo:\n  open_graph: {settings}\n"));
+            assert!(load_site_config(&path).is_err());
+        }
     }
 
     #[test]

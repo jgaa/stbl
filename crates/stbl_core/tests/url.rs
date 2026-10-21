@@ -190,6 +190,29 @@ fn maps_pretty_with_fallback_style_nested_key() {
 }
 
 #[test]
+fn absolute_href_preserves_base_path_and_mapped_url_style() {
+    for style in [
+        UrlStyle::Html,
+        UrlStyle::Pretty,
+        UrlStyle::PrettyWithFallback,
+    ] {
+        let config = base_config(style);
+        let mapper = UrlMapper::new(&config);
+        for base in ["https://example.com/blog", "https://example.com/blog/"] {
+            let mapping = mapper.map("nested/page");
+            assert_eq!(
+                UrlMapper::absolute_href(base, &mapping.href),
+                format!("https://example.com/blog/{}", mapping.href)
+            );
+        }
+    }
+    assert_eq!(
+        UrlMapper::absolute_href("https://example.com/blog/", "/page/"),
+        "https://example.com/blog/page/"
+    );
+}
+
+#[test]
 fn logical_key_strips_leading_hidden_dirs() {
     assert_eq!(
         logical_key_from_source_path("articles/_drafts/post.md"),
