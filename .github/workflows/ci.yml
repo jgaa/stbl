@@ -4,6 +4,19 @@ on:
   push:
     branches:
       - master
+    paths:
+      - '.github/workflows/ci.yml'
+      - '.cargo/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain'
+      - 'rust-toolchain.toml'
+      # Includes embedded assets and test fixtures, which affect builds and tests.
+      - 'crates/**'
+      # These example files are included directly by forms_build.rs.
+      - 'examples/forms/stbl.yaml'
+      - 'examples/forms/articles/index.md'
+      - 'examples/forms/assets/forms/contact.yaml'
 
 jobs:
   build-and-test:
