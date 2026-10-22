@@ -53,6 +53,7 @@ jobs:
 
           main_sha="$(git rev-parse HEAD)"
           archive_name="stbl_cli-${app_version}-linux-x86_64.zip"
+          cgi_archive_name="stbl-form-receiver-${app_version}-linux-x86_64.zip"
 
           previous_tag="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq '.tag_name' 2>/dev/null)" || previous_tag=""
 
@@ -61,24 +62,29 @@ jobs:
             echo "tag=${tag}"
             echo "main_sha=${main_sha}"
             echo "archive_name=${archive_name}"
+            echo "cgi_archive_name=${cgi_archive_name}"
             echo "previous_tag=${previous_tag}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build stbl_cli
-        run: cargo build -p stbl_cli --release
+      - name: Build CLI and CGI receiver
+        run: cargo build -p stbl_cli --release --bin stbl_cli --bin stbl-form-receiver
 
-      - name: Package release asset
+      - name: Package release assets
         env:
           ARCHIVE_NAME: ${{ steps.prep.outputs.archive_name }}
+          CGI_ARCHIVE_NAME: ${{ steps.prep.outputs.cgi_archive_name }}
         run: |
           set -euo pipefail
 
           mkdir -p release-assets
           cp target/release/stbl_cli release-assets/stbl_cli-linux-x86_64
+          cp target/release/stbl-form-receiver release-assets/stbl-form-receiver-linux-x86_64
           chmod +x release-assets/stbl_cli-linux-x86_64
+          chmod +x release-assets/stbl-form-receiver-linux-x86_64
           (
             cd release-assets
             zip -q "../${ARCHIVE_NAME}" stbl_cli-linux-x86_64
+            zip -q "../${CGI_ARCHIVE_NAME}" stbl-form-receiver-linux-x86_64
           )
 
       - name: Build release notes
@@ -107,11 +113,12 @@ jobs:
           TAG: ${{ steps.prep.outputs.tag }}
           MAIN_SHA: ${{ steps.prep.outputs.main_sha }}
           ARCHIVE_NAME: ${{ steps.prep.outputs.archive_name }}
+          CGI_ARCHIVE_NAME: ${{ steps.prep.outputs.cgi_archive_name }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
           set -euo pipefail
 
-          gh release create "${TAG}" "${ARCHIVE_NAME}" \
+          gh release create "${TAG}" "${ARCHIVE_NAME}" "${CGI_ARCHIVE_NAME}" \
             --target "${MAIN_SHA}" \
             --title "${TAG}" \
             --notes-file "${NOTES_FILE}"
