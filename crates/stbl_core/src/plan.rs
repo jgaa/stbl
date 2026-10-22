@@ -365,6 +365,8 @@ fn outputs_for_series(logical_key: &str) -> Vec<OutputArtifact> {
 
 fn build_plan_hash_context(project: &Project) -> PlanHashContext {
     let mut render_hasher = Hasher::new();
+    // Bump when renderer behavior changes so unchanged content is rendered again.
+    render_hasher.update(b"stbl.render.v2");
     render_hasher.update(&hash_render_config(&project.config));
     let social_fallback = serde_json::to_vec(&crate::open_graph::frontpage_banner(project))
         .expect("frontpage social image should serialize");

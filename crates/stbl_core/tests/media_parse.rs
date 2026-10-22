@@ -106,6 +106,23 @@ fn parse_media_with_max_constraints() {
 }
 
 #[test]
+fn percentage_max_height_uses_viewport_without_changing_percentage_width() {
+    for (path, height) in [
+        ("images/portrait.jpg", "80"),
+        ("video/portrait.mp4", "37.5"),
+    ] {
+        let destination = format!("{path};maxw=50%;maxh={height}%");
+        let media = parse_media_destination(&destination, "Portrait").expect("media");
+        let (maxw, maxh) = match media {
+            MediaRef::Image(image) => (image.maxw, image.maxh),
+            MediaRef::Video(video) => (video.maxw, video.maxh),
+        };
+        assert_eq!(maxw.as_deref(), Some("50%"));
+        assert_eq!(maxh, Some(format!("{height}vh")));
+    }
+}
+
+#[test]
 fn invalid_max_constraint_reports_error() {
     let (refs, errors) = collect_media_refs_with_errors("![A](images/a.jpg;maxw=900pt)");
     assert!(refs.is_empty());

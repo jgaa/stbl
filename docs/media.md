@@ -52,6 +52,9 @@ Allowed length units for `maxw/maxh`:
 
 - `px`, `rem`, `em`, `%`, `vw`, `vh`
 
+For `maxh`, percentages refer to the viewport height: `maxh=80%` is equivalent
+to `maxh=80vh`. For `maxw`, percentages refer to the containing width.
+
 Invalid `maxw/maxh` values are reported as parsing errors.
 
 ## Image Processing

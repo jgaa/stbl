@@ -59,6 +59,7 @@ img, video { max-width: 100%; height: auto; }
 /* constrain the actual rendered elements */
 .media-frame img,
 .media-frame video {
+  display: block;
   max-width: min(100%, var(--media-maxw, 100%));
   max-height: min(var(--media-maxh, var(--video-maxh)), var(--video-maxh));
   width: auto;

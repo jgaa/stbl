@@ -184,7 +184,7 @@ fn parse_media_destination_internal(
                 continue;
             }
             if let Some(value) = attr.strip_prefix("maxh=") {
-                match parse_media_length(value) {
+                match parse_media_height(value) {
                     Some(value) => maxh = Some(value),
                     None => {
                         if let Some(errors) = errors.as_deref_mut() {
@@ -261,7 +261,7 @@ fn parse_media_destination_internal(
                 continue;
             }
             if let Some(value) = attr.strip_prefix("maxh=") {
-                match parse_media_length(value) {
+                match parse_media_height(value) {
                     Some(value) => maxh = Some(value),
                     None => {
                         if let Some(errors) = errors.as_deref_mut() {
@@ -292,6 +292,16 @@ fn parse_media_destination_internal(
         }));
     }
     None
+}
+
+fn parse_media_height(value: &str) -> Option<String> {
+    let length = parse_media_length(value)?;
+    // Media wrappers have automatic heights. A percentage of that height creates
+    // a sizing cycle, so express percentage height limits against the viewport.
+    Some(match length.strip_suffix('%') {
+        Some(percent) => format!("{}vh", percent.trim()),
+        None => length,
+    })
 }
 
 fn parse_media_length(value: &str) -> Option<String> {

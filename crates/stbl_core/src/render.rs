@@ -1164,6 +1164,27 @@ mod tests {
         assert!(html.contains("srcset="));
     }
     #[test]
+    fn percentage_media_height_renders_viewport_limit() {
+        let options = base_render_options(&[], &[360, 720]);
+        for destination in [
+            "images/quicstart3.jpg;maxw=50%;maxh=80%",
+            "video/portrait.mp4;maxw=50%;maxh=80%",
+        ] {
+            let html = render_markdown_to_html_with_media(
+                &format!("![Portrait]({destination})"),
+                &options,
+            );
+            assert!(html.contains("--media-maxh: 80vh;"));
+            assert!(html.contains("--media-maxw: 50%;"));
+            assert!(!html.contains("--media-maxh: 80%;"));
+            // Figure macros use this rendering entry point for their constraints.
+            let media = super::render_media_element_html(destination, "Portrait", &options);
+            assert_eq!(media.maxh.as_deref(), Some("80vh"));
+            assert_eq!(media.maxw.as_deref(), Some("50%"));
+        }
+    }
+
+    #[test]
     fn hero_image_uses_all_planned_variants_and_column_sizes_without_arguments() {
         use crate::assets::AssetSourceId;
         use crate::media::{ImagePlanInput, MediaDimensions, build_image_variant_index};
