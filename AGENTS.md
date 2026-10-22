@@ -59,3 +59,8 @@
 - URL semantics are defined by `stbl_core::url::UrlMapper`.
 - No code outside `url.rs` may construct `.html` paths or `index.html` paths manually.
 - All links and output paths must go through the mapper.
+
+## git
+- Use `git add` to add new project files.
+- Never commit anything to git - I will review and commit changes.
+
