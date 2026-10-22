@@ -99,7 +99,7 @@ Video metadata probing and transcoding use `ffmpeg`.
 Use the ordinary video syntax with a local poster image:
 
 ```markdown
-![Introduction](video/intro-to-nextapp.mp4;poster=images/product-hero.png)
+![Introduction](video/intro.mp4;poster=images/product-hero.png)
 ```
 
 The poster shares `media.images.widths`, formats and quality with ordinary
@@ -159,10 +159,11 @@ Relevant sections in `stbl.yaml`:
 - `media.images.quality`
 - `media.video.heights`
 - `media.video.poster_time`
-- `banner.widths`
-- `banner.quality`
-- `banner.align`
 - `theme.wide_background.image`
+
+The compatibility fields `banner.widths`, `banner.quality`, and `banner.align`
+are parsed but do not affect the current build. Banner processing uses
+`media.images` settings. See [Configuration](configuration.md#media).
 
 ## Troubleshooting
 
@@ -180,6 +181,6 @@ Unexpected missing variant:
 
 ## Related Chapters
 
-- `docs/project-structure.md`
-- `docs/templates-and-themes.md`
-- `docs/troubleshooting.md`
+- [Project Structure](project-structure.md)
+- [Templates And Themes](templates-and-themes.md)
+- [FAQ](faq.md)

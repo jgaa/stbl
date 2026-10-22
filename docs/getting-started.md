@@ -5,7 +5,7 @@ This guide gets you from an empty directory to a locally previewed `stbl` site.
 ## Prerequisites
 
 - Linux shell environment
-- Rust toolchain (`cargo`, `rustc`)
+- Rust toolchain (`cargo`, `rustc`) if building from source
 - `stbl_cli` available either:
   - from this repo via `cargo run -p stbl_cli -- ...`, or
   - as an installed binary from GitHub Releases
@@ -24,7 +24,7 @@ sudo mv stbl_cli /usr/local/bin/
 
 Option B, build from source.
 
-## 2. Build `stbl_cli`
+## 2. Build `stbl_cli` (source installation only)
 
 From the repository root:
 
@@ -72,7 +72,8 @@ Open `stbl.yaml` and set minimum identity fields such as:
 - tagline
 - base URL (when relevant for feeds/sitemaps/publishing)
 
-Keep this file under version control.
+Keep this file under version control. See the [Configuration Reference](configuration.md)
+for all supported settings and defaults.
 
 ## 5. Add Your Front Page
 
@@ -129,13 +130,13 @@ cargo run -p stbl_cli -- build --preview-open
 By default, output is generated under cache space:
 
 ```text
-~/.cache/stbl/<site-name>/out
+~/.cache/stbl/<site.id>/out
 ```
 
 Generated HTML for the front page is typically:
 
 ```text
-~/.cache/stbl/<site-name>/out/index.html
+~/.cache/stbl/<site.id>/out/index.html
 ```
 
 ## 9. Typical Authoring Loop
@@ -166,5 +167,5 @@ No visible "updated" timestamp
 
 Continue with:
 
-- `docs/cli.md` for command reference and workflows
-- `docs/project-structure.md` for directory/layout conventions
+- [Cli](cli.md) for command reference and workflows
+- [Project Structure](project-structure.md) for directory/layout conventions

@@ -141,6 +141,9 @@ stbl_cli build [OPTIONS] [ARTICLES_DIR]
 Core options:
 
 - `--out <PATH>`: Override output directory.
+- `--theme <NAME>`: Override the theme variant for this build.
+- `--color-theme <NAME>`: Override the color preset for this build.
+- `--base-url <URL>`: Override the site base URL for this build.
 - `--publish-to <DEST>`: Publish after successful build.
 - `--no-cache`: Disable cache for this run.
 - `--cache-path <PATH>`: Override cache DB/path.
@@ -214,6 +217,7 @@ Options:
 - `--url <URL>`: Default `http://localhost:8080/`.
 - `--language <LANGUAGE>`: Default `en`.
 - `--kind <blog|landing-page>`: Default `blog`.
+- `--theme <NAME>`: Select the theme variant during init.
 - `--color-theme <NAME>`: Apply preset during init.
 - `--copy-all`: Copy full template/content set.
 

@@ -59,7 +59,7 @@ tags: rust, stbl
 
 - Optional comma-separated list.
 - Stored as author IDs/names exactly as provided.
-- Example: `author: jgaa, alice`
+- Example: `author: alex, alice`
 
 ### `published`
 
@@ -124,9 +124,9 @@ Behavior:
 - Does not change listing excerpts or RSS descriptions.
 
 ```text
-title: C++ consulting
-description: C++ development, performance tuning, and code reviews for production systems.
-abstract: How I help teams build reliable C++ software.
+title: Project guide
+description: A practical guide to setting up and maintaining a project.
+abstract: Project setup and maintenance advice.
 ```
 
 Set this on the homepage's content header as well as individual articles and
@@ -147,9 +147,9 @@ do not receive a description from this setting.
 - External image URLs are used directly, without downloading them.
 
 ```text
-title: C++ consulting
-description: C++ development, performance tuning, and code reviews.
-social-image: images/consulting-card.jpg
+title: Project guide
+description: A practical guide to setting up a project.
+social-image: images/project-card.jpg
 ```
 
 The preview image order is `social-image`, the page's banner,
@@ -237,13 +237,14 @@ Behavior for series parts:
 ### `expires`
 
 - Optional timestamp.
-- If used, the article will not appear after the timestamp.
+- Parsed and preserved for compatibility; the current version does not enforce expiry.
 
 ### `sitemap-priority`
 
 - Optional.
 - Accepts values in `[0.0, 1.0]` or `-1`.
 - `-1` means default/unset.
+- Parsed and preserved; the current sitemap renderer does not emit priorities.
 - Invalid values produce warnings.
 
 ### `sitemap-changefreq`
@@ -251,6 +252,7 @@ Behavior for series parts:
 - Optional.
 - Allowed values: `always`, `hourly`, `daily`, `weekly`, `monthly`, `yearly`, `never`.
 - Invalid values produce parse errors.
+- Parsed and preserved; the current sitemap renderer does not emit change frequencies.
 
 ### `exclude_from_blog`
 
@@ -295,7 +297,7 @@ Rules:
 ```markdown
 ---
 title: Release 1.2
-author: jgaa
+author: alex
 published: 2026-02-17 09:00
 updated: 2026-02-17 11:30
 tags: release, changelog
@@ -310,9 +312,9 @@ template: page
 
 ## Related Chapters
 
-- `docs/page-types.md`
-- `docs/timestamps.md`
-- `docs/series.md`
+- [Page Types](page-types.md)
+- [Timestamps](timestamps.md)
+- [Series](series.md)
 
 ## Web forms
 

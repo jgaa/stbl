@@ -134,9 +134,9 @@ Unexpected stale files in output:
 
 ## Related Chapters
 
-- `docs/content-format.md`
-- `docs/page-types.md`
-- `docs/templates-and-themes.md`
+- [Content Format](content-format.md)
+- [Page Types](page-types.md)
+- [Templates And Themes](templates-and-themes.md)
 
 ## Generated crawler files
 

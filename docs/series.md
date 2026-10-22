@@ -144,6 +144,6 @@ Body...
 
 ## Related Chapters
 
-- `docs/project-structure.md`
-- `docs/content-format.md`
-- `docs/page-types.md`
+- [Project Structure](project-structure.md)
+- [Content Format](content-format.md)
+- [Page Types](page-types.md)

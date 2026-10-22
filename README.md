@@ -34,21 +34,22 @@ The directory contains special files such as CSS and templates for generating HT
 
 ## Features
 
-* Creates **responsive HTML5 websites**
-* **Command-line program** (for Linux)
-* **Markdown-based writing**
-* **Syntax-colored source code snippets**
-* **Scales media files** — images and videos are optimized for various screen sizes
-* **Fast rebuilds** — uses caching and only regenerates changed content (like *make*)
-* **Security features**, including scanning SVGs for hidden tracking
-* **Color schemes** — easily change or modify colors
-* **Template-driven rendering** for maximum flexibility
-* **Macros** for dynamic content injection
-* [Contact and feedback forms](docs/web-forms.md), with an optional local-mail CGI receiver
-* Works fully **without JavaScript**
-* [SEO friendly](https://lastviking.eu/stbl_and_seo.html)
-* Easy to add [commenting with Disqus](https://lastviking.eu/stbl_with_disqus.html)
-* Easy to add [commenting with IntenseDebate](https://lastviking.eu/stbl_with_intensedebate.html)
+* **Responsive static websites** for blogs, landing pages, and general content sites
+* **Linux command-line tools** to initialize, validate, plan, build, preview, and publish sites
+* **Markdown authoring** with metadata headers, syntax highlighting, macros, and reusable includes
+* **Six embedded themes**: stbl, minimal, liberty, paper, mono, and product; color presets, derived palettes, and template/CSS overrides
+* **Landing-page layouts** with heroes, feature grids, cards, callouts, and buttons
+* **Blog listings**, optional pagination, tag indexes, ordered article series, and RSS feeds
+* **Responsive images** with WebP and JPEG/PNG fallbacks, plus AVIF when enabled at compile time
+* **Video processing** with scaled MP4 outputs, extracted posters, and optional responsive custom posters
+* **Incremental builds** with an optional SQLite cache, parallel execution, and stale output cleanup
+* **Deployment assets** with optional content-hashed filenames and gzip/Brotli precompression
+* **Search and sharing metadata**: description headers with abstract fallback, canonical URLs, Open Graph tags, sitemap.xml, and robots.txt
+* **Configurable URLs**: HTML paths, directory URLs, or directory URLs with migration redirects
+* **SVG safety checks** with warning, rejection, and sanitization modes for copied assets
+* [Contact and feedback forms](docs/web-forms.md), with an optional CGI receiver using a local mail service
+* **Core navigation, reading, native video playback, and forms work without JavaScript**; optional enhancements and third-party comment integrations may use it
+* **Template-based comment integrations** using configured provider snippets
 
 ---
 
@@ -78,13 +79,14 @@ sudo mv stbl_cli /usr/local/bin/
 
 stbl uses a number of Rust dependencies. While I generally prefer minimal dependencies, it makes little sense to reinvent well-tested components.
 
-The only runtime dependency is `ffmpeg`. This is required only if you use videos in your content. Images are scaled and optimized directly by the application.
+Video processing requires `ffmpeg`. Images are scaled and optimized directly by the application. The optional form receiver additionally needs a CGI-capable web server and a local mail service providing `sendmail`; see [Web Forms](docs/web-forms.md).
 
 ---
 
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
+- [Configuration Reference (`stbl.yaml`)](docs/configuration.md)
 - [CLI Reference](docs/cli.md)
 - [Project Structure](docs/project-structure.md)
 - [Content Format](docs/content-format.md)
@@ -94,6 +96,7 @@ The only runtime dependency is `ffmpeg`. This is required only if you use videos
 - [Series](docs/series.md)
 - [Templates and Themes](docs/templates-and-themes.md)
 - [Media](docs/media.md)
+- [Web Forms](docs/web-forms.md)
 - [Caching](docs/caching.md)
 - [FAQ](docs/faq.md)
 

@@ -171,6 +171,6 @@ Cover pages suppress page-header timestamps.
 
 ## Related Chapters
 
-- `docs/content-format.md`
-- `docs/page-types.md`
-- `docs/series.md`
+- [Content Format](content-format.md)
+- [Page Types](page-types.md)
+- [Series](series.md)

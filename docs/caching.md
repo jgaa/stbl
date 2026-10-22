@@ -113,6 +113,6 @@ Use `stbl_cli clean` when:
 
 ## Related Chapters
 
-- `docs/cli.md`
-- `docs/project-structure.md`
-- `docs/troubleshooting.md`
+- [Cli](cli.md)
+- [Project Structure](project-structure.md)
+- [FAQ](faq.md)

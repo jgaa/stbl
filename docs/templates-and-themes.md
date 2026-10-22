@@ -232,6 +232,6 @@ If an override is not applied, check:
 
 ## Related Chapters
 
-- `docs/project-structure.md`
-- `docs/cli.md`
-- `docs/content-format.md`
+- [Project Structure](project-structure.md)
+- [Cli](cli.md)
+- [Content Format](content-format.md)

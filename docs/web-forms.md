@@ -98,7 +98,7 @@ OUT/
 ```
 
 Copy **the entire output** to the deployed website directory, preserving modes,
-for example `rsync -a OUT/ /var/www/cpp-freelancer.com/`. No setup bundle, source
+for example `rsync -a OUT/ /var/www/example.com/`. No setup bundle, source
 website, source YAML copies, wrapper script, or Rust toolchain is needed on the
 server. The CGI executable is copied from `stbl-form-receiver` next to the build
 CLI. Install/distribute both executables together; `cargo build -p stbl_cli`
@@ -132,7 +132,7 @@ sudo install -d -o www-data -g www-data -m 0700 /var/lib/stbl-forms
 ```
 
 Copy `OUT/stbl-forms/receiver.yaml.example` to `/etc/stbl/forms.yaml`, then edit it.
-For the C++ Freelancer site:
+For a site hosted at `https://example.com/`:
 
 ```yaml
 rate_dir: /var/lib/stbl-forms
@@ -142,12 +142,12 @@ global_requests_per_minute: 1000
 sendmail_timeout_seconds: 10
 sendmail: /usr/sbin/sendmail
 sites:
-  cpp-freelancer:
-    website_root: /var/www/cpp-freelancer.com
+  example-site:
+    website_root: /var/www/example.com
     forms:
       /cgi-bin/contact:
-        sender: contact@lastviking.eu
-        recipient: jgaa@jgaa.com
+        sender: forms@example.com
+        recipient: owner@example.com
         subject: Website contact form
         reply_to_field: email
 ```
@@ -218,7 +218,7 @@ location = /cgi-bin/contact {
     fastcgi_pass unix:/run/fcgiwrap.socket;
     fastcgi_param SCRIPT_FILENAME $document_root/stbl-forms/stbl-form-receiver;
     fastcgi_param STBL_FORM_CONFIG /etc/stbl/forms.yaml;
-    fastcgi_param STBL_FORM_SITE cpp-freelancer;
+    fastcgi_param STBL_FORM_SITE example-site;
     fastcgi_intercept_errors off;
 }
 ```
@@ -262,21 +262,21 @@ the built-in static preview server does not execute CGI or deliver submissions.
 For example:
 
 ```sh
-cargo run --release -- --source-dir /var/local/blog/cpp-freelancer.com \
-  build --out /tmp/cpp-freelancer.com --preview-open
+cargo run --release -- --source-dir /path/to/site \
+  build --out /tmp/example.com --preview-open
 ```
 
 To test actual submissions locally through nginx, build without either preview
 flag so the output includes the receiver and manifest:
 
 ```sh
-target/release/stbl_cli --source-dir /var/local/blog/cpp-freelancer.com \
-  build --out /tmp/cpp-freelancer.com
+target/release/stbl_cli --source-dir /path/to/site \
+  build --out /tmp/example.com
 ```
 
 Set the nginx vhost's `root` and the private receiver config's `website_root` to
-`/tmp/cpp-freelancer.com`. Set `SCRIPT_FILENAME` in each exact CGI location to
-`/tmp/cpp-freelancer.com/stbl-forms/stbl-form-receiver`, using the private
+`/tmp/example.com`. Set `SCRIPT_FILENAME` in each exact CGI location to
+`/tmp/example.com/stbl-forms/stbl-form-receiver`, using the private
 config/site parameters and deny location described above. Browse the nginx
 vhost's URL to test both ordinary POST and JavaScript submissions. Rebuild after
 source edits or temporary-directory cleanup; preview does not watch or rebuild
@@ -287,14 +287,14 @@ automatically.
 A GET invokes the receiver without sending email:
 
 ```sh
-curl -i https://cpp-freelancer.com/cgi-bin/contact -H 'Accept: application/json'
+curl -i https://example.com/cgi-bin/contact -H 'Accept: application/json'
 ```
 
 Expect HTTP **405** with JSON saying to use POST. Then submit the form normally
 and with JavaScript disabled. A CLI POST test sends a real email:
 
 ```sh
-curl -i https://cpp-freelancer.com/cgi-bin/contact \
+curl -i https://example.com/cgi-bin/contact \
   -H 'Accept: application/json' \
   --data-urlencode 'message=Contact form deployment test' \
   --data-urlencode 'email=' \
@@ -363,7 +363,7 @@ have queued the message. Avoid immediate retries. Keep nginx's
 `fastcgi_read_timeout` above the configured sendmail deadline.
 
 The MTA handles retries and delivery. Validation/request processing call a
-separate `Forwarder` interface, allowing a later NextApp adapter.
+separate `Forwarder` interface, so delivery integrations can be implemented separately.
 
 Requests with `Accept: application/json` receive `{ "success": true|false,
 "message": "..." }`; ordinary requests receive an escaped HTML confirmation or

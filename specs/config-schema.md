@@ -1,3 +1,6 @@
+For the user-facing reference, defaults, and current implementation limits, see
+[Configuration](../docs/configuration.md).
+
 ## Config format
 
 * YAML (`stbl.yaml`)
@@ -37,7 +40,7 @@ Allowed values:
   - Intended for migrating existing sites without breaking links
 
 
-## Full schema (MVP)
+## Full schema
 
 ```yaml
 site:
@@ -46,7 +49,7 @@ site:
   tagline: string
   logo: string
   icon: string        # optional SVG converted to a 32x32 PNG site icon during build
-  copyright: string  # optional; default "Copyright {YEAR} by {site.title}"
+  copyright: string  # optional literal text; generated default uses year and site title
   base_url: string
   language: string
   timezone: string   # optional
@@ -56,7 +59,7 @@ site:
       href: string   # optional; defaults to "{label-lowercase}.html"
 
 theme:
-  variant: string          # default "default"
+  variant: string          # default "stbl"
   max_body_width: string   # default "72rem"
   breakpoints:
     desktop_min: string    # default "768px"
@@ -260,12 +263,21 @@ Controls SVG safety checks during asset copy.
 
 ---
 
+## Implementation limits
+
+The schema includes compatibility fields. The current renderer does not use
+`banner.widths`, `banner.quality`, or `banner.align`; banner images use
+`media.images` settings. `seo.sitemap.priority` is stored but not emitted.
+Content expiry and sitemap priority/change-frequency headers are also not
+enforced/emitted. See the [configuration reference](../docs/configuration.md)
+for supported behavior.
+
 ## RSS rules
 
 * RSS is generated only if `rss.enabled: true`
 * If enabled:
 
-  * Missing required RSS fields → **error**
+  * Missing `rss.max_items` → **error**
 * Filtering:
 
   * `ttl_channel` controls the channel refresh hint in minutes (RSS <ttl>)
@@ -278,13 +290,13 @@ Controls SVG safety checks during asset copy.
 
 ```yaml
 site:
-  id: "lastviking-eu"          # mandatory and stable
-  title: "The Last Viking LTD" # required
-  tagline: "Software & Coffee at the Edge of the Universe"
-  logo: "artifacts/logo.svg"
-  base_url: "https://lastviking.eu/"  # required
+  id: "example-site"          # mandatory and stable
+  title: "Example Site" # required
+  tagline: "Notes and project updates"
+  logo: "images/logo.svg"
+  base_url: "https://example.com/"  # required
   language: "en"               # required
-  # timezone: "Europe/Sofia"   # optional; if omitted use local timezone
+  # timezone: "Europe/Sofia"   # optional; UTC display if omitted
 
 theme:
   variant: "default"
@@ -332,8 +344,8 @@ menu:
     href: "./"
   - title: "Blog"
     href: "./blog.html"
-  - title: "Freelancing"
-    href: "https://cpp-freelancer.com/"
+  - title: "Projects"
+    href: "https://projects.example.com/"
   - title: "Github"
     href: "https://github.com/john.doe"
   - title: "Contact"
@@ -353,11 +365,11 @@ people:
           url: "mailto:jdoe@example.com"
           icon: "{{rel}}artifacts/feather/mail.svg" # optional override
         - id: "github"
-          name: "jgaa"
+          name: "jdoe"
           url: "https://github.com/john.doe"
           icon: "{{rel}}artifacts/feather/github.svg" # optional override
         - id: "linkedin"
-          name: "Jarle Aase"
+          name: "John Doe"
           url: "https://www.linkedin.com/in/john.doe"
           icon: "{{rel}}artifacts/li123.svg" # optional override
 
@@ -388,7 +400,7 @@ rss:
   enabled: true
   max_items: 16
   ttl_channel: 1800 # optional channel TTL in minutes
-  # ttl_days: 30    # optional additional cutoff you requested
+  # ttl_days: 30    # optional age cutoff
 
 seo:
   open_graph:
@@ -406,7 +418,7 @@ comments:
   # default: "disqus"
   # disqus:
   #   template: "templates/disqus.html"
-  #   src: "https://the-last-viking.disqus.com/embed.js"
+  #   src: "https://example.disqus.com/embed.js"
 
 ```
 

@@ -77,6 +77,6 @@ articles/my-series/part-1.md
 
 ## Related Chapters
 
-- `docs/content-format.md`
-- `docs/timestamps.md`
-- `docs/series.md`
+- [Content Format](content-format.md)
+- [Timestamps](timestamps.md)
+- [Series](series.md)

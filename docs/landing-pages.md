@@ -28,7 +28,7 @@ rendered normally, including headings, links, images, lists, and emphasis.
 ::: hero align=center
 # Private conversations. No surveillance.
 
-DarkSpeak is a private messenger designed around peer-to-peer communication.
+Example App is a private messenger designed around peer-to-peer communication.
 
 [Download](download/)
 :::
@@ -146,11 +146,11 @@ within the available image area:
 
 ```markdown
 ::: hero
-# I built NextApp to organize myself
+# Organize your projects
 
-NextApp is a private personal organizer for your work and your life.
+Example App keeps your notes and tasks together.
 
-![NextApp application](images/nextapp-banner-blue.png)
+![Application overview](images/product-overview.png)
 :::
 ```
 
@@ -257,14 +257,14 @@ color generated at build time.
 
 ```markdown
 ---
-title: DarkSpeak
+title: Example App
 template: landingpage.html
 ---
 
 ::: hero
 # Private conversations. No surveillance.
 
-![DarkSpeak application](images/main-window.webp)
+![Example App application](images/main-window.webp)
 :::
 
 ::: section tone=subtle
@@ -292,9 +292,9 @@ Exchange files directly between trusted contacts.
 :::
 
 ::: callout
-## Ready to try DarkSpeak?
+## Ready to try Example App?
 
-[Download DarkSpeak](download/)
+[Download Example App](download/)
 :::
 ```
 
