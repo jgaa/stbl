@@ -103,7 +103,7 @@ Video processing requires `ffmpeg`. Images are scaled and optimized directly by 
 ## Some real websites made with stbl
 
 - [The Last Viking LTD](https://lastviking.eu/)
-- [he C++ Freelancer](https://cpp-freelancer.com/)
+- [The C++ Freelancer](https://cpp-freelancer.com/)
 - [NextApp](https://next-app.org/)
 - [DarkSpeak](https://darkspeak.org/)
 
